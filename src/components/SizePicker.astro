@@ -1,5 +1,6 @@
 ---
 import type { Dictionary } from '../lib/i18n/es';
+import type { Locale } from '../lib/i18n';
 import type { SettingsDoc } from '../lib/settings';
 
 interface Props {
@@ -9,9 +10,10 @@ interface Props {
   settings: SettingsDoc;
   digitalPriceCents: number;
   t: Dictionary;
+  lang: Locale;
 }
 
-const { photoId, aspectRatio, maxPrintCm, settings, digitalPriceCents, t } = Astro.props;
+const { photoId, aspectRatio, maxPrintCm, settings, digitalPriceCents, t, lang } = Astro.props;
 
 function fits(widthCm: number, heightCm: number): boolean {
   return Math.max(widthCm, heightCm) <= maxPrintCm;
@@ -71,7 +73,7 @@ const paperEntries = Object.entries(settings.paperStocks);
   <label class="block text-sm">
     {t.pricing.paper}
     <select data-paper-select class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">
-      {paperEntries.map(([key, stock]) => <option value={key}>{stock.label.es}</option>)}
+      {paperEntries.map(([key, stock]) => <option value={key}>{stock.label[lang]}</option>)}
     </select>
   </label>
 

@@ -6,6 +6,7 @@
 // --dry-run touches neither R2 nor Mongo: derivatives are written to
 // ./tmp/ingest-preview/ via the same LocalFsStorageAdapter used by unit tests, and the
 // planned Mongo document is printed instead of written.
+import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { defaultWatermarkConfig } from '../watermark.config.ts';
@@ -15,6 +16,31 @@ import { createStorageAdapter, type StorageAdapter } from '../src/lib/storage.ts
 import { getDbConfig, getR2Config } from './config.ts';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tiff', '.tif']);
+const METADATA_PATH = resolve('seed/metadata.json');
+
+interface SeedMetadataEntry {
+  slug: string;
+  title: { es: string; en: string };
+  description: { es: string; en: string };
+  tags?: string[];
+  collections?: string[];
+}
+
+/**
+ * seed/metadata.json carries the real bilingual titles/descriptions/tags written for
+ * the sample set — matched here by slug so a fresh `pnpm ingest` populates them instead
+ * of leaving every new photo titled with its own filename. Best-effort: a directory of
+ * photos with no corresponding metadata entry (or no metadata.json at all — e.g.
+ * ingesting a completely different shoot) still ingests fine, just without captions,
+ * exactly as before this existed.
+ */
+async function loadSeedMetadata(): Promise<Map<string, SeedMetadataEntry>> {
+  const map = new Map<string, SeedMetadataEntry>();
+  if (!existsSync(METADATA_PATH)) return map;
+  const entries: SeedMetadataEntry[] = JSON.parse(await readFile(METADATA_PATH, 'utf-8'));
+  for (const entry of entries) map.set(entry.slug, entry);
+  return map;
+}
 
 interface CliArgs {
   inputDir: string;
@@ -54,11 +80,13 @@ async function main() {
   console.log(`${args.dryRun ? '[dry-run] ' : ''}Processing ${files.length} file(s) from ${args.inputDir}`);
 
   const db = args.dryRun ? null : await getDb(getDbConfig());
+  const seedMetadata = await loadSeedMetadata();
 
   for (const file of files) {
     const slug = slugFromFilename(file);
     const inputPath = join(args.inputDir, file);
     const original = await readFile(inputPath);
+    const meta = seedMetadata.get(slug);
 
     const processed = await processOriginal(original, defaultWatermarkConfig);
 
@@ -85,6 +113,9 @@ async function main() {
 
       const plannedDoc = {
         slug,
+        title: meta?.title ?? { es: slug, en: slug },
+        description: meta?.description ?? { es: '', en: '' },
+        tags: meta?.tags ?? [],
         capture: {
           camera: processed.exif.camera ?? null,
           lens: processed.exif.lens ?? null,
@@ -97,7 +128,7 @@ async function main() {
         height: processed.height,
         aspectRatio: Number(processed.aspectRatio.toFixed(4)),
         maxPrintCm: Number(processed.maxPrintCm.toFixed(1)),
-        collections: args.collection ? [args.collection] : [],
+        collections: args.collection ? [args.collection] : (meta?.collections ?? []),
         // Bare object keys, scoped to their bucket by the `bucket` field passed to
         // StorageAdapter calls elsewhere — NOT prefixed with "originals/"/"public/",
         // since that would double-encode the bucket into the key and break
@@ -106,7 +137,7 @@ async function main() {
         r2: { originalKey, publicKey: publicWebpKey },
         status: 'draft',
       };
-      console.log(`\n[dry-run] ${slug}`);
+      console.log(`\n[dry-run] ${slug}${meta ? '' : ' (no seed/metadata.json entry — using slug as title)'}`);
       console.log(JSON.stringify(plannedDoc, null, 2));
       console.log(`  -> preview written to tmp/ingest-preview/public/${publicJpegKey} (and .webp)`);
       continue;
@@ -149,10 +180,10 @@ async function main() {
           updatedAt: new Date(),
         },
         $setOnInsert: {
-          title: { es: slug, en: slug },
-          description: { es: '', en: '' },
-          tags: [],
-          collections: args.collection ? [args.collection] : [],
+          title: meta?.title ?? { es: slug, en: slug },
+          description: meta?.description ?? { es: '', en: '' },
+          tags: meta?.tags ?? [],
+          collections: args.collection ? [args.collection] : (meta?.collections ?? []),
           featured: false,
           status: 'draft',
           createdAt: new Date(),

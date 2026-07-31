@@ -98,22 +98,38 @@ rather than surfacing as a confusing runtime error later.
 
 ## About the sample photos
 
-The real Galápagos originals (sea lions on the Puerto Ayora docks, brown pelicans on lava
-rock, the *Silver Origin* at sea, etc.) live on José's machine and are **not** part of
-this repository. `seed/metadata.json` — committed, plain JSON — has the real slugs,
-bilingual titles/descriptions, and tags already written for those 16 frames.
+`seed/photos/` currently holds 16 real Galápagos frames (sea lions on the Puerto Ayora
+docks, brown pelicans on lava rock and the town beach, a giant tortoise in the
+highlands, a couple of seascapes) — shared over WhatsApp, so they're compressed re-encodes
+(~1600×1069, 0.1–0.4MB) rather than the full 24MP Sony A7III originals, but genuinely
+José's own photography rather than placeholders. `seed/metadata.json` — committed, plain
+JSON — has the real slugs, bilingual titles/descriptions, and tags matched to each one by
+slug. The photos themselves are **git-ignored** (like the real full-res originals would
+be) since they're binary content.
 
-`pnpm run generate:placeholders` reads that file and generates 16 **synthetic gradient
-JPEGs** matching each entry's slug and aspect ratio, written to `seed/photos/`
-(git-ignored, like the real originals would be). One fixture
-(`pelican-takeoff.jpg`) is deliberately stored as a landscape frame tagged with EXIF
-orientation 6, mimicking the real sideways-camera shot this pipeline needs to handle —
-so `pnpm ingest`'s auto-rotate logic has something real to correct.
+Since a fresh clone of this repo won't have those WhatsApp photos, `pnpm run
+generate:placeholders` remains available as a fallback: it reads the same
+`seed/metadata.json` (which also carries `targetWidth`/`targetHeight`/
+`placeholderOrientation` fields for exactly this purpose) and generates 16 **synthetic
+gradient JPEGs** at realistic full-sensor dimensions, written to `seed/photos/`. One
+fixture (`pelican-in-mangrove.jpg`) is deliberately tagged with EXIF orientation 6,
+mimicking a real sideways-camera shot, so `pnpm ingest`'s auto-rotate logic has something
+to correct even without real photos on hand.
 
-**These are throwaway test fixtures, not real photography.** Before shooting for
-production, point `pnpm ingest` at the actual Sony A7III originals on José's machine —
-that's the whole reason `scripts/ingest.ts` takes an arbitrary input directory rather
-than being hardcoded to `seed/photos/`.
+Before shooting for production, point `pnpm ingest` at the actual full-res Sony A7III
+originals — that's the whole reason `scripts/ingest.ts` takes an arbitrary input
+directory rather than being hardcoded to `seed/photos/`.
+
+### Previewing the gallery locally without R2
+
+`scripts/seed-preview.ts` (`pnpm tsx scripts/seed-preview.ts`) is a dev-only convenience:
+it runs the real photos through the real image pipeline, writes the watermarked
+derivatives straight into `public/local-public/` (served by Astro itself, git-ignored),
+and upserts them into Mongo as `status: 'published'` — so the actual gallery, detail, and
+admin pages render against real content and a real database with zero R2 setup. Requires
+a real `MONGODB_URI`; doesn't touch R2 or Stripe. Not part of the production ingest path
+— `pnpm ingest` (uploads to R2, defaults new photos to `draft`) is what actually publishes
+a shoot.
 
 ## Architecture notes
 
@@ -140,9 +156,17 @@ than being hardcoded to `seed/photos/`.
   helper (`lib/audit.ts`), and every admin Action (except `login`) is defined through
   `defineAdminAction()` (`src/actions/adminGuard.ts`), which enforces the session check
   structurally rather than relying on each handler remembering to call it.
-- **Admin sign-in lives inline at `/admin`**, not on a separate route — see the comment
-  block in `src/middleware.ts` for why (a dev-server-specific routing quirk observed
-  while building this, unrelated to application logic).
+- **Admin sign-in lives inline at `/admin`**, not on a separate route — one entry point
+  into the panel, with no separate login route to guard.
+- **`i18n.routing` is `'manual'`, applied selectively in `src/middleware.ts`.** Astro's
+  built-in (non-manual) i18n enforcement 404s *every* "page"-type route without a locale
+  prefix, project-wide — not just ones nested under `[lang]`. That silently 404'd the
+  entire `/admin/*` panel (a real bug, confirmed by reading `astro/dist/i18n/router.js`:
+  `matchPrefixAlways()` returns `{type:"notFound"}` unconditionally for any non-prefixed
+  pathname). The fix: `routing: 'manual'` in `astro.config.mjs` hands control to
+  `src/middleware.ts`, which calls `astro:i18n`'s `middleware()` helper itself — but only
+  for non-`/admin` paths — reproducing the exact same locale-prefix behavior for the
+  public site while leaving the (deliberately non-bilingual) admin panel alone.
 - **No email provider was specified.** `lib/email.ts` is a small provider interface with
   a console-log fallback (`ConsoleEmailProvider`). Swap in a real provider (Resend,
   Postmark, SendGrid, ...) by implementing `EmailProvider` and calling
@@ -154,9 +178,22 @@ than being hardcoded to `seed/photos/`.
 
 ## Verification performed in this build
 
-No live MongoDB Atlas, Cloudflare R2, or Stripe credentials were available while this
-was built — `.env` holds throwaway placeholder values sufficient only to satisfy
-`astro:env`'s startup validation. What was actually verified:
+A real MongoDB Atlas cluster was connected and used for live verification later in the
+build (Cloudflare R2 and Stripe credentials remain throwaway placeholders — `.env` still
+satisfies `astro:env`'s startup validation only for those). What was actually verified:
+
+- **Live against real Atlas:** `pnpm run init-db` (collections/indexes created for real),
+  `scripts/seed-preview.ts` (real photos through the real image pipeline, published to
+  real Mongo), then the actual gallery, homepage, collection, and detail pages — plus the
+  full admin panel (dashboard, photos catalog, sign-in/session/logout) — rendered against
+  a real database, checked via both `astro dev` and the compiled production build
+  (`node dist/server/entry.mjs`). This is what surfaced two real bugs, both fixed and
+  verified: `SizePicker.astro` hardcoded the Spanish paper-stock label regardless of page
+  locale (now takes `lang` and reads `stock.label[lang]`), and the `/admin/*` panel was
+  silently 404ing under every route except its own entry point due to Astro's built-in
+  i18n enforcement (see `i18n.routing` note above) — invisible in casual dev-server
+  browsing because the browser still renders a 404-status body, only caught by explicitly
+  checking `fetch()` response status codes.
 
 - `pnpm build` and `pnpm check` — clean, including under Astro 7's stricter Rust
   compiler (unclosed tags are hard errors now).
@@ -186,13 +223,14 @@ was built — `.env` holds throwaway placeholder values sufficient only to satis
   the full admin sign-in flow (unauthenticated → form → submit → session set → guarded
   pages recognize the session → logout) was exercised live end-to-end.
 
-### Deferred — needs real credentials, not part of this session
+### Deferred — needs real R2/Stripe credentials, not part of this session
 
-Once real `MONGODB_URI`, R2, and Stripe values are in `.env`:
+Once real R2 and Stripe values are in `.env` (real `MONGODB_URI` is already live):
 
-- [ ] `pnpm run init-db` against real Atlas, then a real (non-dry-run) `pnpm ingest`.
+- [ ] A real (non-dry-run) `pnpm ingest`, uploading to real R2.
 - [ ] Confirm `curl`-ing an `originals/` key directly returns 403 (no public policy).
-- [ ] Full gallery/detail/cart/admin pages rendering against real seeded data.
+- [ ] Cart/checkout pages against real seeded data (gallery/detail/admin already verified
+      live — see above).
 - [ ] Stripe test-mode checkout end to end: `stripe listen --forward-to
       localhost:4321/api/stripe-webhook`, pay with `4242 4242 4242 4242`, confirm the
       order flips to `paid`, a download token is minted, the emailed link delivers the

@@ -13,6 +13,7 @@ seed/photos/*.jpg
 seed/photos/*.jpeg
 seed/photos/*.webp
 tmp/
+public/local-public/
 
 # editor/OS
 .DS_Store

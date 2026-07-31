@@ -10,7 +10,15 @@ export default defineConfig({
   i18n: {
     locales: ['es', 'en'],
     defaultLocale: 'es',
-    routing: { prefixDefaultLocale: true },
+    // 'manual' hands routing control to src/middleware.ts (via astro:i18n's
+    // `middleware()`), applied there only to non-/admin paths. With the object form
+    // (`{ prefixDefaultLocale: true }`), Astro's built-in i18n finalize step 404s EVERY
+    // "page"-type route without a locale prefix project-wide — not just ones under
+    // [lang] — which silently 404'd the entire /admin/* panel (confirmed by reading
+    // astro/dist/i18n/router.js's matchPrefixAlways(): any non-prefixed pathname is
+    // unconditionally { type: "notFound" }). See src/middleware.ts for the equivalent
+    // behavior reproduced for the public site only.
+    routing: 'manual',
   },
   vite: {
     plugins: [tailwindcss()],
