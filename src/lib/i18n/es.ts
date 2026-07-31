@@ -12,6 +12,7 @@ export interface Dictionary {
   about: { title: string; body: string };
   cart: { title: string; empty: string };
   footer: { rights: string };
+  notFound: { photoTitle: string; photoBody: string };
   pricing: {
     size: string;
     custom: string;
@@ -70,6 +71,10 @@ export const es: Dictionary = {
   },
   footer: {
     rights: 'Todos los derechos reservados.',
+  },
+  notFound: {
+    photoTitle: 'Fotografía no encontrada',
+    photoBody: 'Esta fotografía ya no está disponible o el enlace es incorrecto.',
   },
   pricing: {
     size: 'Tamaño',

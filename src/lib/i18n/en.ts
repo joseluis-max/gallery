@@ -44,6 +44,10 @@ export const en: Dictionary = {
   footer: {
     rights: 'All rights reserved.',
   },
+  notFound: {
+    photoTitle: 'Photograph not found',
+    photoBody: 'This photograph is no longer available, or the link is incorrect.',
+  },
   pricing: {
     size: 'Size',
     custom: 'Custom',

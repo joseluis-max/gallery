@@ -1,0 +1,28 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getDictionary, type Locale } from '../lib/i18n';
+
+Astro.response.status = 404;
+
+// Astro's global catch-all — reached for genuinely unmatched routes (typos, dead
+// links), not for "valid route shape, but the slug doesn't exist" cases, which render
+// their own inline not-found state in the page's own locale (see gallery/[slug].astro,
+// collections/[slug].astro) since they already know which locale the visitor is in.
+const lang: Locale = Astro.url.pathname.startsWith('/en') ? 'en' : 'es';
+const t = getDictionary(lang);
+
+const copy = {
+  es: { title: 'Página no encontrada', body: 'Esta página no existe o fue movida.' },
+  en: { title: 'Page not found', body: "This page doesn't exist or has moved." },
+}[lang];
+---
+
+<BaseLayout title={`${copy.title} — José Valdiviezo`} lang={lang}>
+  <div class="mx-auto max-w-lg px-6 py-24 text-center">
+    <h1 class="font-display text-3xl">{copy.title}</h1>
+    <p class="mt-4 text-ink-muted">{copy.body}</p>
+    <a href={`/${lang}/gallery`} class="mt-8 inline-block text-sm uppercase tracking-widest text-accent hover:underline">
+      {t.gallery.title} &rarr;
+    </a>
+  </div>
+</BaseLayout>
