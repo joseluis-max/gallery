@@ -126,7 +126,7 @@ than being hardcoded to `seed/photos/`.
   called identically by `scripts/ingest.ts` (CLI) and the admin upload flow
   (`src/actions/admin.ts`'s `completeUpload`/`retryUploadJob`) — there is no second,
   divergent implementation of the watermark/rotate/derivative logic.
-  - **Prices are computed server-side only, every time.** `lib/pricing.ts`'s
+- **Prices are computed server-side only, every time.** `lib/pricing.ts`'s
   `computePrintPrice()` is a pure function of `(input, ctx)` fed identically by the live
   quote UI action (`quotePrice`) and the checkout action's authoritative re-pricing. The
   client sends dimensions/paper/qty; it never sends a price, and nothing trusts one if
@@ -160,7 +160,7 @@ was built — `.env` holds throwaway placeholder values sufficient only to satis
 
 - `pnpm build` and `pnpm check` — clean, including under Astro 7's stricter Rust
   compiler (unclosed tags are hard errors now).
-- `pnpm test` — 82 unit tests covering `lib/pricing.ts` (aspect tolerance, `maxPrintCm`
+- `pnpm test` — 85 unit tests covering `lib/pricing.ts` (aspect tolerance, `maxPrintCm`
   rejection, paper multipliers, per-photo overrides, custom-size clamping),
   `lib/downloads.ts` (token generation/hashing, expiry/exhaustion, the atomic
   consume-token race guard), `lib/orders.ts` (the `status:'pending'` guard filter that
