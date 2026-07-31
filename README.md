@@ -160,7 +160,7 @@ was built — `.env` holds throwaway placeholder values sufficient only to satis
 
 - `pnpm build` and `pnpm check` — clean, including under Astro 7's stricter Rust
   compiler (unclosed tags are hard errors now).
-- `pnpm test` — 67 unit tests covering `lib/pricing.ts` (aspect tolerance, `maxPrintCm`
+- `pnpm test` — 74 unit tests covering `lib/pricing.ts` (aspect tolerance, `maxPrintCm`
   rejection, paper multipliers, per-photo overrides, custom-size clamping),
   `lib/downloads.ts` (token generation/hashing, expiry/exhaustion, the atomic
   consume-token race guard), `lib/storage.ts` (local adapter real I/O, R2 adapter
@@ -168,7 +168,10 @@ was built — `.env` holds throwaway placeholder values sufficient only to satis
   including asserting the sideways fixture comes out correctly oriented and that
   watermark compositing visibly changes the expected pixel region), `lib/auth.ts`
   (password hash/verify, rate limiting), `lib/cart.ts`, `lib/slug.ts`,
-  `lib/serialize.ts`, and the download-delivery API route's status-code mapping.
+  `lib/serialize.ts`, the download-delivery API route's status-code mapping, and the
+  Stripe webhook route (missing/invalid signature, first-time processing, idempotent
+  replay of an already-processed event, and that a mid-handler failure leaves the event
+  unmarked so Stripe's own retry can reprocess it).
 - `pnpm ingest ./seed/photos --dry-run` — full pipeline (EXIF read, auto-rotate,
   watermark, derivative encode, LQIP) against the synthetic placeholders, with the
   sideways fixture visually confirmed to come out upright and the watermark confirmed
