@@ -1,0 +1,132 @@
+---
+import Lightbox from '../../../components/Lightbox.astro';
+import SizePicker from '../../../components/SizePicker.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDbConfig, getR2Config } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { getPhotoBySlug, getPhotoImageUrls } from '../../../lib/photos';
+import { getSettings } from '../../../lib/settings';
+import { createStorageAdapter } from '../../../lib/storage';
+
+const lang = Astro.params.lang as Locale;
+const slug = Astro.params.slug as string;
+const t = getDictionary(lang);
+
+const db = await getDb(getDbConfig());
+const photo = await getPhotoBySlug(db, slug);
+
+if (!photo) {
+  return new Response('Not found', { status: 404 });
+}
+
+const settings = await getSettings(db);
+const storage = createStorageAdapter('r2', getR2Config());
+const urls = getPhotoImageUrls(photo, storage);
+const title = photo.title[lang];
+const description = photo.description[lang];
+const specs = photo.capture;
+const digitalPriceCents = photo.pricing?.digitalPriceCents ?? settings.digitalPriceCents;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: title,
+  description,
+  image: urls.jpeg,
+  brand: { '@type': 'Person', name: 'José Valdiviezo' },
+  offers: {
+    '@type': 'AggregateOffer',
+    priceCurrency: 'USD',
+    lowPrice: (digitalPriceCents / 100).toFixed(2),
+    availability: 'https://schema.org/InStock',
+  },
+};
+---
+
+<BaseLayout title={`${title} — José Valdiviezo`} description={description} lang={lang} ogImage={urls.jpeg}>
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+  <div class="mx-auto max-w-5xl px-4 py-8 md:px-8">
+    <a href={`/${lang}/gallery`} class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
+      &larr; {t.detail.back}
+    </a>
+
+    <div class="mt-6">
+      <Lightbox
+        slug={photo.slug}
+        title={title}
+        webpUrl={urls.webp}
+        jpegUrl={urls.jpeg}
+        aspectRatio={photo.aspectRatio}
+        lqip={photo.lqip}
+      />
+    </div>
+
+    <div class="mt-8 grid gap-10 md:grid-cols-[1.6fr_1fr]">
+      <div>
+        <h1 class="font-display text-2xl md:text-3xl">{title}</h1>
+        {description && <p class="mt-4 text-ink-muted leading-relaxed">{description}</p>}
+
+        {
+          photo.tags.length > 0 && (
+            <ul class="mt-6 flex flex-wrap gap-2 text-xs uppercase tracking-widest text-ink-muted">
+              {photo.tags.map((tag) => (
+                <li class="rounded-full border border-border px-3 py-1">{tag}</li>
+              ))}
+            </ul>
+          )
+        }
+
+        <dl class="mt-8 grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-ink-muted sm:max-w-sm">
+          {specs.camera && (
+            <>
+              <dt class="text-ink-muted/70">{t.detail.specs.camera}</dt>
+              <dd>{specs.camera}</dd>
+            </>
+          )}
+          {specs.lens && (
+            <>
+              <dt class="text-ink-muted/70">{t.detail.specs.lens}</dt>
+              <dd>{specs.lens}</dd>
+            </>
+          )}
+          {specs.iso && (
+            <>
+              <dt class="text-ink-muted/70">{t.detail.specs.iso}</dt>
+              <dd>{specs.iso}</dd>
+            </>
+          )}
+          {specs.aperture && (
+            <>
+              <dt class="text-ink-muted/70">{t.detail.specs.aperture}</dt>
+              <dd>{specs.aperture}</dd>
+            </>
+          )}
+          {specs.shutter && (
+            <>
+              <dt class="text-ink-muted/70">{t.detail.specs.shutter}</dt>
+              <dd>{specs.shutter}</dd>
+            </>
+          )}
+          {specs.location && (
+            <>
+              <dt class="text-ink-muted/70">{t.detail.specs.location}</dt>
+              <dd>{specs.location}</dd>
+            </>
+          )}
+        </dl>
+      </div>
+
+      <aside id="buy-panel" class="border-t border-border pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0">
+        <SizePicker
+          photoId={photo._id.toString()}
+          aspectRatio={photo.aspectRatio}
+          maxPrintCm={photo.maxPrintCm}
+          settings={settings}
+          digitalPriceCents={digitalPriceCents}
+          t={t}
+        />
+      </aside>
+    </div>
+  </div>
+</BaseLayout>

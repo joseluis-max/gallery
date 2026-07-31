@@ -1,0 +1,159 @@
+---
+import { ObjectId } from 'mongodb';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig, getR2Config } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import type { PhotoDoc } from '../../../lib/photos';
+import { createStorageAdapter } from '../../../lib/storage';
+
+const idParam = Astro.params.id as string;
+let photoId: InstanceType<typeof ObjectId>;
+try {
+  photoId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+const db = await getDb(getDbConfig());
+const photo = await db.collection<PhotoDoc>('photos').findOne({ _id: photoId });
+if (!photo) {
+  return new Response('Not found', { status: 404 });
+}
+
+const storage = createStorageAdapter('r2', getR2Config());
+const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jpg'));
+---
+
+<AdminLayout title={photo.title.en || photo.slug}>
+  <a href="/admin/photos" class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">&larr; Photos</a>
+
+  <div class="mt-4 grid gap-8 md:grid-cols-[1fr_1.4fr]">
+    <div>
+      <img src={previewUrl} alt={photo.title.en} class="w-full border border-border" />
+      <p class="mt-2 text-xs text-ink-muted">
+        This is the public, watermarked derivative — exactly what visitors see. Check the mark isn't sitting on the
+        subject before publishing.
+      </p>
+      <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-ink-muted">
+        <dt>Slug</dt><dd>{photo.slug}</dd>
+        <dt>Dimensions</dt><dd>{photo.width}×{photo.height}px</dd>
+        <dt>Max print size</dt><dd>{photo.maxPrintCm.toFixed(0)}cm long edge</dd>
+        <dt>Camera</dt><dd>{photo.capture.camera ?? '—'}</dd>
+        <dt>Lens</dt><dd>{photo.capture.lens ?? '—'}</dd>
+        <dt>Status</dt><dd class="capitalize">{photo.status}</dd>
+      </dl>
+    </div>
+
+    <form data-edit-form data-photo-id={photo._id.toString()} class="space-y-4">
+      <div class="grid grid-cols-2 gap-4">
+        <label class="block text-sm">
+          Title (ES)
+          <input name="title_es" value={photo.title.es} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        </label>
+        <label class="block text-sm">
+          Title (EN)
+          <input name="title_en" value={photo.title.en} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        </label>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <label class="block text-sm">
+          Description (ES)
+          <textarea name="description_es" rows="3" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">{photo.description.es}</textarea>
+        </label>
+        <label class="block text-sm">
+          Description (EN)
+          <textarea name="description_en" rows="3" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">{photo.description.en}</textarea>
+        </label>
+      </div>
+      <label class="block text-sm">
+        Tags (comma-separated)
+        <input name="tags" value={photo.tags.join(', ')} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="block text-sm">
+        Collections (comma-separated)
+        <input name="collections" value={photo.collections.join(', ')} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="featured" checked={photo.featured} />
+        Featured on homepage
+      </label>
+
+      <fieldset class="border border-border p-3">
+        <legend class="px-1 text-xs uppercase tracking-widest text-ink-muted">Price override (blank = store default)</legend>
+        <div class="grid grid-cols-3 gap-3">
+          <label class="block text-sm">
+            Base (cents)
+            <input type="number" name="baseCents" value={photo.pricing?.baseCents ?? ''} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          </label>
+          <label class="block text-sm">
+            Rate/cm² (cents)
+            <input type="number" step="0.01" name="ratePerCm2Cents" value={photo.pricing?.ratePerCm2Cents ?? ''} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          </label>
+          <label class="block text-sm">
+            Digital (cents)
+            <input type="number" name="digitalPriceCents" value={photo.pricing?.digitalPriceCents ?? ''} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-full bg-ink px-5 py-2 text-sm uppercase tracking-widest text-surface">Save</button>
+        <button type="button" data-toggle-publish data-published={String(photo.status === 'published')} class="rounded-full border border-ink px-5 py-2 text-sm uppercase tracking-widest">
+          {photo.status === 'published' ? 'Unpublish' : 'Publish'}
+        </button>
+        <span data-save-status class="text-sm text-ink-muted"></span>
+      </div>
+    </form>
+  </div>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const form = document.querySelector<HTMLFormElement>('[data-edit-form]')!;
+  const statusEl = document.querySelector<HTMLElement>('[data-save-status]')!;
+  const photoId = form.dataset.photoId!;
+
+  function field(name: string): string {
+    return (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement)?.value ?? '';
+  }
+
+  function numberOrUndefined(name: string): number | undefined {
+    const raw = field(name);
+    return raw === '' ? undefined : Number(raw);
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    statusEl.textContent = 'Saving…';
+
+    const { error } = await actions.admin.updatePhoto({
+      photoId,
+      title: { es: field('title_es'), en: field('title_en') },
+      description: { es: field('description_es'), en: field('description_en') },
+      tags: field('tags').split(',').map((t) => t.trim()).filter(Boolean),
+      collections: field('collections').split(',').map((c) => c.trim()).filter(Boolean),
+      featured: (form.elements.namedItem('featured') as HTMLInputElement).checked,
+      pricingOverride: {
+        baseCents: numberOrUndefined('baseCents'),
+        ratePerCm2Cents: numberOrUndefined('ratePerCm2Cents'),
+        digitalPriceCents: numberOrUndefined('digitalPriceCents'),
+      },
+    });
+
+    statusEl.textContent = error ? `Error: ${error.message}` : 'Saved.';
+  });
+
+  document.querySelector<HTMLButtonElement>('[data-toggle-publish]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const published = button.dataset.published === 'true';
+    button.disabled = true;
+    const { error } = await actions.admin.setPhotoPublished({ photoId, published: !published });
+    if (error) {
+      alert(error.message);
+      button.disabled = false;
+      return;
+    }
+    window.location.reload();
+  });
+</script>

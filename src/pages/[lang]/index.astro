@@ -1,0 +1,50 @@
+---
+import JustifiedGrid, { type GridItem } from '../../components/JustifiedGrid.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getDbConfig, getR2Config } from '../../lib/config';
+import { getDb } from '../../lib/db';
+import { getDictionary, type Locale } from '../../lib/i18n';
+import { getFeaturedPhotos, getPhotoImageUrls } from '../../lib/photos';
+import { createStorageAdapter } from '../../lib/storage';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+const db = await getDb(getDbConfig());
+const storage = createStorageAdapter('r2', getR2Config());
+const featured = await getFeaturedPhotos(db, 6);
+
+const items: GridItem[] = featured.map((photo) => {
+  const urls = getPhotoImageUrls(photo, storage);
+  return {
+    href: `/${lang}/gallery/${photo.slug}`,
+    slug: photo.slug,
+    title: photo.title[lang],
+    aspectRatio: photo.aspectRatio,
+    lqip: photo.lqip,
+    webpUrl: urls.webp,
+    jpegUrl: urls.jpeg,
+  };
+});
+---
+
+<BaseLayout title={`${t.home.heroTitle} — ${t.home.heroSubtitle}`} lang={lang}>
+  <section class="px-6 py-20 text-center md:px-12 md:py-32">
+    <h1 class="font-display text-4xl tracking-tight md:text-6xl">{t.home.heroTitle}</h1>
+    <p class="mt-4 text-lg text-ink-muted">{t.home.heroSubtitle}</p>
+  </section>
+
+  {
+    items.length > 0 && (
+      <section class="px-2 pb-20 md:px-6">
+        <h2 class="sr-only">{t.home.featuredTitle}</h2>
+        <JustifiedGrid items={items} />
+        <div class="mt-10 text-center">
+          <a href={`/${lang}/gallery`} class="text-sm uppercase tracking-widest text-accent hover:underline">
+            {t.home.viewGallery}
+          </a>
+        </div>
+      </section>
+    )
+  }
+</BaseLayout>

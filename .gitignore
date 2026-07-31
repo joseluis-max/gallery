@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+.astro/
+
+# env
+.env
+
+# generated/throwaway image fixtures — never commit binaries
+seed/photos/*.jpg
+seed/photos/*.jpeg
+seed/photos/*.webp
+tmp/
+
+# editor/OS
+.DS_Store
+*.log

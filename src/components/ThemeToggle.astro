@@ -1,0 +1,33 @@
+<button
+  id="theme-toggle"
+  type="button"
+  aria-label="Toggle color theme"
+  class="rounded-full border border-border px-3 py-1.5 text-xs uppercase tracking-widest text-ink-muted transition-colors hover:text-ink"
+>
+  <span data-theme-label>Theme</span>
+</button>
+
+<script>
+  // `astro:page-load` fires on the very first load AND after every ClientRouter
+  // swap, so this one listener covers both cases without a separate
+  // DOMContentLoaded + astro:after-swap pairing.
+  document.addEventListener('astro:page-load', () => {
+    const button = document.getElementById('theme-toggle');
+    const label = button?.querySelector('[data-theme-label]');
+    if (!button || !label) return;
+
+    const sync = () => {
+      const current = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      label.textContent = current === 'dark' ? 'Dark' : 'Light';
+      button.setAttribute('aria-pressed', String(current === 'dark'));
+    };
+    sync();
+
+    button.addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('theme', next);
+      sync();
+    });
+  });
+</script>

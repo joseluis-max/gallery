@@ -1,0 +1,42 @@
+---
+interface Props {
+  href: string;
+  slug: string;
+  title: string;
+  aspectRatio: number;
+  lqip: string;
+  webpUrl: string;
+  jpegUrl: string;
+  /** How much of a shared row this card should claim — proportional to aspect ratio, so
+   *  wider photos naturally take more horizontal space (the "justified" effect). */
+  eager?: boolean;
+}
+
+const { href, slug, title, aspectRatio, lqip, webpUrl, jpegUrl, eager = false } = Astro.props;
+---
+
+<a
+  href={href}
+  class="group relative block overflow-hidden bg-border"
+  style={`flex-grow: ${aspectRatio * 100}; flex-basis: ${aspectRatio * 240}px; aspect-ratio: ${aspectRatio};`}
+  data-reveal
+>
+  <img
+    src={lqip}
+    alt=""
+    aria-hidden="true"
+    class="absolute inset-0 h-full w-full object-cover scale-105 blur-md"
+    loading="eager"
+  />
+  <picture>
+    <source srcset={webpUrl} type="image/webp" />
+    <img
+      src={jpegUrl}
+      alt={title}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      transition:name={`photo-${slug}`}
+      class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+    />
+  </picture>
+</a>

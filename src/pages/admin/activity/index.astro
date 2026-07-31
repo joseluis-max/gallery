@@ -1,0 +1,74 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+
+const actionFilter = Astro.url.searchParams.get('action');
+const targetType = Astro.url.searchParams.get('targetType');
+
+const query: Record<string, unknown> = {};
+if (actionFilter) query.action = actionFilter;
+if (targetType) query.targetType = targetType;
+
+const entries = await db.collection('auditLog').find(query).sort({ at: -1 }).limit(200).toArray();
+const actionTypes = await db.collection('auditLog').distinct('action');
+---
+
+<AdminLayout title="Activity">
+  <h1 class="font-display text-2xl">Activity</h1>
+  <p class="mt-2 text-sm text-ink-muted">Append-only history of every admin mutation and system event.</p>
+
+  <form class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+    <select name="action" class="border border-border bg-transparent px-2 py-1.5">
+      <option value="">All actions</option>
+      {actionTypes.map((a) => (
+        <option value={a} selected={actionFilter === a}>{a}</option>
+      ))}
+    </select>
+    <button type="submit" class="rounded-full border border-ink px-4 py-1.5">Filter</button>
+  </form>
+
+  <table class="mt-6 w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+        <th class="py-2">When</th>
+        <th class="py-2">Actor</th>
+        <th class="py-2">Action</th>
+        <th class="py-2">Target</th>
+        <th class="py-2">Diff</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        entries.map((entry) => (
+          <tr class="border-b border-border align-top">
+            <td class="py-2 text-ink-muted">{new Date(entry.at).toLocaleString()}</td>
+            <td class="py-2">{entry.actor}</td>
+            <td class="py-2">{entry.action}</td>
+            <td class="py-2 text-ink-muted">
+              {entry.targetType}/{entry.targetId}
+            </td>
+            <td class="py-2">
+              {(entry.before || entry.after) && (
+                <details>
+                  <summary class="cursor-pointer text-ink-muted">view</summary>
+                  <div class="mt-2 grid grid-cols-2 gap-2 font-mono text-xs">
+                    <pre class="whitespace-pre-wrap break-all">{JSON.stringify(entry.before, null, 2)}</pre>
+                    <pre class="whitespace-pre-wrap break-all">{JSON.stringify(entry.after, null, 2)}</pre>
+                  </div>
+                </details>
+              )}
+            </td>
+          </tr>
+        ))
+      }
+      {entries.length === 0 && (
+        <tr>
+          <td colspan="5" class="py-4 text-ink-muted">No activity recorded yet.</td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</AdminLayout>

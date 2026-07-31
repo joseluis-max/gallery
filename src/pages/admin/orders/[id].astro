@@ -1,0 +1,177 @@
+---
+import { ObjectId } from 'mongodb';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getOrderById } from '../../../lib/orders';
+
+const idParam = Astro.params.id as string;
+let orderId: InstanceType<typeof ObjectId>;
+try {
+  orderId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+const db = await getDb(getDbConfig());
+const order = await getOrderById(db, orderId);
+if (!order) {
+  return new Response('Not found', { status: 404 });
+}
+
+const stripeDashboardUrl = order.stripePaymentIntentId
+  ? `https://dashboard.stripe.com/payments/${order.stripePaymentIntentId}`
+  : order.stripeSessionId
+    ? `https://dashboard.stripe.com/checkout/sessions/${order.stripeSessionId}`
+    : null;
+---
+
+<AdminLayout title={`Order #${order._id.toString().slice(-8)}`}>
+  <a href="/admin/orders" class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">&larr; Orders</a>
+
+  <div class="mt-4 flex items-center justify-between">
+    <h1 class="font-display text-2xl">Order #{order._id.toString().slice(-8)}</h1>
+    <span class="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-widest capitalize">{order.status}</span>
+  </div>
+
+  <div class="mt-6 grid gap-8 md:grid-cols-[1.4fr_1fr]">
+    <div>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+            <th class="py-2">Photo</th>
+            <th class="py-2">Spec</th>
+            <th class="py-2">Qty</th>
+            <th class="py-2">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            order.items.map((item) => (
+              <tr class="border-b border-border">
+                <td class="py-2">{item.photoTitle}</td>
+                <td class="py-2 text-ink-muted">
+                  {item.type === 'print' ? `${item.size?.widthCm}×${item.size?.heightCm}cm — ${item.paper} (${item.crop})` : 'Digital download'}
+                </td>
+                <td class="py-2">{item.qty}</td>
+                <td class="py-2">${(item.totalCents / 100).toFixed(2)}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+
+      <div class="mt-4 flex justify-between text-sm">
+        <span class="text-ink-muted">Subtotal</span>
+        <span>${(order.subtotalCents / 100).toFixed(2)}</span>
+      </div>
+      <div class="mt-1 flex justify-between text-sm">
+        <span class="text-ink-muted">Shipping</span>
+        <span>${(order.shippingCents / 100).toFixed(2)}</span>
+      </div>
+      <div class="mt-1 flex justify-between font-display text-lg">
+        <span>Total</span>
+        <span>${(order.totalCents / 100).toFixed(2)}</span>
+      </div>
+
+      <h2 class="mt-8 text-sm uppercase tracking-widest text-ink-muted">History</h2>
+      <ul class="mt-3 space-y-2 text-sm">
+        {
+          order.history.map((entry) => (
+            <li class="border-b border-border pb-2">
+              <span class="text-ink-muted">{new Date(entry.at).toLocaleString()}</span> — <span class="capitalize">{entry.status}</span>
+              {entry.note && <span class="text-ink-muted"> · {entry.note}</span>}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <div>
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">Customer</h2>
+      <p class="mt-2 text-sm">{order.customer.email || '—'}</p>
+
+      {
+        order.shippingAddress && (
+          <>
+            <h2 class="mt-6 text-sm uppercase tracking-widest text-ink-muted">Shipping address</h2>
+            <p class="mt-2 text-sm">
+              {order.shippingAddress.name}
+              <br />
+              {order.shippingAddress.line1}
+              {order.shippingAddress.line2 && <br />}
+              {order.shippingAddress.line2}
+              <br />
+              {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
+              <br />
+              {order.shippingAddress.country}
+            </p>
+          </>
+        )
+      }
+
+      {stripeDashboardUrl && (
+        <p class="mt-6 text-sm">
+          <a href={stripeDashboardUrl} target="_blank" rel="noreferrer" class="underline">
+            View payment in Stripe →
+          </a>
+        </p>
+      )}
+
+      {order.items.some((i) => i.type === 'print') && (
+        <div class="mt-8 border border-border p-4" data-fulfil-form data-order-id={order._id.toString()}>
+          <h2 class="text-sm uppercase tracking-widest text-ink-muted">Fulfilment</h2>
+          {order.fulfillment?.status === 'shipped' ? (
+            <p class="mt-2 text-sm">
+              Shipped via {order.fulfillment.carrier} — {order.fulfillment.tracking}
+            </p>
+          ) : (
+            <form class="mt-3 space-y-3">
+              <label class="block text-sm">
+                Carrier
+                <input name="carrier" required class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+              </label>
+              <label class="block text-sm">
+                Tracking number
+                <input name="tracking" required class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+              </label>
+              <label class="block text-sm">
+                Notes
+                <textarea name="notes" rows="2" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+              </label>
+              <button type="submit" class="rounded-full bg-ink px-4 py-1.5 text-sm uppercase tracking-widest text-surface">
+                Mark shipped
+              </button>
+              <span data-fulfil-status class="ml-2 text-sm text-ink-muted"></span>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const wrapper = document.querySelector<HTMLElement>('[data-fulfil-form]');
+  const form = wrapper?.querySelector('form');
+  const statusEl = wrapper?.querySelector<HTMLElement>('[data-fulfil-status]');
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!wrapper || !statusEl) return;
+    const orderId = wrapper.dataset.orderId!;
+    const carrier = (form.elements.namedItem('carrier') as HTMLInputElement).value;
+    const tracking = (form.elements.namedItem('tracking') as HTMLInputElement).value;
+    const notes = (form.elements.namedItem('notes') as HTMLTextAreaElement).value;
+
+    statusEl.textContent = 'Saving…';
+    const { error } = await actions.admin.markOrderShipped({ orderId, carrier, tracking, notes: notes || undefined });
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      return;
+    }
+    window.location.reload();
+  });
+</script>

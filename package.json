@@ -1,0 +1,41 @@
+{
+  "name": "valdiviezo-photography",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ingest": "tsx scripts/ingest.ts",
+    "init-db": "tsx scripts/init-db.ts",
+    "generate:placeholders": "tsx scripts/generate-placeholders.ts",
+    "hash-admin-password": "tsx scripts/hash-admin-password.ts"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.0.2",
+    "@aws-sdk/client-s3": "3.1095.0",
+    "@aws-sdk/s3-request-presigner": "3.1095.0",
+    "@tailwindcss/vite": "4.3.3",
+    "astro": "7.1.3",
+    "exifr": "^7.1.3",
+    "mongodb": "7.5.0",
+    "sharp": "0.35.3",
+    "stripe": "22.3.2",
+    "tailwindcss": "4.3.3",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

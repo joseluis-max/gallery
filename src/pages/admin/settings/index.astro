@@ -1,0 +1,103 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getSettings } from '../../../lib/settings';
+
+const db = await getDb(getDbConfig());
+const settings = await getSettings(db);
+---
+
+<AdminLayout title="Settings">
+  <h1 class="font-display text-2xl">Settings</h1>
+  <p class="mt-2 text-sm text-ink-muted">
+    Every save here is recorded with a before/after diff — see <a href="/admin/activity" class="underline">Activity</a>.
+  </p>
+
+  <form data-settings-form class="mt-6 max-w-2xl space-y-6">
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Base price (cents)
+        <input type="number" name="baseCents" value={settings.baseCents} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="block text-sm">
+        Rate per cm² (cents)
+        <input type="number" step="0.01" name="ratePerCm2Cents" value={settings.ratePerCm2Cents} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="block text-sm">
+        Size tolerance (0–1)
+        <input type="number" step="0.01" name="sizeTolerancePct" value={settings.sizeTolerancePct} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="block text-sm">
+        Digital price (cents)
+        <input type="number" name="digitalPriceCents" value={settings.digitalPriceCents} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="block text-sm">
+        Min print size (cm)
+        <input type="number" name="minCm" value={settings.minCm} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+      <label class="block text-sm">
+        Max print size (cm)
+        <input type="number" name="maxCmAbsolute" value={settings.maxCmAbsolute} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+      </label>
+    </div>
+
+    <label class="block text-sm">
+      Paper stocks (JSON)
+      <textarea name="paperStocks" rows="6" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5 font-mono text-xs">{JSON.stringify(settings.paperStocks, null, 2)}</textarea>
+    </label>
+    <label class="block text-sm">
+      Size presets (JSON)
+      <textarea name="sizePresets" rows="6" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5 font-mono text-xs">{JSON.stringify(settings.sizePresets, null, 2)}</textarea>
+    </label>
+    <label class="block text-sm">
+      Shipping zones (JSON)
+      <textarea name="shippingZones" rows="4" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5 font-mono text-xs">{JSON.stringify(settings.shippingZones, null, 2)}</textarea>
+    </label>
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="rounded-full bg-ink px-5 py-2 text-sm uppercase tracking-widest text-surface">Save</button>
+      <span data-save-status class="text-sm text-ink-muted"></span>
+    </div>
+  </form>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const form = document.querySelector<HTMLFormElement>('[data-settings-form]')!;
+  const statusEl = document.querySelector<HTMLElement>('[data-save-status]')!;
+
+  function field(name: string): string {
+    return (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement).value;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    statusEl.textContent = 'Saving…';
+
+    let paperStocks, sizePresets, shippingZones;
+    try {
+      paperStocks = JSON.parse(field('paperStocks'));
+      sizePresets = JSON.parse(field('sizePresets'));
+      shippingZones = JSON.parse(field('shippingZones'));
+    } catch (err) {
+      statusEl.textContent = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`;
+      return;
+    }
+
+    const { error } = await actions.admin.saveSettings({
+      baseCents: Number(field('baseCents')),
+      ratePerCm2Cents: Number(field('ratePerCm2Cents')),
+      sizeTolerancePct: Number(field('sizeTolerancePct')),
+      minCm: Number(field('minCm')),
+      maxCmAbsolute: Number(field('maxCmAbsolute')),
+      digitalPriceCents: Number(field('digitalPriceCents')),
+      paperStocks,
+      sizePresets,
+      shippingZones,
+    });
+
+    statusEl.textContent = error ? `Error: ${error.message}` : 'Saved.';
+  });
+</script>

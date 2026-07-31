@@ -1,0 +1,73 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+
+const tokens = await db
+  .collection('downloadTokens')
+  .aggregate([
+    { $sort: { createdAt: -1 } },
+    { $limit: 200 },
+    { $lookup: { from: 'photos', localField: 'photoId', foreignField: '_id', as: 'photo' } },
+    { $lookup: { from: 'orders', localField: 'orderId', foreignField: '_id', as: 'order' } },
+    { $unwind: { path: '$photo', preserveNullAndEmptyArrays: true } },
+    { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
+  ])
+  .toArray();
+---
+
+<AdminLayout title="Downloads">
+  <h1 class="font-display text-2xl">Downloads</h1>
+  <p class="mt-2 text-sm text-ink-muted">Every download token issued, and each actual use.</p>
+
+  <table class="mt-6 w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+        <th class="py-2">Photo</th>
+        <th class="py-2">Order</th>
+        <th class="py-2">Issued</th>
+        <th class="py-2">Expires</th>
+        <th class="py-2">Uses</th>
+        <th class="py-2">Downloads</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        tokens.map((token) => (
+          <tr class="border-b border-border align-top">
+            <td class="py-2">{token.photo?.title?.en ?? token.photo?.slug ?? '—'}</td>
+            <td class="py-2">
+              {token.order ? (
+                <a href={`/admin/orders/${token.order._id.toString()}`} class="hover:underline">
+                  #{token.order._id.toString().slice(-8)}
+                </a>
+              ) : (
+                '—'
+              )}
+            </td>
+            <td class="py-2 text-ink-muted">{new Date(token.createdAt).toLocaleString()}</td>
+            <td class="py-2 text-ink-muted">{new Date(token.expiresAt).toLocaleString()}</td>
+            <td class="py-2">
+              {token.useCount}/{token.maxUses}
+            </td>
+            <td class="py-2 text-ink-muted">
+              {token.uses.length === 0 && '—'}
+              {token.uses.map((use: { at: string | Date; ip: string }) => (
+                <div>
+                  {new Date(use.at).toLocaleString()} — {use.ip}
+                </div>
+              ))}
+            </td>
+          </tr>
+        ))
+      }
+      {tokens.length === 0 && (
+        <tr>
+          <td colspan="6" class="py-4 text-ink-muted">No download tokens issued yet.</td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</AdminLayout>

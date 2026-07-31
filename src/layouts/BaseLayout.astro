@@ -1,0 +1,105 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  lang: 'es' | 'en';
+  /** Points at the same 2000px public derivative the page renders — no bespoke
+   *  1200x630 OG crop pipeline, per the scope simplification in the build plan. */
+  ogImage?: string;
+}
+
+const { title, description, lang, ogImage } = Astro.props;
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin).toString();
+
+const LOCALES = ['es', 'en'] as const;
+
+function pathForLocale(pathname: string, locale: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  segments[0] = locale;
+  return '/' + segments.join('/');
+}
+
+const alternates = LOCALES.map((locale) => ({
+  locale,
+  href: new URL(pathForLocale(Astro.url.pathname, locale), Astro.site ?? Astro.url.origin).toString(),
+}));
+---
+
+<!doctype html>
+<html lang={lang} data-theme="">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="canonical" href={canonicalUrl} />
+
+    {alternates.map(({ locale, href }) => (
+      <link rel="alternate" hreflang={locale} href={href} />
+    ))}
+    <link rel="alternate" hreflang="x-default" href={alternates[0].href} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    {description && <meta property="og:description" content={description} />}
+    <meta property="og:url" content={canonicalUrl} />
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+    <meta name="twitter:title" content={title} />
+    {description && <meta name="twitter:description" content={description} />}
+    {ogImage && <meta name="twitter:image" content={ogImage} />}
+
+    <!--
+      Must run before first paint, as a plain inline script (not type="module", which
+      is deferred) — otherwise dark-mode visitors see a flash of the light theme on
+      every load/navigation.
+    -->
+    <script is:inline>
+      (function () {
+        var stored = localStorage.getItem('theme');
+        var theme = stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+
+    <ClientRouter />
+
+    <!--
+      Courtesy speed bump, not a real control — anything rendered in a browser can be
+      screenshotted regardless. The actual defenses are the ≤2000px downscale and the
+      burned-in watermark on every public derivative; this just deters casual
+      right-click-save/drag on gallery images.
+    -->
+    <script>
+      // Lives in <head>, which Astro's ClientRouter persists across same-origin
+      // navigations rather than re-executing — so this binds once, not once per page.
+      document.addEventListener('contextmenu', (e) => {
+        if (e.target instanceof HTMLImageElement) e.preventDefault();
+      });
+      document.addEventListener('dragstart', (e) => {
+        if (e.target instanceof HTMLImageElement) e.preventDefault();
+      });
+    </script>
+  </head>
+  <body class="min-h-screen bg-surface text-ink font-body antialiased">
+    <slot name="header">
+      <header class="flex items-center justify-between px-6 py-6 md:px-12">
+        <a href={`/${lang}/`} class="font-display text-lg tracking-wide">José Valdiviezo</a>
+        <ThemeToggle />
+      </header>
+    </slot>
+
+    <main transition:animate="fade">
+      <slot />
+    </main>
+
+    <slot name="footer">
+      <footer class="px-6 py-12 md:px-12 text-sm text-ink-muted">
+        <p>&copy; {new Date().getFullYear()} José Valdiviezo — Cuenca, Ecuador</p>
+      </footer>
+    </slot>
+  </body>
+</html>

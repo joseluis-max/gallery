@@ -1,0 +1,211 @@
+[
+  {
+    "slug": "sea-lions-puerto-ayora-dock",
+    "title": { "es": "Lobos marinos en el muelle de Puerto Ayora", "en": "Sea lions on the Puerto Ayora dock" },
+    "description": {
+      "es": "Un grupo de lobos marinos descansa sobre las bancas de madera del muelle, indiferentes al ir y venir de los pescadores.",
+      "en": "A group of sea lions sprawled across the dock's wooden benches, indifferent to the fishermen coming and going."
+    },
+    "tags": ["sea-lion", "dock", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 200, "aperture": "f/5.6", "shutter": "1/500" }
+  },
+  {
+    "slug": "sea-lion-pup-close-up",
+    "title": { "es": "Cría de lobo marino", "en": "Sea lion pup" },
+    "description": {
+      "es": "Una cría de lobo marino observa la cámara con curiosidad desde la arena tibia.",
+      "en": "A sea lion pup eyes the camera with curiosity from the warm sand."
+    },
+    "tags": ["sea-lion", "pup", "portrait"],
+    "collections": ["galapagos"],
+    "targetWidth": 4000,
+    "targetHeight": 6000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 400, "aperture": "f/5.6", "shutter": "1/1000" }
+  },
+  {
+    "slug": "brown-pelican-lava-rock",
+    "title": { "es": "Pelícano pardo sobre roca de lava", "en": "Brown pelican on lava rock" },
+    "description": {
+      "es": "Un pelícano pardo vigila la marea desde una roca de lava negra recién solidificada.",
+      "en": "A brown pelican keeps watch over the tide from a freshly hardened slab of black lava."
+    },
+    "tags": ["pelican", "lava-rock", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 160, "aperture": "f/6.3", "shutter": "1/1250" }
+  },
+  {
+    "slug": "pelican-takeoff",
+    "title": { "es": "Pelícano en pleno vuelo", "en": "Pelican taking off" },
+    "description": {
+      "es": "El instante exacto en que un pelícano pardo despega de la roca, alas completamente extendidas.",
+      "en": "The exact instant a brown pelican lifts off the rock, wings fully extended."
+    },
+    "tags": ["pelican", "flight", "action"],
+    "collections": ["galapagos"],
+    "targetWidth": 4000,
+    "targetHeight": 6000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 320, "aperture": "f/6.3", "shutter": "1/2000" },
+    "placeholderOrientation": "sideways"
+  },
+  {
+    "slug": "marine-iguana-basking",
+    "title": { "es": "Iguana marina tomando sol", "en": "Marine iguana basking" },
+    "description": {
+      "es": "Una iguana marina se calienta al sol de la mañana sobre la roca volcánica.",
+      "en": "A marine iguana warms itself in the morning sun on volcanic rock."
+    },
+    "tags": ["iguana", "lava-rock", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 100, "aperture": "f/8", "shutter": "1/320" }
+  },
+  {
+    "slug": "silver-origin-at-sea",
+    "title": { "es": "Silver Origin en altamar", "en": "Silver Origin at sea" },
+    "description": {
+      "es": "El Silver Origin navega en aguas tranquilas bajo un cielo despejado, dejando una estela apenas visible.",
+      "en": "The Silver Origin cruises through calm water under a clear sky, leaving a barely visible wake."
+    },
+    "tags": ["boat", "seascape", "silver-origin"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 3375,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 100, "aperture": "f/9", "shutter": "1/250" }
+  },
+  {
+    "slug": "silver-origin-golden-hour",
+    "title": { "es": "Silver Origin a la hora dorada", "en": "Silver Origin at golden hour" },
+    "description": {
+      "es": "La luz cálida del atardecer envuelve al Silver Origin mientras se aproxima a la costa.",
+      "en": "Warm late-day light wraps around the Silver Origin as it approaches the coastline."
+    },
+    "tags": ["boat", "golden-hour", "silver-origin"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 100, "aperture": "f/8", "shutter": "1/400" }
+  },
+  {
+    "slug": "blue-footed-booby-portrait",
+    "title": { "es": "Retrato de piquero de patas azules", "en": "Blue-footed booby portrait" },
+    "description": {
+      "es": "Un piquero de patas azules posa de perfil, con sus característicos pies celestes bien visibles.",
+      "en": "A blue-footed booby poses in profile, its famously blue feet in full view."
+    },
+    "tags": ["booby", "portrait", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 4000,
+    "targetHeight": 5000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 250, "aperture": "f/5.6", "shutter": "1/800" }
+  },
+  {
+    "slug": "giant-tortoise-highlands",
+    "title": { "es": "Tortuga gigante en las tierras altas", "en": "Giant tortoise in the highlands" },
+    "description": {
+      "es": "Una tortuga gigante de Galápagos se abre paso entre la vegetación húmeda de las tierras altas.",
+      "en": "A Galápagos giant tortoise pushes through the damp highland vegetation."
+    },
+    "tags": ["tortoise", "highlands", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 400, "aperture": "f/5.6", "shutter": "1/160" }
+  },
+  {
+    "slug": "marine-iguana-swimming",
+    "title": { "es": "Iguana marina nadando", "en": "Marine iguana swimming" },
+    "description": {
+      "es": "Una iguana marina se desliza bajo la superficie en busca de algas.",
+      "en": "A marine iguana glides just beneath the surface, foraging for algae."
+    },
+    "tags": ["iguana", "underwater", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 320, "aperture": "f/7.1", "shutter": "1/640" }
+  },
+  {
+    "slug": "frigate-bird-inflated",
+    "title": { "es": "Fragata con su bolsa inflada", "en": "Frigate bird, pouch inflated" },
+    "description": {
+      "es": "Un macho de fragata exhibe su bolsa gular roja completamente inflada durante el cortejo.",
+      "en": "A male frigate bird displays his fully inflated red gular pouch during courtship."
+    },
+    "tags": ["frigate-bird", "courtship", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 4000,
+    "targetHeight": 5000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 200, "aperture": "f/6.3", "shutter": "1/1000" }
+  },
+  {
+    "slug": "lava-coastline-negative-space",
+    "title": { "es": "Costa de lava, espacio negativo", "en": "Lava coastline, negative space" },
+    "description": {
+      "es": "Una franja angosta de roca de lava separa el cielo despejado del mar en calma.",
+      "en": "A thin strip of lava rock divides a clear sky from a calm sea."
+    },
+    "tags": ["landscape", "lava-rock", "minimal"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 3375,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 100, "aperture": "f/11", "shutter": "1/125" }
+  },
+  {
+    "slug": "sea-lion-silhouette-sunset",
+    "title": { "es": "Silueta de lobo marino al atardecer", "en": "Sea lion silhouette at sunset" },
+    "description": {
+      "es": "La silueta de un lobo marino se recorta contra un cielo anaranjado sobre el muelle.",
+      "en": "A sea lion's silhouette cuts against an orange sky over the dock."
+    },
+    "tags": ["sea-lion", "sunset", "silhouette"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 100, "aperture": "f/8", "shutter": "1/1000" }
+  },
+  {
+    "slug": "swallow-tailed-gull-flight",
+    "title": { "es": "Gaviota de cola bifurcada en vuelo", "en": "Swallow-tailed gull in flight" },
+    "description": {
+      "es": "Una gaviota de cola bifurcada, la única gaviota nocturna del mundo, planea contra un cielo despejado.",
+      "en": "A swallow-tailed gull — the world's only nocturnal gull — glides against a clear sky."
+    },
+    "tags": ["gull", "flight", "wildlife"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 100-400mm F4.5-5.6 GM OSS", "iso": 250, "aperture": "f/6.3", "shutter": "1/1600" }
+  },
+  {
+    "slug": "puerto-ayora-fishing-boats",
+    "title": { "es": "Botes pesqueros en Puerto Ayora", "en": "Fishing boats in Puerto Ayora" },
+    "description": {
+      "es": "Botes pesqueros de madera se mecen suavemente en la bahía al amanecer.",
+      "en": "Wooden fishing boats rock gently in the bay at first light."
+    },
+    "tags": ["boat", "puerto-ayora", "seascape"],
+    "collections": ["galapagos"],
+    "targetWidth": 6000,
+    "targetHeight": 4000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 100, "aperture": "f/9", "shutter": "1/200" }
+  },
+  {
+    "slug": "sally-lightfoot-crab",
+    "title": { "es": "Cangrejo Sally Lightfoot", "en": "Sally Lightfoot crab" },
+    "description": {
+      "es": "El color rojo intenso de un cangrejo Sally Lightfoot resalta sobre la roca negra de lava.",
+      "en": "A Sally Lightfoot crab's brilliant red shell stands out against black lava rock."
+    },
+    "tags": ["crab", "lava-rock", "detail"],
+    "collections": ["galapagos"],
+    "targetWidth": 5000,
+    "targetHeight": 5000,
+    "captureHint": { "lens": "FE 24-105mm F4 G OSS", "iso": 200, "aperture": "f/7.1", "shutter": "1/500" }
+  }
+]

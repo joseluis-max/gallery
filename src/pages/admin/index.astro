@@ -1,0 +1,6 @@
+---
+// Never actually rendered — src/middleware.ts unconditionally rewrites every request for
+// this exact path to the real admin entry point. This file exists only so the bare
+// /admin path resolves to a route at all (a prerequisite for context.rewrite() to work),
+// per the sequencing note in src/middleware.ts.
+---

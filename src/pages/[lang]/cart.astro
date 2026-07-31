@@ -1,0 +1,193 @@
+---
+import { ObjectId } from 'mongodb';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getDbConfig, getR2Config } from '../../lib/config';
+import { getDb } from '../../lib/db';
+import { getDictionary, type Locale } from '../../lib/i18n';
+import { getPhotoImageUrls, type PhotoDoc } from '../../lib/photos';
+import { computeDigitalPrice, computePrintPrice } from '../../lib/pricing';
+import { getSettings } from '../../lib/settings';
+import { createStorageAdapter } from '../../lib/storage';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+const cart = (await Astro.session?.get('cart')) ?? [];
+const db = await getDb(getDbConfig());
+const settings = await getSettings(db);
+const storage = createStorageAdapter('r2', getR2Config());
+
+interface CartLine {
+  lineId: string;
+  title: string;
+  webpUrl: string;
+  jpegUrl: string;
+  detail: string;
+  qty: number;
+  priceCents: number;
+}
+
+const lines: CartLine[] = [];
+let unavailableCount = 0;
+
+for (const item of cart) {
+  let photo: PhotoDoc | null = null;
+  try {
+    photo = await db.collection<PhotoDoc>('photos').findOne({ _id: new ObjectId(item.photoId), status: 'published' });
+  } catch {
+    photo = null;
+  }
+  if (!photo) {
+    unavailableCount++;
+    continue;
+  }
+
+  const urls = getPhotoImageUrls(photo, storage);
+  let priceCents = 0;
+
+  if (item.type === 'print' && item.widthCm && item.heightCm && item.paper) {
+    try {
+      const quote = computePrintPrice(
+        { photoId: item.photoId, widthCm: item.widthCm, heightCm: item.heightCm, paper: item.paper, qty: item.qty, crop: item.crop ?? 'fit' },
+        { settings, photo: { aspectRatio: photo.aspectRatio, maxPrintCm: photo.maxPrintCm, pricingOverride: photo.pricing } },
+      );
+      priceCents = quote.totalCents;
+    } catch {
+      unavailableCount++;
+      continue;
+    }
+  } else {
+    const quote = computeDigitalPrice(item.qty, { settings, digitalPriceOverrideCents: photo.pricing?.digitalPriceCents });
+    priceCents = quote.totalCents;
+  }
+
+  lines.push({
+    lineId: item.lineId,
+    title: photo.title[lang],
+    webpUrl: urls.webp,
+    jpegUrl: urls.jpeg,
+    detail:
+      item.type === 'print'
+        ? `${item.widthCm}×${item.heightCm}cm — ${item.paper}`
+        : lang === 'es'
+          ? 'Archivo digital'
+          : 'Digital download',
+    qty: item.qty,
+    priceCents,
+  });
+}
+
+const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
+---
+
+<BaseLayout title={`${t.cart.title} — José Valdiviezo`} lang={lang}>
+  <div class="mx-auto max-w-2xl px-6 py-16" data-cart-page data-lang={lang}>
+    <h1 class="font-display text-2xl">{t.cart.title}</h1>
+
+    {
+      unavailableCount > 0 && (
+        <p class="mt-4 border border-border p-3 text-sm text-accent">
+          {lang === 'es'
+            ? `${unavailableCount} artículo(s) ya no están disponibles y se omitieron.`
+            : `${unavailableCount} item(s) are no longer available and were left out.`}
+        </p>
+      )
+    }
+
+    {lines.length === 0 && <p class="mt-8 text-ink-muted">{t.cart.empty}</p>}
+
+    {
+      lines.length > 0 && (
+        <ul class="mt-8 divide-y divide-border border-y border-border">
+          {lines.map((line) => (
+            <li class="flex items-center gap-4 py-4" data-cart-line data-line-id={line.lineId}>
+              <picture class="h-20 w-20 shrink-0 overflow-hidden bg-border">
+                <source srcset={line.webpUrl} type="image/webp" />
+                <img src={line.jpegUrl} alt={line.title} class="h-full w-full object-cover" />
+              </picture>
+              <div class="flex-1">
+                <p>{line.title}</p>
+                <p class="text-sm text-ink-muted">{line.detail}</p>
+                <label class="mt-1 block text-sm">
+                  {t.pricing.qty}
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={line.qty}
+                    data-qty-input
+                    data-line-id={line.lineId}
+                    class="ml-2 w-16 border border-border bg-transparent px-1"
+                  />
+                </label>
+              </div>
+              <p>${(line.priceCents / 100).toFixed(2)}</p>
+              <button type="button" data-remove data-line-id={line.lineId} class="text-ink-muted hover:text-accent" aria-label="Remove">
+                &times;
+              </button>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+
+    {
+      lines.length > 0 && (
+        <div class="mt-6 flex items-center justify-between">
+          <span class="font-display text-xl">{lang === 'es' ? 'Total' : 'Total'}</span>
+          <span class="font-display text-xl">${(totalCents / 100).toFixed(2)}</span>
+        </div>
+      )
+    }
+
+    {
+      lines.length > 0 && (
+        <button
+          type="button"
+          data-checkout
+          class="mt-8 w-full rounded-full bg-ink px-5 py-3 text-sm uppercase tracking-widest text-surface disabled:opacity-40"
+        >
+          {lang === 'es' ? 'Pagar' : 'Checkout'}
+        </button>
+      )
+    }
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-cart-page]');
+    if (!root || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    root.querySelectorAll<HTMLButtonElement>('[data-remove]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        await actions.removeFromCart({ lineId: button.dataset.lineId! });
+        window.location.reload();
+      });
+    });
+
+    root.querySelectorAll<HTMLInputElement>('[data-qty-input]').forEach((input) => {
+      input.addEventListener('change', async () => {
+        const qty = Math.max(1, Math.min(50, Number(input.value) || 1));
+        await actions.updateCartItemQty({ lineId: input.dataset.lineId!, qty });
+        window.location.reload();
+      });
+    });
+
+    const checkoutButton = root.querySelector<HTMLButtonElement>('[data-checkout]');
+    checkoutButton?.addEventListener('click', async () => {
+      checkoutButton.disabled = true;
+      const lang = root.dataset.lang as 'es' | 'en';
+      const { data, error } = await actions.checkout({ lang });
+      if (error || !data?.url) {
+        alert(error?.message ?? 'Checkout failed');
+        checkoutButton.disabled = false;
+        return;
+      }
+      window.location.href = data.url;
+    });
+  });
+</script>

@@ -1,0 +1,164 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Upload">
+  <h1 class="font-display text-2xl">Upload</h1>
+  <p class="mt-2 text-sm text-ink-muted">
+    Files upload directly from your browser to R2 — they never pass through the app server. Each one is then
+    processed (rotate, watermark, derivatives) and lands here as a draft.
+  </p>
+
+  <div
+    data-dropzone
+    class="mt-6 flex min-h-40 flex-col items-center justify-center border-2 border-dashed border-border p-10 text-center text-sm text-ink-muted"
+  >
+    <p>Drag JPEG/PNG/TIFF files here, or</p>
+    <label class="mt-2 cursor-pointer underline">
+      browse
+      <input type="file" data-file-input multiple accept="image/jpeg,image/png,image/tiff" class="hidden" />
+    </label>
+  </div>
+
+  <table class="mt-8 w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+        <th class="py-2">File</th>
+        <th class="py-2">Status</th>
+        <th class="py-2">Progress</th>
+        <th class="py-2"></th>
+      </tr>
+    </thead>
+    <tbody data-jobs-body>
+      <tr>
+        <td colspan="4" class="py-4 text-ink-muted">No uploads yet.</td>
+      </tr>
+    </tbody>
+  </table>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  interface LocalUpload {
+    jobId?: string;
+    filename: string;
+    status: string;
+    progressPct: number;
+    error?: string;
+  }
+
+  const dropzone = document.querySelector<HTMLElement>('[data-dropzone]')!;
+  const fileInput = document.querySelector<HTMLInputElement>('[data-file-input]')!;
+  const jobsBody = document.querySelector<HTMLElement>('[data-jobs-body]')!;
+  const localUploads = new Map<string, LocalUpload>();
+
+  function render() {
+    const rows = Array.from(localUploads.values());
+    if (rows.length === 0) {
+      jobsBody.innerHTML = '<tr><td colspan="4" class="py-4 text-ink-muted">No uploads yet.</td></tr>';
+      return;
+    }
+    jobsBody.innerHTML = rows
+      .map(
+        (row) => `
+        <tr class="border-b border-border" data-row="${row.jobId ?? row.filename}">
+          <td class="py-2">${row.filename}</td>
+          <td class="py-2">${row.status}${row.error ? ` — ${row.error}` : ''}</td>
+          <td class="py-2">${row.status === 'uploading' ? `${row.progressPct}%` : ''}</td>
+          <td class="py-2">${row.status === 'failed' && row.jobId ? `<button type="button" data-retry="${row.jobId}" class="underline">Retry</button>` : ''}</td>
+        </tr>`,
+      )
+      .join('');
+
+    jobsBody.querySelectorAll<HTMLButtonElement>('[data-retry]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const jobId = button.dataset.retry!;
+        const local = [...localUploads.values()].find((u) => u.jobId === jobId);
+        if (local) {
+          local.status = 'processing';
+          local.error = undefined;
+          render();
+        }
+        const { error } = await actions.admin.retryUploadJob({ jobId });
+        if (local) {
+          if (error) {
+            local.status = 'failed';
+            local.error = error.message;
+          } else {
+            local.status = 'ready';
+          }
+          render();
+        }
+      });
+    });
+  }
+
+  async function uploadFile(file: File) {
+    const key = file.name + ':' + file.size;
+    const local: LocalUpload = { filename: file.name, status: 'requesting', progressPct: 0 };
+    localUploads.set(key, local);
+    render();
+
+    const { data, error: requestError } = await actions.admin.requestUploadUrl({
+      filename: file.name,
+      contentType: file.type,
+      bytes: file.size,
+    });
+    if (requestError || !data) {
+      local.status = 'failed';
+      local.error = requestError?.message ?? 'Could not get upload URL';
+      render();
+      return;
+    }
+
+    local.jobId = data.jobId;
+    local.status = 'uploading';
+    render();
+
+    await new Promise<void>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          local.progressPct = Math.round((event.loaded / event.total) * 100);
+          render();
+        }
+      });
+      xhr.addEventListener('load', () => resolve());
+      xhr.addEventListener('error', () => resolve());
+      xhr.send(file);
+    });
+
+    local.status = 'processing';
+    render();
+
+    const { error: completeError } = await actions.admin.completeUpload({ jobId: data.jobId });
+    if (completeError) {
+      local.status = 'failed';
+      local.error = completeError.message;
+    } else {
+      local.status = 'ready';
+    }
+    render();
+  }
+
+  function handleFiles(files: FileList | null) {
+    if (!files) return;
+    for (const file of Array.from(files)) uploadFile(file);
+  }
+
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  dropzone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    dropzone.classList.add('border-accent');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-accent'));
+  dropzone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    dropzone.classList.remove('border-accent');
+    handleFiles(event.dataTransfer?.files ?? null);
+  });
+</script>

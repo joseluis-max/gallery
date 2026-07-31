@@ -1,0 +1,78 @@
+---
+interface Props {
+  slug: string;
+  title: string;
+  webpUrl: string;
+  jpegUrl: string;
+  aspectRatio: number;
+  lqip: string;
+}
+
+const { slug, title, webpUrl, jpegUrl, aspectRatio, lqip } = Astro.props;
+---
+
+<button
+  type="button"
+  class="group relative block w-full cursor-zoom-in overflow-hidden bg-border"
+  style={`aspect-ratio: ${aspectRatio};`}
+  data-lightbox-trigger
+  aria-label={`Enlarge: ${title}`}
+>
+  <img src={lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full object-cover scale-105 blur-md" />
+  <picture>
+    <source srcset={webpUrl} type="image/webp" />
+    <img
+      src={jpegUrl}
+      alt={title}
+      loading="eager"
+      decoding="async"
+      transition:name={`photo-${slug}`}
+      class="relative h-full w-full object-cover"
+    />
+  </picture>
+</button>
+
+<div
+  data-lightbox-overlay
+  class="fixed inset-0 z-50 hidden items-center justify-center bg-ink/90 p-4 backdrop-blur-sm"
+  role="dialog"
+  aria-modal="true"
+  aria-label={title}
+>
+  <button type="button" data-lightbox-close aria-label="Close" class="absolute right-4 top-4 text-3xl text-surface">
+    &times;
+  </button>
+  <picture>
+    <source srcset={webpUrl} type="image/webp" />
+    <img src={jpegUrl} alt={title} class="max-h-[90vh] max-w-[92vw] object-contain" />
+  </picture>
+</div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const trigger = document.querySelector<HTMLButtonElement>('[data-lightbox-trigger]');
+    const overlay = document.querySelector<HTMLElement>('[data-lightbox-overlay]');
+    const closeBtn = document.querySelector<HTMLButtonElement>('[data-lightbox-close]');
+    if (!trigger || !overlay || !closeBtn) return;
+
+    const open = () => {
+      overlay.classList.remove('hidden');
+      overlay.classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    };
+    const close = () => {
+      overlay.classList.add('hidden');
+      overlay.classList.remove('flex');
+      document.body.style.overflow = '';
+    };
+
+    trigger.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+  });
+</script>

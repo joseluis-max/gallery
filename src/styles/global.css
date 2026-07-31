@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/*
+ * Tokens are CSS custom properties (Tailwind 4 compiles utilities like `bg-surface`
+ * to `var(--color-surface)`, not to a literal value) — so dark mode below is a token
+ * redefinition, not a second stylesheet or duplicated utility classes.
+ */
+@theme {
+  --color-surface: #faf9f8;
+  --color-ink: #0a0a0a;
+  --color-ink-muted: #6b6864;
+  --color-border: #e7e4e1;
+  /* Warm terracotta accent — echoes the lava rock / warm-light palette of the work. */
+  --color-accent: #b5502e;
+  --color-accent-ink: #ffffff;
+
+  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[data-theme="dark"] {
+  --color-surface: #0a0a0a;
+  --color-ink: #f5f5f4;
+  --color-ink-muted: #a3a09b;
+  --color-border: #262422;
+  --color-accent: #d97a52;
+  --color-accent-ink: #0a0a0a;
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+html {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/*
+ * Every animation in the site (page crossfade, photo morph, scroll-reveal) is gated
+ * behind this — reduced-motion visitors get instant state changes, never a stripped-down
+ * version of the same motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

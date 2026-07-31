@@ -1,0 +1,117 @@
+---
+import { ObjectId } from 'mongodb';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import type { Locale } from '../../../lib/i18n';
+import { getOrderById } from '../../../lib/orders';
+
+const lang = Astro.params.lang as Locale;
+const idParam = Astro.params.id as string;
+
+let orderId: InstanceType<typeof ObjectId>;
+try {
+  orderId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+// Deliberately reads order status from Mongo, never from Stripe redirect query params —
+// the redirect itself is not proof of payment and can be forged by hand.
+const db = await getDb(getDbConfig());
+const order = await getOrderById(db, orderId);
+
+if (!order) {
+  return new Response('Not found', { status: 404 });
+}
+
+const digitalItemCount = order.items.filter((item) => item.type === 'digital').length;
+
+const statusLabel: Record<typeof order.status, string> = {
+  pending: lang === 'es' ? 'Pendiente de pago' : 'Awaiting payment',
+  paid: lang === 'es' ? 'Pagado' : 'Paid',
+  fulfilled: lang === 'es' ? 'Enviado' : 'Shipped',
+  cancelled: lang === 'es' ? 'Cancelado' : 'Cancelled',
+  refunded: lang === 'es' ? 'Reembolsado' : 'Refunded',
+};
+---
+
+<BaseLayout title={`${lang === 'es' ? 'Pedido' : 'Order'} #${order._id.toString()} — José Valdiviezo`} lang={lang}>
+  <div class="mx-auto max-w-2xl px-6 py-16">
+    <h1 class="font-display text-2xl">
+      {lang === 'es' ? 'Pedido' : 'Order'} #{order._id.toString().slice(-8)}
+    </h1>
+    <p class="mt-2 text-sm uppercase tracking-widest text-accent">{statusLabel[order.status]}</p>
+
+    {
+      order.status === 'pending' && (
+        <p class="mt-6 text-ink-muted">
+          {lang === 'es'
+            ? 'Estamos esperando la confirmación del pago. Esta página se actualizará automáticamente una vez confirmado.'
+            : "We're waiting on payment confirmation. This page will reflect it once confirmed."}
+        </p>
+      )
+    }
+
+    <ul class="mt-8 divide-y divide-border border-y border-border">
+      {
+        order.items.map((item) => (
+          <li class="flex items-center justify-between py-4">
+            <div>
+              <p>{item.photoTitle}</p>
+              <p class="text-sm text-ink-muted">
+                {item.type === 'print' ? `${item.size?.widthCm}×${item.size?.heightCm}cm — ${item.paper}` : lang === 'es' ? 'Archivo digital' : 'Digital download'}
+                {' · '}
+                {lang === 'es' ? 'Cant.' : 'Qty'} {item.qty}
+              </p>
+            </div>
+            <p>${(item.totalCents / 100).toFixed(2)}</p>
+          </li>
+        ))
+      }
+    </ul>
+
+    <div class="mt-4 flex justify-between text-sm text-ink-muted">
+      <span>{lang === 'es' ? 'Subtotal' : 'Subtotal'}</span>
+      <span>${(order.subtotalCents / 100).toFixed(2)}</span>
+    </div>
+    {
+      order.shippingCents > 0 && (
+        <div class="mt-1 flex justify-between text-sm text-ink-muted">
+          <span>{lang === 'es' ? 'Envío' : 'Shipping'}</span>
+          <span>${(order.shippingCents / 100).toFixed(2)}</span>
+        </div>
+      )
+    }
+    <div class="mt-2 flex justify-between font-display text-lg">
+      <span>{lang === 'es' ? 'Total' : 'Total'}</span>
+      <span>${(order.totalCents / 100).toFixed(2)}</span>
+    </div>
+
+    {
+      order.status === 'paid' && digitalItemCount > 0 && (
+        <p class="mt-8 border border-border p-4 text-sm text-ink-muted">
+          {lang === 'es'
+            ? `Hemos enviado ${digitalItemCount} enlace(s) de descarga a tu correo. Cada enlace es válido por tiempo limitado.`
+            : `We've emailed ${digitalItemCount} download link(s) to your inbox. Each link is valid for a limited time and number of uses.`}
+        </p>
+      )
+    }
+
+    {
+      order.shippingAddress && (
+        <div class="mt-8 text-sm text-ink-muted">
+          <p class="uppercase tracking-widest text-xs">{lang === 'es' ? 'Dirección de envío' : 'Shipping address'}</p>
+          <p class="mt-1">{order.shippingAddress.name}</p>
+          <p>{order.shippingAddress.line1}</p>
+          {order.shippingAddress.line2 && <p>{order.shippingAddress.line2}</p>}
+          <p>
+            {order.shippingAddress.city}
+            {order.shippingAddress.state ? `, ${order.shippingAddress.state}` : ''} {order.shippingAddress.postalCode}
+          </p>
+          <p>{order.shippingAddress.country}</p>
+        </div>
+      )
+    }
+  </div>
+</BaseLayout>

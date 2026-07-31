@@ -1,0 +1,243 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+// The admin panel has exactly one entry point: this page. Unauthenticated visitors see
+// a sign-in form rendered right here (no separate route, no redirect target to guard
+// separately) — everything else under /admin/* bounces back to this same URL via
+// src/middleware.ts until a session exists.
+const authed = await Astro.session?.get('adminAuthed');
+
+let dashboard: {
+  revenueThisMonth: number;
+  revenueLastMonth: number;
+  countsByStatus: Record<string, number>;
+  units: Record<string, number>;
+  bestSellers: { _id: string; title: string; units: number }[];
+  recentActivity: Record<string, unknown>[];
+  paidNotShipped: number;
+  failedUploads: number;
+} | null = null;
+
+if (authed) {
+  const db = await getDb(getDbConfig());
+
+  const now = new Date();
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  async function revenueSince(from: Date, to?: Date): Promise<number> {
+    const match: Record<string, unknown> = { status: { $in: ['paid', 'fulfilled'] }, createdAt: { $gte: from } };
+    if (to) (match.createdAt as Record<string, unknown>).$lt = to;
+    const [row] = await db
+      .collection('orders')
+      .aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: '$totalCents' } } }])
+      .toArray();
+    return row?.total ?? 0;
+  }
+
+  const [revenueThisMonth, revenueLastMonth] = await Promise.all([
+    revenueSince(startOfThisMonth),
+    revenueSince(startOfLastMonth, startOfThisMonth),
+  ]);
+
+  const statusCounts = await db
+    .collection('orders')
+    .aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])
+    .toArray();
+  const countsByStatus = Object.fromEntries(statusCounts.map((r) => [r._id, r.count]));
+
+  const unitsByType = await db
+    .collection('orders')
+    .aggregate([
+      { $match: { status: { $in: ['paid', 'fulfilled'] } } },
+      { $unwind: '$items' },
+      { $group: { _id: '$items.type', units: { $sum: '$items.qty' } } },
+    ])
+    .toArray();
+  const units = Object.fromEntries(unitsByType.map((r) => [r._id, r.units]));
+
+  const bestSellers = (await db
+    .collection('orders')
+    .aggregate([
+      { $match: { status: { $in: ['paid', 'fulfilled'] } } },
+      { $unwind: '$items' },
+      { $group: { _id: '$items.photoSlug', title: { $first: '$items.photoTitle' }, units: { $sum: '$items.qty' } } },
+      { $sort: { units: -1 } },
+      { $limit: 5 },
+    ])
+    .toArray()) as { _id: string; title: string; units: number }[];
+
+  const recentActivity = await db.collection('auditLog').find({}).sort({ at: -1 }).limit(10).toArray();
+
+  const paidNotShipped = await db.collection('orders').countDocuments({ status: 'paid' });
+  const failedUploads = await db.collection('uploadJobs').countDocuments({ status: 'failed' });
+
+  dashboard = { revenueThisMonth, revenueLastMonth, countsByStatus, units, bestSellers, recentActivity, paidNotShipped, failedUploads };
+}
+
+function fmt(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+---
+
+{
+  !authed && (
+    <html lang="en" data-theme="">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Admin — José Valdiviezo</title>
+        <script is:inline>
+          {`(function () {
+            var stored = localStorage.getItem('theme');
+            var theme = stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.dataset.theme = theme;
+          })();`}
+        </script>
+      </head>
+      <body class="flex min-h-screen items-center justify-center bg-surface text-ink font-body antialiased">
+        <form data-signin-form class="w-full max-w-xs space-y-4 px-6">
+          <h1 class="font-display text-xl">Admin</h1>
+          <label class="block text-sm">
+            Password
+            <input
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              required
+              class="mt-1 block w-full border border-border bg-transparent px-3 py-2"
+            />
+          </label>
+          <button type="submit" class="w-full rounded-full bg-ink px-4 py-2 text-sm uppercase tracking-widest text-surface">
+            Continue
+          </button>
+          <p data-signin-error hidden class="text-sm text-accent" />
+        </form>
+
+        <script>
+          import { actions } from 'astro:actions';
+
+          const form = document.querySelector<HTMLFormElement>('[data-signin-form]')!;
+          const errorEl = document.querySelector<HTMLElement>('[data-signin-error]')!;
+
+          form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            errorEl.hidden = true;
+
+            const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+            const { error } = await actions.admin.login({ password });
+
+            if (error) {
+              errorEl.textContent =
+                error.code === 'TOO_MANY_REQUESTS' ? 'Too many attempts. Try again later.' : 'Incorrect password.';
+              errorEl.hidden = false;
+              return;
+            }
+            window.location.reload();
+          });
+        </script>
+      </body>
+    </html>
+  )
+}
+
+{
+  authed && dashboard && (
+    <AdminLayout title="Dashboard">
+      <h1 class="font-display text-2xl">Dashboard</h1>
+
+      {(dashboard.paidNotShipped > 0 || dashboard.failedUploads > 0) && (
+        <div class="mt-6 space-y-2">
+          {dashboard.paidNotShipped > 0 && (
+            <a href="/admin/orders?status=paid" class="block border border-accent p-3 text-sm">
+              {dashboard.paidNotShipped} paid order(s) awaiting fulfilment →
+            </a>
+          )}
+          {dashboard.failedUploads > 0 && (
+            <a href="/admin/upload" class="block border border-accent p-3 text-sm">
+              {dashboard.failedUploads} failed upload job(s) →
+            </a>
+          )}
+        </div>
+      )}
+
+      <div class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div class="border border-border p-4">
+          <p class="text-xs uppercase tracking-widest text-ink-muted">Revenue this month</p>
+          <p class="mt-1 font-display text-2xl">{fmt(dashboard.revenueThisMonth)}</p>
+        </div>
+        <div class="border border-border p-4">
+          <p class="text-xs uppercase tracking-widest text-ink-muted">Revenue last month</p>
+          <p class="mt-1 font-display text-2xl">{fmt(dashboard.revenueLastMonth)}</p>
+        </div>
+        <div class="border border-border p-4">
+          <p class="text-xs uppercase tracking-widest text-ink-muted">Prints sold</p>
+          <p class="mt-1 font-display text-2xl">{dashboard.units.print ?? 0}</p>
+        </div>
+        <div class="border border-border p-4">
+          <p class="text-xs uppercase tracking-widest text-ink-muted">Digital sold</p>
+          <p class="mt-1 font-display text-2xl">{dashboard.units.digital ?? 0}</p>
+        </div>
+      </div>
+
+      <div class="mt-8 grid gap-8 md:grid-cols-2">
+        <div>
+          <h2 class="text-sm uppercase tracking-widest text-ink-muted">Orders by status</h2>
+          <table class="mt-3 w-full text-sm">
+            <tbody>
+              {(['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'] as const).map((status) => (
+                <tr class="border-t border-border">
+                  <td class="py-1.5 capitalize">{status}</td>
+                  <td class="py-1.5 text-right">{dashboard!.countsByStatus[status] ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h2 class="text-sm uppercase tracking-widest text-ink-muted">Best sellers</h2>
+          <table class="mt-3 w-full text-sm">
+            <tbody>
+              {dashboard.bestSellers.map((row) => (
+                <tr class="border-t border-border">
+                  <td class="py-1.5">{row.title}</td>
+                  <td class="py-1.5 text-right">{row.units}</td>
+                </tr>
+              ))}
+              {dashboard.bestSellers.length === 0 && (
+                <tr>
+                  <td class="py-1.5 text-ink-muted">No sales yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mt-8">
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">Recent activity</h2>
+        <table class="mt-3 w-full text-sm">
+          <tbody>
+            {dashboard.recentActivity.map((entry) => (
+              <tr class="border-t border-border">
+                <td class="py-1.5 text-ink-muted">{new Date(entry.at as string).toLocaleString()}</td>
+                <td class="py-1.5">{entry.action as string}</td>
+                <td class="py-1.5 text-ink-muted">
+                  {entry.targetType as string}/{entry.targetId as string}
+                </td>
+              </tr>
+            ))}
+            {dashboard.recentActivity.length === 0 && (
+              <tr>
+                <td class="py-1.5 text-ink-muted">No activity yet.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AdminLayout>
+  )
+}

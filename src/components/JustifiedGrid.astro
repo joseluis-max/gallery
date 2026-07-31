@@ -1,0 +1,81 @@
+---
+import PhotoCard from './PhotoCard.astro';
+
+export interface GridItem {
+  href: string;
+  slug: string;
+  title: string;
+  aspectRatio: number;
+  lqip: string;
+  webpUrl: string;
+  jpegUrl: string;
+}
+
+interface Props {
+  items: GridItem[];
+}
+
+const { items } = Astro.props;
+---
+
+<!--
+  CSS-only justified layout: each card's flex-grow is proportional to its aspect ratio,
+  so within a wrapped row, wider photos claim more width — the classic "justified gallery"
+  effect without a JS layout pass. Row height settles naturally from flex-wrap; it isn't
+  pixel-perfect justification (the last row of an incomplete wrap won't fill edge-to-edge)
+  but needs no client-side measurement and has zero layout-shift risk.
+-->
+<div class="flex flex-wrap gap-1 md:gap-2">
+  {
+    items.map((item, i) => (
+      <PhotoCard
+        href={item.href}
+        slug={item.slug}
+        title={item.title}
+        aspectRatio={item.aspectRatio}
+        lqip={item.lqip}
+        webpUrl={item.webpUrl}
+        jpegUrl={item.jpegUrl}
+        eager={i < 4}
+      />
+    ))
+  }
+</div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const targets = document.querySelectorAll<HTMLElement>('[data-reveal]:not([data-reveal-bound])');
+    if (targets.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { rootMargin: '0px 0px -5% 0px', threshold: 0.05 },
+    );
+
+    for (const el of targets) {
+      el.dataset.revealBound = 'true';
+      observer.observe(el);
+    }
+  });
+</script>
+
+<style>
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(12px);
+    transition:
+      opacity 0.6s ease-out,
+      transform 0.6s ease-out;
+  }
+  [data-reveal].is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
