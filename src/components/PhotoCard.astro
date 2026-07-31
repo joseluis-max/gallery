@@ -3,24 +3,19 @@ interface Props {
   href: string;
   slug: string;
   title: string;
-  aspectRatio: number;
   lqip: string;
   webpUrl: string;
   jpegUrl: string;
-  /** How much of a shared row this card should claim — proportional to aspect ratio, so
-   *  wider photos naturally take more horizontal space (the "justified" effect). */
+  /** Grid placement utility classes (col/row span) for this card's slot in the mosaic —
+   *  computed by the grid, not this component, so it stays layout-agnostic. */
+  tileClass: string;
   eager?: boolean;
 }
 
-const { href, slug, title, aspectRatio, lqip, webpUrl, jpegUrl, eager = false } = Astro.props;
+const { href, slug, title, lqip, webpUrl, jpegUrl, tileClass, eager = false } = Astro.props;
 ---
 
-<a
-  href={href}
-  class="group relative block overflow-hidden bg-border"
-  style={`flex-grow: ${aspectRatio * 100}; flex-basis: ${aspectRatio * 240}px; aspect-ratio: ${aspectRatio};`}
-  data-reveal
->
+<a href={href} class={`group relative block overflow-hidden bg-border ${tileClass}`} data-reveal>
   <img
     src={lqip}
     alt=""

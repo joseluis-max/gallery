@@ -1,5 +1,5 @@
 ---
-import JustifiedGrid, { type GridItem } from '../../../components/JustifiedGrid.astro';
+import MosaicGrid, { type GridItem } from '../../../components/MosaicGrid.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getDbConfig, getR2Config } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
@@ -37,6 +37,6 @@ const collectionTitle = collection.charAt(0).toUpperCase() + collection.slice(1)
   </div>
 
   <div class="px-2 pb-20 md:px-6">
-    {items.length > 0 ? <JustifiedGrid items={items} /> : <p class="px-4 text-ink-muted">{t.collections.empty}</p>}
+    {items.length > 0 ? <MosaicGrid items={items} /> : <p class="px-4 text-ink-muted">{t.collections.empty}</p>}
   </div>
 </BaseLayout>

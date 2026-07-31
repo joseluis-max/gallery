@@ -1,5 +1,5 @@
 ---
-import JustifiedGrid, { type GridItem } from '../../components/JustifiedGrid.astro';
+import MosaicGrid, { type GridItem } from '../../components/MosaicGrid.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getDbConfig, getR2Config } from '../../lib/config';
 import { getDb } from '../../lib/db';
@@ -38,7 +38,7 @@ const items: GridItem[] = featured.map((photo) => {
     items.length > 0 && (
       <section class="px-2 pb-20 md:px-6">
         <h2 class="sr-only">{t.home.featuredTitle}</h2>
-        <JustifiedGrid items={items} />
+        <MosaicGrid items={items} />
         <div class="mt-10 text-center">
           <a href={`/${lang}/gallery`} class="text-sm uppercase tracking-widest text-accent hover:underline">
             {t.home.viewGallery}
