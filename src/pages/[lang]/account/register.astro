@@ -22,11 +22,11 @@ if (sessionUser) {
     <form data-register-form class="mt-8 space-y-4">
       <label class="block text-sm">
         {t.account.name}
-        <input type="text" name="name" autocomplete="name" required class="mt-1 block w-full border border-border bg-transparent px-3 py-2" />
+        <input type="text" name="name" autocomplete="name" required class="field mt-1 block w-full px-3 py-2" />
       </label>
       <label class="block text-sm">
         {t.account.email}
-        <input type="email" name="email" autocomplete="email" required class="mt-1 block w-full border border-border bg-transparent px-3 py-2" />
+        <input type="email" name="email" autocomplete="email" required class="field mt-1 block w-full px-3 py-2" />
       </label>
       <label class="block text-sm">
         {t.account.password}
@@ -36,14 +36,14 @@ if (sessionUser) {
           autocomplete="new-password"
           required
           minlength={MIN_PASSWORD_LENGTH}
-          class="mt-1 block w-full border border-border bg-transparent px-3 py-2"
+          class="field mt-1 block w-full px-3 py-2"
         />
         <span class="mt-1 block text-xs text-ink-muted">{t.account.passwordHint}</span>
       </label>
       <p data-auth-error hidden class="text-sm text-accent"></p>
       <button
         type="submit"
-        class="w-full rounded-full bg-ink px-5 py-3 text-sm uppercase tracking-widest text-surface disabled:opacity-40"
+        class="btn btn-primary w-full py-3"
       >
         {t.account.register}
       </button>

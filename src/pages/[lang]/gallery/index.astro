@@ -36,7 +36,7 @@ const items: GridItem[] = photos.map((photo) => {
     <nav class="mt-6 flex flex-wrap gap-2 text-xs uppercase tracking-widest" aria-label="Filter by tag">
       <a
         href={`/${lang}/gallery`}
-        class={`rounded-full border px-3 py-1.5 ${!activeTag ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted hover:text-ink'}`}
+        class={`chip py-1.5 ${!activeTag ? 'border-ink bg-ink text-surface' : 'text-ink-muted hover:text-ink'}`}
       >
         {t.gallery.allTags}
       </a>
@@ -44,7 +44,7 @@ const items: GridItem[] = photos.map((photo) => {
         tags.map((tag) => (
           <a
             href={`/${lang}/gallery?tag=${encodeURIComponent(tag)}`}
-            class={`rounded-full border px-3 py-1.5 ${activeTag === tag ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted hover:text-ink'}`}
+            class={`chip py-1.5 ${activeTag === tag ? 'border-ink bg-ink text-surface' : 'text-ink-muted hover:text-ink'}`}
           >
             {tag}
           </a>
