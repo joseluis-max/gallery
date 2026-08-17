@@ -64,17 +64,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   const db = await getDb(getDbConfig());
   const orderId = new ObjectId(orderIdRaw);
 
-  const shippingAddress = session.collected_information?.shipping_details
-    ? toShippingAddress(session.collected_information.shipping_details)
-    : undefined;
-
   const order = await markOrderPaid(db, {
     orderId,
     paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : (session.payment_intent?.id ?? ''),
     customer: session.customer_details?.email
       ? { email: session.customer_details.email, name: session.customer_details.name ?? undefined }
       : undefined,
-    shippingAddress,
   });
 
   if (!order) {
@@ -101,7 +96,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     const lines = [
       `Thank you for your order — #${order._id.toString()}.`,
       '',
-      ...order.items.map((item) => `- ${item.photoTitle} (${item.type}) x${item.qty} — $${(item.totalCents / 100).toFixed(2)}`),
+      ...order.items.map((item) => `- ${item.photoTitle} — $${(item.totalCents / 100).toFixed(2)}`),
       '',
       `Total: $${(order.totalCents / 100).toFixed(2)}`,
     ];
@@ -110,18 +105,4 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     }
     await sendEmail({ to: email, subject: `Order confirmation — #${order._id.toString()}`, text: lines.join('\n') });
   }
-}
-
-function toShippingAddress(details: Stripe.Checkout.Session.CollectedInformation.ShippingDetails) {
-  const addr = details.address;
-  if (!addr) return undefined;
-  return {
-    name: details.name ?? '',
-    line1: addr.line1 ?? '',
-    line2: addr.line2 ?? undefined,
-    city: addr.city ?? '',
-    state: addr.state ?? undefined,
-    postalCode: addr.postal_code ?? '',
-    country: addr.country ?? '',
-  };
 }

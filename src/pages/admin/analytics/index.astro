@@ -9,7 +9,6 @@ import {
   getDashboardKpis,
   getMonthlyRevenue,
   getNewCustomersByMonth,
-  getPaperMix,
   getTopPhotos,
   getUnitsByType,
 } from '../../../lib/analytics';
@@ -29,13 +28,12 @@ const RANGES = [
 const rangeKey = Astro.url.searchParams.get('range') ?? '30';
 const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0];
 
-const [kpis, monthly, daily, newCustomers, topPhotos, paperMix, units] = await Promise.all([
+const [kpis, monthly, daily, newCustomers, topPhotos, units] = await Promise.all([
   getDashboardKpis(db),
   getMonthlyRevenue(db, 12),
   getDailyRevenue(db, range.days),
   getNewCustomersByMonth(db, 12),
   getTopPhotos(db, 8),
-  getPaperMix(db),
   getUnitsByType(db),
 ]);
 
@@ -68,9 +66,8 @@ const rangeOrders = daily.orders.reduce((sum, point) => sum + point.value, 0);
     <StatTile label="Average order" value={formatCents(kpis.averageOrderCents)} />
   </div>
 
-  <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
-    <StatTile label="Prints sold" value={formatCount(units.print ?? 0)} />
-    <StatTile label="Digital sold" value={formatCount(units.digital ?? 0)} />
+  <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3">
+    <StatTile label="Downloads sold" value={formatCount(units.digital ?? 0)} />
     <StatTile label="Customer accounts" value={formatCount(kpis.customerCount)} href="/admin/customers" />
     <StatTile label="Published photos" value={formatCount(kpis.publishedPhotos)} href="/admin/photos" />
   </div>
@@ -117,23 +114,13 @@ const rangeOrders = daily.orders.reduce((sum, point) => sum + point.value, 0);
       valueHeading="Signups"
     />
 
-    <div class="grid gap-6 lg:grid-cols-2">
-      <BarChart
-        title="Top photographs by revenue"
-        subtitle="All time, prints and digital combined."
-        data={topPhotos.map((photo) => ({ key: photo.slug, label: photo.title, value: photo.revenueCents }))}
-        format="currency"
-        labelHeading="Photograph"
-        valueHeading="Revenue"
-      />
-      <BarChart
-        title="Paper stock mix"
-        subtitle="Print units sold, by paper."
-        data={paperMix.map((row) => ({ key: row.paper, label: row.paper, value: row.units }))}
-        format="count"
-        labelHeading="Paper"
-        valueHeading="Units"
-      />
-    </div>
+    <BarChart
+      title="Top photographs by revenue"
+      subtitle="All time."
+      data={topPhotos.map((photo) => ({ key: photo.slug, label: photo.title, value: photo.revenueCents }))}
+      format="currency"
+      labelHeading="Photograph"
+      valueHeading="Revenue"
+    />
   </div>
 </AdminLayout>

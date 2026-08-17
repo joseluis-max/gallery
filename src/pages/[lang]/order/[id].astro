@@ -32,7 +32,7 @@ if (!canViewOrder(order, viewer)) {
   return new Response('Not found', { status: 404 });
 }
 
-const digitalItemCount = order.items.filter((item) => item.type === 'digital').length;
+const digitalItemCount = order.items.length;
 
 const statusLabel: Record<typeof order.status, string> = {
   pending: lang === 'es' ? 'Pendiente de pago' : 'Awaiting payment',
@@ -67,7 +67,7 @@ const statusLabel: Record<typeof order.status, string> = {
             <div>
               <p>{item.photoTitle}</p>
               <p class="text-sm text-ink-muted">
-                {item.type === 'print' ? `${item.size?.widthCm}×${item.size?.heightCm}cm — ${item.paper}` : lang === 'es' ? 'Archivo digital' : 'Digital download'}
+                {lang === 'es' ? 'Archivo digital' : 'Digital download'}
                 {' · '}
                 {lang === 'es' ? 'Cant.' : 'Qty'} {item.qty}
               </p>
@@ -82,14 +82,6 @@ const statusLabel: Record<typeof order.status, string> = {
       <span>{lang === 'es' ? 'Subtotal' : 'Subtotal'}</span>
       <span>${(order.subtotalCents / 100).toFixed(2)}</span>
     </div>
-    {
-      order.shippingCents > 0 && (
-        <div class="mt-1 flex justify-between text-sm text-ink-muted">
-          <span>{lang === 'es' ? 'Envío' : 'Shipping'}</span>
-          <span>${(order.shippingCents / 100).toFixed(2)}</span>
-        </div>
-      )
-    }
     <div class="mt-2 flex justify-between font-display text-lg">
       <span>{lang === 'es' ? 'Total' : 'Total'}</span>
       <span>${(order.totalCents / 100).toFixed(2)}</span>
@@ -97,7 +89,7 @@ const statusLabel: Record<typeof order.status, string> = {
 
     {
       order.status === 'paid' && digitalItemCount > 0 && (
-        <p class="mt-8 border border-border p-4 text-sm text-ink-muted">
+        <p class="panel mt-8 p-4 text-sm text-ink-muted">
           {lang === 'es'
             ? `Hemos enviado ${digitalItemCount} enlace(s) de descarga a tu correo. Cada enlace es válido por tiempo limitado.`
             : `We've emailed ${digitalItemCount} download link(s) to your inbox. Each link is valid for a limited time and number of uses.`}
@@ -105,20 +97,5 @@ const statusLabel: Record<typeof order.status, string> = {
       )
     }
 
-    {
-      order.shippingAddress && (
-        <div class="mt-8 text-sm text-ink-muted">
-          <p class="uppercase tracking-widest text-xs">{lang === 'es' ? 'Dirección de envío' : 'Shipping address'}</p>
-          <p class="mt-1">{order.shippingAddress.name}</p>
-          <p>{order.shippingAddress.line1}</p>
-          {order.shippingAddress.line2 && <p>{order.shippingAddress.line2}</p>}
-          <p>
-            {order.shippingAddress.city}
-            {order.shippingAddress.state ? `, ${order.shippingAddress.state}` : ''} {order.shippingAddress.postalCode}
-          </p>
-          <p>{order.shippingAddress.country}</p>
-        </div>
-      )
-    }
   </div>
 </BaseLayout>

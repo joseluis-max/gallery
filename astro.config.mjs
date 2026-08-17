@@ -1,7 +1,19 @@
 // @ts-check
+import { existsSync } from 'node:fs';
 import { defineConfig, envField } from 'astro/config';
 import node from '@astrojs/node';
 import tailwindcss from '@tailwindcss/vite';
+
+// Astro loads .env into `astro:env` and `import.meta.env`, but NOT into `process.env`.
+// src/lib/sessionDriver.ts reads `process.env` at runtime on purpose — that's what keeps
+// the database URI out of the built bundle — so under `astro dev` sessions would throw
+// "MONGODB_URI is required for session storage" and every cart and sign-in would fail.
+// This bridges the two for local development only: the production container supplies real
+// environment variables, .env is excluded from the image by .dockerignore, and this config
+// file is never executed by `node dist/server/entry.mjs`.
+if (existsSync('.env')) {
+  process.loadEnvFile('.env');
+}
 
 export default defineConfig({
   output: 'server',

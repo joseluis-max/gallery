@@ -1,0 +1,64 @@
+---
+import type { Dictionary } from '../lib/i18n/es';
+import type { Locale } from '../lib/i18n';
+
+interface Props {
+  photoId: string;
+  digitalPriceCents: number;
+  t: Dictionary;
+  lang: Locale;
+}
+
+const { photoId, digitalPriceCents, t, lang } = Astro.props;
+---
+
+{/*
+  Replaces SizePicker.astro, which was ~90% print controls (size presets, custom cm inputs,
+  paper stock, quantity, crop choice, and a live quotePrice round trip on every change).
+  Digital downloads have exactly one price and no options, so the whole live-quote machinery
+  goes with them: the price is known server-side at render time and never needs re-quoting.
+*/}
+<div data-buy-panel data-photo-id={photoId} data-lang={lang} class="space-y-4">
+  <p class="font-display text-2xl">${(digitalPriceCents / 100).toFixed(2)}</p>
+
+  <button type="button" data-add-to-cart class="btn btn-primary w-full py-3">
+    {t.detail.buyDigital}
+  </button>
+
+  <p data-buy-error hidden class="text-sm text-accent"></p>
+</div>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-buy-panel]');
+    if (!root || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const photoId = root.dataset.photoId!;
+    const lang = root.dataset.lang!;
+    const button = root.querySelector<HTMLButtonElement>('[data-add-to-cart]')!;
+    const errorEl = root.querySelector<HTMLElement>('[data-buy-error]')!;
+
+    button.addEventListener('click', async () => {
+      errorEl.hidden = true;
+      button.disabled = true;
+
+      const { error } = await actions.addToCart({ photoId, type: 'digital', qty: 1 });
+
+      if (error) {
+        errorEl.textContent = error.message;
+        errorEl.hidden = false;
+        button.disabled = false;
+        return;
+      }
+
+      // Navigating to the cart is the only confirmation available right now. Phase 7
+      // replaces this with a header cart badge and an in-place "In cart" state, which is
+      // the better behaviour — bouncing the visitor out of the gallery after every add is
+      // how you sell one photo instead of three.
+      window.location.href = `/${lang}/cart`;
+    });
+  });
+</script>

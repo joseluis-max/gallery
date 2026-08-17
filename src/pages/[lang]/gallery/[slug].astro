@@ -1,6 +1,6 @@
 ---
+import BuyPanel from '../../../components/BuyPanel.astro';
 import Lightbox from '../../../components/Lightbox.astro';
-import SizePicker from '../../../components/SizePicker.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
@@ -157,15 +157,7 @@ if (photo) {
           </div>
 
           <aside id="buy-panel" class="border-t border-border pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0">
-            <SizePicker
-              photoId={photo._id.toString()}
-              aspectRatio={photo.aspectRatio}
-              maxPrintCm={photo.maxPrintCm}
-              settings={settings}
-              digitalPriceCents={digitalPriceCents}
-              t={t}
-              lang={lang}
-            />
+            <BuyPanel photoId={photo._id.toString()} digitalPriceCents={digitalPriceCents} t={t} lang={lang} />
           </aside>
         </div>
       </div>

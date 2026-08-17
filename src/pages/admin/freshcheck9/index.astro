@@ -167,18 +167,11 @@ const revenueDelta = dashboard ? percentChange(dashboard.kpis.revenueThisMonthCe
     <AdminLayout title="Dashboard">
       <h1 class="font-display text-2xl">Dashboard</h1>
 
-      {(dashboard.kpis.paidNotShipped > 0 || dashboard.kpis.failedUploads > 0) && (
-        <div class="mt-6 space-y-2">
-          {dashboard.kpis.paidNotShipped > 0 && (
-            <a href="/admin/orders?status=paid" class="block border border-accent p-3 text-sm">
-              {dashboard.kpis.paidNotShipped} paid order(s) awaiting fulfilment →
-            </a>
-          )}
-          {dashboard.kpis.failedUploads > 0 && (
-            <a href="/admin/upload" class="block border border-accent p-3 text-sm">
-              {dashboard.kpis.failedUploads} failed upload job(s) →
-            </a>
-          )}
+      {dashboard.kpis.failedUploads > 0 && (
+        <div class="mt-6">
+          <a href="/admin/upload" class="panel block border-accent p-3 text-sm">
+            {dashboard.kpis.failedUploads} failed upload job(s) →
+          </a>
         </div>
       )}
 
