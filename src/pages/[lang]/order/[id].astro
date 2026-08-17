@@ -4,7 +4,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { Locale } from '../../../lib/i18n';
-import { getOrderById } from '../../../lib/orders';
+import { canViewOrder, getOrderById } from '../../../lib/orders';
 
 const lang = Astro.params.lang as Locale;
 const idParam = Astro.params.id as string;
@@ -22,6 +22,13 @@ const db = await getDb(getDbConfig());
 const order = await getOrderById(db, orderId);
 
 if (!order) {
+  return new Response('Not found', { status: 404 });
+}
+
+// 404 rather than 403 for someone else's order — a 403 would confirm that this exact
+// order id exists.
+const viewer = await Astro.session?.get('user');
+if (!canViewOrder(order, viewer)) {
   return new Response('Not found', { status: 404 });
 }
 

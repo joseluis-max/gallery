@@ -1,0 +1,202 @@
+---
+import { ObjectId } from 'mongodb';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { formatCents } from '../../../lib/charts';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { listOrdersForUser } from '../../../lib/orders';
+import { findUserById, MIN_PASSWORD_LENGTH } from '../../../lib/users';
+
+const idParam = Astro.params.id as string;
+let userId: InstanceType<typeof ObjectId>;
+try {
+  userId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+const db = await getDb(getDbConfig());
+const user = await findUserById(db, userId);
+if (!user) {
+  return new Response('Not found', { status: 404 });
+}
+
+const orders = await listOrdersForUser(db, userId);
+const paidOrders = orders.filter((order) => order.status === 'paid' || order.status === 'fulfilled');
+const lifetimeCents = paidOrders.reduce((sum, order) => sum + order.totalCents, 0);
+
+const viewer = await Astro.session?.get('user');
+const isSelf = viewer?.id === user._id.toString();
+---
+
+<AdminLayout title={user.name}>
+  <a href="/admin/customers" class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">&larr; Customers</a>
+
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="font-display text-2xl">{user.name}</h1>
+    <div class="flex items-center gap-2 text-xs uppercase tracking-widest">
+      <span class="rounded-full border border-border px-3 py-1 capitalize">{user.role}</span>
+      {user.disabled && <span class="rounded-full border border-accent px-3 py-1 text-accent">Disabled</span>}
+    </div>
+  </div>
+  <p class="mt-1 text-sm text-ink-muted">{user.email}</p>
+
+  <div class="mt-8 grid gap-8 md:grid-cols-[1.4fr_1fr]">
+    <div>
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">Orders</h2>
+      <table class="mt-3 w-full text-sm [font-variant-numeric:tabular-nums]">
+        <thead>
+          <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+            <th class="py-2">Date</th>
+            <th class="py-2">Order</th>
+            <th class="py-2">Items</th>
+            <th class="py-2">Status</th>
+            <th class="py-2 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            orders.map((order) => (
+              <tr class="border-b border-border">
+                <td class="py-2 text-ink-muted">{new Date(order.createdAt).toLocaleDateString()}</td>
+                <td class="py-2">
+                  <a href={`/admin/orders/${order._id.toString()}`} class="hover:underline">
+                    #{order._id.toString().slice(-8)}
+                  </a>
+                </td>
+                <td class="py-2 text-ink-muted">{order.items.length}</td>
+                <td class="py-2 capitalize">{order.status}</td>
+                <td class="py-2 text-right">{formatCents(order.totalCents)}</td>
+              </tr>
+            ))
+          }
+          {
+            orders.length === 0 && (
+              <tr>
+                <td colspan="5" class="py-4 text-ink-muted">
+                  No orders placed while signed in to this account.
+                </td>
+              </tr>
+            )
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">Summary</h2>
+      <dl class="mt-3 space-y-2 text-sm">
+        <div class="flex justify-between">
+          <dt class="text-ink-muted">Lifetime spend</dt>
+          <dd>{formatCents(lifetimeCents)}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-ink-muted">Paid orders</dt>
+          <dd>{paidOrders.length}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-ink-muted">Joined</dt>
+          <dd>{new Date(user.createdAt).toLocaleDateString()}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-ink-muted">Last sign-in</dt>
+          <dd>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—'}</dd>
+        </div>
+      </dl>
+
+      <div class="mt-8 border border-border p-4" data-user-admin data-user-id={user._id.toString()}>
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">Account</h2>
+
+        {
+          isSelf && (
+            <p class="mt-2 text-xs text-ink-muted">
+              This is your own account — role and access changes have to be made by another admin, so that the panel can't be
+              locked with nobody left to open it.
+            </p>
+          )
+        }
+
+        <div class="mt-3 space-y-3 text-sm">
+          <button
+            type="button"
+            data-toggle-role
+            data-next-role={user.role === 'admin' ? 'customer' : 'admin'}
+            disabled={isSelf}
+            class="w-full rounded-full border border-ink px-4 py-1.5 disabled:opacity-40"
+          >
+            {user.role === 'admin' ? 'Demote to customer' : 'Promote to admin'}
+          </button>
+          <button
+            type="button"
+            data-toggle-disabled
+            data-next-disabled={user.disabled ? 'false' : 'true'}
+            disabled={isSelf}
+            class="w-full rounded-full border border-ink px-4 py-1.5 disabled:opacity-40"
+          >
+            {user.disabled ? 'Re-enable sign-in' : 'Disable sign-in'}
+          </button>
+        </div>
+
+        <form class="mt-6 space-y-3" data-reset-password>
+          <label class="block text-sm">
+            Set a new password
+            <input
+              type="password"
+              name="password"
+              required
+              minlength={MIN_PASSWORD_LENGTH}
+              class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5"
+            />
+          </label>
+          <button type="submit" class="rounded-full bg-ink px-4 py-1.5 text-sm uppercase tracking-widest text-surface">Reset</button>
+        </form>
+
+        <p data-user-status class="mt-3 text-sm text-ink-muted"></p>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const wrapper = document.querySelector<HTMLElement>('[data-user-admin]')!;
+  const userId = wrapper.dataset.userId!;
+  const statusEl = wrapper.querySelector<HTMLElement>('[data-user-status]')!;
+
+  function report(error: { message: string } | undefined) {
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      return;
+    }
+    window.location.reload();
+  }
+
+  wrapper.querySelector<HTMLButtonElement>('[data-toggle-role]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    statusEl.textContent = 'Saving…';
+    const { error } = await actions.admin.setUserRole({ userId, role: button.dataset.nextRole as 'admin' | 'customer' });
+    report(error ?? undefined);
+  });
+
+  wrapper.querySelector<HTMLButtonElement>('[data-toggle-disabled]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    statusEl.textContent = 'Saving…';
+    const { error } = await actions.admin.setUserDisabled({ userId, disabled: button.dataset.nextDisabled === 'true' });
+    report(error ?? undefined);
+  });
+
+  wrapper.querySelector<HTMLFormElement>('[data-reset-password]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+    statusEl.textContent = 'Saving…';
+    const { error } = await actions.admin.resetUserPassword({ userId, password });
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      return;
+    }
+    form.reset();
+    statusEl.textContent = 'Password updated.';
+  });
+</script>

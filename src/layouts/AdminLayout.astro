@@ -9,15 +9,18 @@ const { title } = Astro.props;
 
 const NAV = [
   { href: '/admin', label: 'Dashboard' },
+  { href: '/admin/analytics', label: 'Analytics' },
   { href: '/admin/upload', label: 'Upload' },
   { href: '/admin/photos', label: 'Photos' },
   { href: '/admin/orders', label: 'Orders' },
+  { href: '/admin/customers', label: 'Customers' },
   { href: '/admin/downloads', label: 'Downloads' },
   { href: '/admin/activity', label: 'Activity' },
   { href: '/admin/settings', label: 'Settings' },
 ];
 
 const currentPath = Astro.url.pathname;
+const sessionUser = await Astro.session?.get('user');
 ---
 
 <!doctype html>
@@ -52,13 +55,12 @@ const currentPath = Astro.url.pathname;
             ))
           }
         </nav>
-        <button
-          type="button"
-          data-admin-logout
-          class="mt-8 text-xs uppercase tracking-widest text-ink-muted hover:text-accent"
-        >
-          Log out
-        </button>
+        <div class="mt-8 text-xs text-ink-muted">
+          {sessionUser && <p class="truncate" title={sessionUser.email}>{sessionUser.email}</p>}
+          <button type="button" data-admin-logout class="mt-2 uppercase tracking-widest hover:text-accent">
+            Log out
+          </button>
+        </div>
       </aside>
       <main class="overflow-x-auto px-8 py-8">
         <slot />
@@ -68,7 +70,7 @@ const currentPath = Astro.url.pathname;
     <script>
       import { actions } from 'astro:actions';
       document.querySelector('[data-admin-logout]')?.addEventListener('click', async () => {
-        await actions.admin.logout({});
+        await actions.auth.logout({});
         window.location.href = '/admin';
       });
     </script>

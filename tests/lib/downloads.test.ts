@@ -68,7 +68,7 @@ describe('consumeDownloadToken', () => {
     const db = makeMockDb({
       findOneAndUpdateResult: { orderId, photoId, useCount: 1, maxUses: 5, expiresAt: new Date(Date.now() + 10000) },
       orderFindOneResult: { status: 'paid' },
-      photoFindOneResult: { r2: { originalKey: 'sea-lion.jpg' } },
+      photoFindOneResult: { storage: { originalKey: 'sea-lion.jpg' } },
     });
     const result = await consumeDownloadToken(db, 'raw-token', '1.2.3.4');
     expect(result).toEqual({ ok: true, photoOriginalKey: 'sea-lion.jpg', orderId });
@@ -78,7 +78,7 @@ describe('consumeDownloadToken', () => {
     const db = makeMockDb({
       findOneAndUpdateResult: { orderId, photoId },
       orderFindOneResult: { status: 'fulfilled' },
-      photoFindOneResult: { r2: { originalKey: 'sea-lion.jpg' } },
+      photoFindOneResult: { storage: { originalKey: 'sea-lion.jpg' } },
     });
     const result = await consumeDownloadToken(db, 'raw-token', '1.2.3.4');
     expect(result.ok).toBe(true);

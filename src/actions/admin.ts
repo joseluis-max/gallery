@@ -1,21 +1,75 @@
 import { randomUUID } from 'node:crypto';
 import { ObjectId } from 'mongodb';
 import { z } from 'astro/zod';
-import { ActionError, defineAction } from 'astro:actions';
-import { defineAdminAction } from './adminGuard';
-import { clearAttempts, isRateLimited, recordFailedAttempt, verifyPassword } from '../lib/auth';
+import { ActionError } from 'astro:actions';
+import { defineAdminAction, requireAdmin } from './adminGuard';
 import { writeAuditLog } from '../lib/audit';
-import { getAdminConfig, getDbConfig, getR2Config } from '../lib/config';
+import { createStorage, getDbConfig } from '../lib/config';
 import { getDb } from '../lib/db';
 import { ManualFulfillmentProvider } from '../lib/fulfillment';
 import { processOriginal } from '../lib/images';
 import type { PhotoDoc } from '../lib/photos';
 import { serializeForAction } from '../lib/serialize';
 import { uniqueSlug } from '../lib/slug';
-import { createStorageAdapter, type StorageAdapter } from '../lib/storage';
+import type { StorageAdapter } from '../lib/storage';
 import { getUploadJob, listUploadJobs as listUploadJobsQuery, updateUploadJob, type UploadJobDoc } from '../lib/uploadJobs';
+import {
+  countActiveAdmins,
+  createUser,
+  findUserById,
+  setUserDisabled,
+  setUserPassword,
+  setUserRole,
+  UserError,
+  type UserDoc,
+  type UserRole,
+} from '../lib/users';
 import { defaultWatermarkConfig } from '../../watermark.config';
+import type { ActionAPIContext } from 'astro:actions';
 import type { Db } from 'mongodb';
+
+/** Audit entries record *which* admin acted, now that there can be more than one. The
+ *  session read is the same one `defineAdminAction` already did, so this is a lookup,
+ *  not a second authorization decision. */
+async function actorEmail(context: ActionAPIContext): Promise<string> {
+  return (await requireAdmin(context)).email;
+}
+
+function toUserActionError(err: unknown): ActionError {
+  if (err instanceof UserError) {
+    return new ActionError({ code: err.code === 'EMAIL_TAKEN' ? 'CONFLICT' : 'BAD_REQUEST', message: err.code });
+  }
+  throw err;
+}
+
+/**
+ * Refuses any change that would leave the panel with no admin who can sign in — the
+ * failure mode being prevented is a real one (demote or disable yourself as the only
+ * admin and the only way back in is the `create-admin` CLI script against the database).
+ * Self-demotion is blocked outright for the same reason; another admin can still do it.
+ *
+ * The count check is honestly a check-then-act, so two admins demoting each other at the
+ * same instant could still both succeed. That race is narrow, and `pnpm create-admin`
+ * remains the recovery path; the guard exists to stop the *common* one-click lockout,
+ * not to make lockout impossible.
+ */
+async function assertNotLastAdmin(
+  db: Db,
+  actorId: string,
+  target: UserDoc,
+  nextRole: UserRole,
+  nextDisabled: boolean,
+): Promise<void> {
+  const losesAdminAccess = target.role === 'admin' && !target.disabled && (nextRole !== 'admin' || nextDisabled);
+  if (!losesAdminAccess) return;
+
+  if (target._id.toString() === actorId) {
+    throw new ActionError({ code: 'CONFLICT', message: 'CANNOT_LOCK_SELF_OUT' });
+  }
+  if ((await countActiveAdmins(db)) <= 1) {
+    throw new ActionError({ code: 'CONFLICT', message: 'LAST_ADMIN' });
+  }
+}
 
 const ALLOWED_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/tiff']);
 const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 24MP A7III originals run ~25MB; leaves headroom
@@ -23,8 +77,9 @@ const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 24MP A7III originals run ~25MB; le
 const fulfillmentProvider = new ManualFulfillmentProvider();
 
 /** Shared by completeUpload and retryUploadJob so there is exactly one place that pulls
- *  an original back from R2 and runs it through the sharp pipeline — the same
- *  lib/images.ts used by the CLI ingest script, per the no-duplicate-pipeline rule. */
+ *  an original back from storage and runs it through the sharp pipeline — the same
+ *  lib/images.ts used by the CLI ingest script, per the no-duplicate-pipeline rule.
+ *  Storage-driver-agnostic: it only ever sees a `StorageAdapter`. */
 async function processUploadJob(db: Db, storage: StorageAdapter, job: UploadJobDoc): Promise<{ photoId: ObjectId; slug: string }> {
   await updateUploadJob(db, job._id, { status: 'processing', error: undefined });
 
@@ -51,7 +106,7 @@ async function processUploadJob(db: Db, storage: StorageAdapter, job: UploadJobD
       width: processed.width,
       height: processed.height,
       aspectRatio: processed.aspectRatio,
-      r2: { originalKey: job.originalKey, publicKey: publicWebpKey },
+      storage: { originalKey: job.originalKey, publicKey: publicWebpKey },
       lqip: processed.lqip,
       maxPrintCm: processed.maxPrintCm,
       tags: [],
@@ -73,38 +128,11 @@ async function processUploadJob(db: Db, storage: StorageAdapter, job: UploadJobD
   }
 }
 
+/** Signing in is `actions.auth.login` for admins and customers alike (src/actions/
+ *  auth.ts) — an admin is a `users` document with `role: 'admin'`, not a separate
+ *  credential, so there is exactly one sign-in code path to keep correct. What lives
+ *  here is everything that *requires* already being an admin. */
 export const admin = {
-  login: defineAction({
-    accept: 'json',
-    input: z.object({ password: z.string().min(1) }),
-    handler: async (input, context) => {
-      const ip = context.clientAddress ?? 'unknown';
-      if (isRateLimited(ip)) {
-        throw new ActionError({ code: 'TOO_MANY_REQUESTS', message: 'TOO_MANY_ATTEMPTS' });
-      }
-
-      const { passwordHash } = getAdminConfig();
-      if (!verifyPassword(input.password, passwordHash)) {
-        recordFailedAttempt(ip);
-        throw new ActionError({ code: 'UNAUTHORIZED', message: 'INVALID_PASSWORD' });
-      }
-
-      clearAttempts(ip);
-      await context.session?.regenerate();
-      context.session?.set('adminAuthed', true);
-      return { ok: true };
-    },
-  }),
-
-  logout: defineAction({
-    accept: 'json',
-    input: z.object({}),
-    handler: async (_input, context) => {
-      context.session?.delete('adminAuthed');
-      return { ok: true };
-    },
-  }),
-
   requestUploadUrl: defineAdminAction({
     accept: 'json',
     input: z.object({
@@ -121,7 +149,7 @@ export const admin = {
       }
 
       const db = await getDb(getDbConfig());
-      const storage = createStorageAdapter('r2', getR2Config());
+      const storage = createStorage();
 
       const originalKey = `uploads/${randomUUID()}-${input.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const now = new Date();
@@ -143,9 +171,9 @@ export const admin = {
   completeUpload: defineAdminAction({
     accept: 'json',
     input: z.object({ jobId: z.string().min(1) }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
-      const storage = createStorageAdapter('r2', getR2Config());
+      const storage = createStorage();
 
       const job = await getUploadJob(db, new ObjectId(input.jobId));
       if (!job) throw new ActionError({ code: 'NOT_FOUND', message: 'UPLOAD_JOB_NOT_FOUND' });
@@ -155,7 +183,7 @@ export const admin = {
 
       try {
         const { photoId, slug } = await processUploadJob(db, storage, job);
-        await writeAuditLog(db, { actor: 'admin', action: 'photo.upload', targetType: 'photo', targetId: photoId.toString(), after: { slug } });
+        await writeAuditLog(db, { actor: await actorEmail(context), action: 'photo.upload', targetType: 'photo', targetId: photoId.toString(), after: { slug } });
         return { photoId: photoId.toString(), slug };
       } catch (err) {
         throw new ActionError({ code: 'INTERNAL_SERVER_ERROR', message: err instanceof Error ? err.message : 'PROCESSING_FAILED' });
@@ -166,9 +194,9 @@ export const admin = {
   retryUploadJob: defineAdminAction({
     accept: 'json',
     input: z.object({ jobId: z.string().min(1) }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
-      const storage = createStorageAdapter('r2', getR2Config());
+      const storage = createStorage();
 
       const job = await getUploadJob(db, new ObjectId(input.jobId));
       if (!job) throw new ActionError({ code: 'NOT_FOUND', message: 'UPLOAD_JOB_NOT_FOUND' });
@@ -178,7 +206,7 @@ export const admin = {
 
       try {
         const { photoId, slug } = await processUploadJob(db, storage, job);
-        await writeAuditLog(db, { actor: 'admin', action: 'photo.upload.retry', targetType: 'photo', targetId: photoId.toString(), after: { slug } });
+        await writeAuditLog(db, { actor: await actorEmail(context), action: 'photo.upload.retry', targetType: 'photo', targetId: photoId.toString(), after: { slug } });
         return { photoId: photoId.toString(), slug };
       } catch (err) {
         throw new ActionError({ code: 'INTERNAL_SERVER_ERROR', message: err instanceof Error ? err.message : 'PROCESSING_FAILED' });
@@ -213,7 +241,7 @@ export const admin = {
         })
         .optional(),
     }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const photoId = new ObjectId(input.photoId);
       const before = await db.collection<PhotoDoc>('photos').findOne({ _id: photoId });
@@ -231,7 +259,7 @@ export const admin = {
       await db.collection('photos').updateOne({ _id: photoId }, { $set: patch });
 
       await writeAuditLog(db, {
-        actor: 'admin',
+        actor: await actorEmail(context),
         action: 'photo.update',
         targetType: 'photo',
         targetId: input.photoId,
@@ -246,7 +274,7 @@ export const admin = {
   setPhotoPublished: defineAdminAction({
     accept: 'json',
     input: z.object({ photoId: z.string().min(1), published: z.boolean() }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const photoId = new ObjectId(input.photoId);
       const before = await db.collection<PhotoDoc>('photos').findOne({ _id: photoId });
@@ -255,7 +283,7 @@ export const admin = {
       const status = input.published ? 'published' : 'draft';
       await db.collection('photos').updateOne({ _id: photoId }, { $set: { status, updatedAt: new Date() } });
       await writeAuditLog(db, {
-        actor: 'admin',
+        actor: await actorEmail(context),
         action: input.published ? 'photo.publish' : 'photo.unpublish',
         targetType: 'photo',
         targetId: input.photoId,
@@ -270,7 +298,7 @@ export const admin = {
   deletePhoto: defineAdminAction({
     accept: 'json',
     input: z.object({ photoId: z.string().min(1) }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const photoId = new ObjectId(input.photoId);
       const photo = await db.collection<PhotoDoc>('photos').findOne({ _id: photoId });
@@ -284,15 +312,15 @@ export const admin = {
         throw new ActionError({ code: 'CONFLICT', message: `REFERENCED_BY_${referencingOrders}_ORDERS` });
       }
 
-      const storage = createStorageAdapter('r2', getR2Config());
+      const storage = createStorage();
       await Promise.allSettled([
-        storage.deleteObject({ bucket: 'originals', key: photo.r2.originalKey }),
-        storage.deleteObject({ bucket: 'public', key: photo.r2.publicKey }),
-        storage.deleteObject({ bucket: 'public', key: photo.r2.publicKey.replace(/\.webp$/i, '.jpg') }),
+        storage.deleteObject({ bucket: 'originals', key: photo.storage.originalKey }),
+        storage.deleteObject({ bucket: 'public', key: photo.storage.publicKey }),
+        storage.deleteObject({ bucket: 'public', key: photo.storage.publicKey.replace(/\.webp$/i, '.jpg') }),
       ]);
 
       await db.collection('photos').deleteOne({ _id: photoId });
-      await writeAuditLog(db, { actor: 'admin', action: 'photo.delete', targetType: 'photo', targetId: input.photoId, before: { slug: photo.slug } });
+      await writeAuditLog(db, { actor: await actorEmail(context), action: 'photo.delete', targetType: 'photo', targetId: input.photoId, before: { slug: photo.slug } });
 
       return { ok: true };
     },
@@ -301,12 +329,12 @@ export const admin = {
   reorderPhotos: defineAdminAction({
     accept: 'json',
     input: z.object({ orderedIds: z.array(z.string().min(1)) }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       await Promise.all(
         input.orderedIds.map((id, index) => db.collection('photos').updateOne({ _id: new ObjectId(id) }, { $set: { order: index } })),
       );
-      await writeAuditLog(db, { actor: 'admin', action: 'photo.reorder', targetType: 'photo', targetId: 'bulk', after: { count: input.orderedIds.length } });
+      await writeAuditLog(db, { actor: await actorEmail(context), action: 'photo.reorder', targetType: 'photo', targetId: 'bulk', after: { count: input.orderedIds.length } });
       return { ok: true };
     },
   }),
@@ -314,7 +342,7 @@ export const admin = {
   markOrderShipped: defineAdminAction({
     accept: 'json',
     input: z.object({ orderId: z.string().min(1), carrier: z.string().min(1), tracking: z.string().min(1), notes: z.string().optional() }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const orderId = new ObjectId(input.orderId);
       const order = await fulfillmentProvider.markShipped(db, orderId, {
@@ -325,7 +353,7 @@ export const admin = {
       if (!order) throw new ActionError({ code: 'NOT_FOUND', message: 'ORDER_NOT_FOUND' });
 
       await writeAuditLog(db, {
-        actor: 'admin',
+        actor: await actorEmail(context),
         action: 'order.fulfill',
         targetType: 'order',
         targetId: input.orderId,
@@ -349,13 +377,122 @@ export const admin = {
       sizePresets: z.array(z.object({ label: z.string(), widthCm: z.coerce.number(), heightCm: z.coerce.number() })),
       shippingZones: z.array(z.object({ key: z.string(), label: z.string(), flatRateCents: z.coerce.number() })),
     }),
-    handler: async (input) => {
+    handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const { getSettings, saveSettings: persistSettings } = await import('../lib/settings');
       const before = await getSettings(db);
       const after = await persistSettings(db, input);
 
-      await writeAuditLog(db, { actor: 'admin', action: 'pricing.update', targetType: 'settings', targetId: 'singleton', before, after });
+      await writeAuditLog(db, { actor: await actorEmail(context), action: 'pricing.update', targetType: 'settings', targetId: 'singleton', before, after });
+
+      return { ok: true };
+    },
+  }),
+
+  createUser: defineAdminAction({
+    accept: 'json',
+    input: z.object({
+      name: z.string().min(1),
+      email: z.string().min(1),
+      password: z.string().min(1),
+      role: z.enum(['admin', 'customer']),
+    }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      let created;
+      try {
+        created = await createUser(db, input);
+      } catch (err) {
+        throw toUserActionError(err);
+      }
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: 'user.create',
+        targetType: 'user',
+        targetId: created._id.toString(),
+        after: { email: created.email, role: created.role },
+      });
+
+      return { userId: created._id.toString() };
+    },
+  }),
+
+  setUserRole: defineAdminAction({
+    accept: 'json',
+    input: z.object({ userId: z.string().min(1), role: z.enum(['admin', 'customer']) }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const actor = await requireAdmin(context);
+      const target = await findUserById(db, new ObjectId(input.userId));
+      if (!target) throw new ActionError({ code: 'NOT_FOUND', message: 'USER_NOT_FOUND' });
+
+      await assertNotLastAdmin(db, actor.id, target, input.role === 'admin' ? 'admin' : 'customer', target.disabled);
+
+      try {
+        await setUserRole(db, target._id, input.role);
+      } catch (err) {
+        throw toUserActionError(err);
+      }
+
+      await writeAuditLog(db, {
+        actor: actor.email,
+        action: 'user.role',
+        targetType: 'user',
+        targetId: input.userId,
+        before: { role: target.role },
+        after: { role: input.role },
+      });
+
+      return { ok: true };
+    },
+  }),
+
+  setUserDisabled: defineAdminAction({
+    accept: 'json',
+    input: z.object({ userId: z.string().min(1), disabled: z.boolean() }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const actor = await requireAdmin(context);
+      const target = await findUserById(db, new ObjectId(input.userId));
+      if (!target) throw new ActionError({ code: 'NOT_FOUND', message: 'USER_NOT_FOUND' });
+
+      await assertNotLastAdmin(db, actor.id, target, target.role, input.disabled);
+
+      await setUserDisabled(db, target._id, input.disabled);
+      await writeAuditLog(db, {
+        actor: actor.email,
+        action: input.disabled ? 'user.disable' : 'user.enable',
+        targetType: 'user',
+        targetId: input.userId,
+        before: { disabled: target.disabled },
+        after: { disabled: input.disabled },
+      });
+
+      return { ok: true };
+    },
+  }),
+
+  resetUserPassword: defineAdminAction({
+    accept: 'json',
+    input: z.object({ userId: z.string().min(1), password: z.string().min(1) }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const userId = new ObjectId(input.userId);
+      try {
+        await setUserPassword(db, userId, input.password);
+      } catch (err) {
+        throw toUserActionError(err);
+      }
+
+      // The new password itself is never written to the audit log — only the fact that
+      // a reset happened, and who did it.
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: 'user.password.reset',
+        targetType: 'user',
+        targetId: input.userId,
+      });
 
       return { ok: true };
     },

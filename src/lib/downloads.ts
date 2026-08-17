@@ -88,5 +88,5 @@ export async function consumeDownloadToken(db: Db, rawToken: string, ip: string)
   const photo = await db.collection('photos').findOne({ _id: updated.photoId });
   if (!photo) return { ok: false, reason: 'NOT_FOUND' };
 
-  return { ok: true, photoOriginalKey: photo.r2.originalKey, orderId: updated.orderId };
+  return { ok: true, photoOriginalKey: photo.storage.originalKey, orderId: updated.orderId };
 }

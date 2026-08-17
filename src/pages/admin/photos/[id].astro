@@ -1,10 +1,9 @@
 ---
 import { ObjectId } from 'mongodb';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { PhotoDoc } from '../../../lib/photos';
-import { createStorageAdapter } from '../../../lib/storage';
 
 const idParam = Astro.params.id as string;
 let photoId: InstanceType<typeof ObjectId>;
@@ -20,8 +19,8 @@ if (!photo) {
   return new Response('Not found', { status: 404 });
 }
 
-const storage = createStorageAdapter('r2', getR2Config());
-const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jpg'));
+const storage = createStorage();
+const previewUrl = storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'));
 ---
 
 <AdminLayout title={photo.title.en || photo.slug}>

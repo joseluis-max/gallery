@@ -90,6 +90,17 @@ const stripeDashboardUrl = order.stripePaymentIntentId
     <div>
       <h2 class="text-sm uppercase tracking-widest text-ink-muted">Customer</h2>
       <p class="mt-2 text-sm">{order.customer.email || '—'}</p>
+      <p class="mt-1 text-sm text-ink-muted">
+        {
+          order.userId ? (
+            <a href={`/admin/customers/${order.userId.toString()}`} class="underline hover:text-ink">
+              View account →
+            </a>
+          ) : (
+            'Guest checkout — no account'
+          )
+        }
+      </p>
 
       {
         order.shippingAddress && (

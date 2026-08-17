@@ -1,12 +1,11 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { PhotoDoc } from '../../../lib/photos';
-import { createStorageAdapter } from '../../../lib/storage';
 
 const db = await getDb(getDbConfig());
-const storage = createStorageAdapter('r2', getR2Config());
+const storage = createStorage();
 
 const statusFilter = Astro.url.searchParams.get('status');
 const collectionFilter = Astro.url.searchParams.get('collection');
@@ -47,7 +46,7 @@ const allCollections = await db.collection<PhotoDoc>('photos').distinct('collect
     <tbody data-reorder-body>
       {
         photos.map((photo) => {
-          const jpegUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jpg'));
+          const jpegUrl = storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'));
           return (
             <tr class="border-b border-border" draggable="true" data-photo-row data-photo-id={photo._id.toString()}>
               <td class="py-2 pr-3">

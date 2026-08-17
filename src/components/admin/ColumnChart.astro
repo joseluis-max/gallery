@@ -1,0 +1,102 @@
+---
+import ChartFrame from './ChartFrame.astro';
+import {
+  columnPath,
+  emptyMaxFor,
+  formatAxisValue,
+  formatValue,
+  layoutColumns,
+  type ChartDatum,
+  type ValueFormat,
+} from '../../lib/charts';
+
+/** Magnitude over a time axis — revenue per month, orders per month, signups per
+ *  month. One series, therefore one hue and no legend: the title says what's plotted. */
+interface Props {
+  title: string;
+  subtitle?: string;
+  data: ChartDatum[];
+  format: ValueFormat;
+  labelHeading?: string;
+  valueHeading?: string;
+}
+
+const { title, subtitle, data, format, labelHeading = 'Month', valueHeading = 'Total' } = Astro.props;
+
+const WIDTH = 720;
+const HEIGHT = 220;
+const PADDING = { top: 18, right: 10, bottom: 26, left: 58 };
+
+const layout = layoutColumns(data, { width: WIDTH, height: HEIGHT, padding: PADDING, emptyMax: emptyMaxFor(format) });
+const baseline = layout.plot.y + layout.plot.height;
+
+// Label the endpoint only. A value over every column is the "number on every data
+// point" failure — the axis and the table twin carry the rest.
+const lastColumn = layout.columns.at(-1);
+const showEndLabel = !!lastColumn && lastColumn.value > 0;
+
+// Thin the x labels rather than letting them overlap: 12 months fit, 30+ don't.
+const labelEvery = Math.max(1, Math.ceil(data.length / 14));
+---
+
+<ChartFrame title={title} subtitle={subtitle} data={data} format={format} labelHeading={labelHeading} valueHeading={valueHeading}>
+  <svg
+    viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+    class="h-auto w-full"
+    role="img"
+    aria-label={`${title}. ${data.length} points, from ${data[0]?.label ?? 'n/a'} to ${data.at(-1)?.label ?? 'n/a'}.`}
+  >
+    {
+      layout.ticks.map((tick) => (
+        <g>
+          <line
+            x1={layout.plot.x}
+            y1={tick.offset}
+            x2={layout.plot.x + layout.plot.width}
+            y2={tick.offset}
+            stroke="var(--color-border)"
+            stroke-width="1"
+          />
+          <text x={layout.plot.x - 8} y={tick.offset + 4} text-anchor="end" font-size="11" fill="var(--color-ink-muted)">
+            {formatAxisValue(tick.value, format)}
+          </text>
+        </g>
+      ))
+    }
+
+    {
+      layout.columns.map((column, index) => (
+        <g>
+          {column.height > 0 && <path d={columnPath(column.x, column.y, column.width, column.height)} fill="var(--color-data)" />}
+          {/* A full-height transparent hit area, so hovering anywhere in the column's
+              slot shows its value — not just the few pixels of a short bar. */}
+          <rect x={column.x} y={layout.plot.y} width={column.width} height={layout.plot.height} fill="transparent">
+            <title>{`${column.label}: ${formatValue(column.value, format)}`}</title>
+          </rect>
+          {index % labelEvery === 0 && (
+            <text x={column.centerX} y={baseline + 16} text-anchor="middle" font-size="11" fill="var(--color-ink-muted)">
+              {column.label}
+            </text>
+          )}
+        </g>
+      ))
+    }
+
+    {
+      showEndLabel && (
+        <text x={lastColumn!.centerX} y={lastColumn!.y - 6} text-anchor="middle" font-size="11" fill="var(--color-ink)">
+          {formatAxisValue(lastColumn!.value, format)}
+        </text>
+      )
+    }
+
+    <line
+      x1={layout.plot.x}
+      y1={baseline}
+      x2={layout.plot.x + layout.plot.width}
+      y2={baseline}
+      stroke="var(--color-border)"
+      stroke-width="1"
+    />
+  </svg>
+</ChartFrame>

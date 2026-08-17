@@ -2,11 +2,12 @@
 //
 // Dev-only convenience: pushes the real seed photos into the real Mongo Atlas cluster as
 // `published` (not `draft`), writing the watermarked derivatives straight into
-// public/local-public/ so Astro serves them itself — no R2 credentials needed. Lets José
-// (or anyone) preview the actual gallery/detail pages in a browser before R2 is wired up.
-// R2_PUBLIC_BASE_URL in .env already points at /local-public for exactly this reason.
+// public/local-public/ so Astro serves them itself — no cloud credentials needed. Lets
+// José (or anyone) preview the actual gallery/detail pages in a browser before Google
+// Cloud Storage is wired up. Those static files sit at the same `/local-public/` path
+// the `local` storage driver serves from, and the static handler matches them first.
 // Not part of the production ingest path — real photos go through `pnpm ingest`, which
-// uploads to R2 and defaults new photos to `draft` until reviewed in admin.
+// uploads to the configured bucket and defaults new photos to `draft` until reviewed.
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { defaultWatermarkConfig } from '../watermark.config.ts';
@@ -60,8 +61,8 @@ async function main() {
     // Deliberately NOT copying the original into public/local-public/ — that directory
     // is served statically by Astro, and putting a full-res original there (even for
     // local-only preview) would violate the one invariant this whole app exists to
-    // enforce. `r2.originalKey` is still recorded for schema completeness; it just
-    // won't resolve to anything until real R2 credentials + a real ingest are in place.
+    // enforce. `storage.originalKey` is still recorded for schema completeness; it just
+    // won't resolve to anything until a real bucket + a real ingest are in place.
 
     await db.collection('photos').updateOne(
       { slug },
@@ -81,8 +82,8 @@ async function main() {
           aspectRatio: processed.aspectRatio,
           maxPrintCm: processed.maxPrintCm,
           lqip: processed.lqip,
-          'r2.originalKey': originalKey,
-          'r2.publicKey': publicWebpKey,
+          'storage.originalKey': originalKey,
+          'storage.publicKey': publicWebpKey,
           title: meta?.title ?? { es: slug, en: slug },
           description: meta?.description ?? { es: '', en: '' },
           tags: meta?.tags ?? [],

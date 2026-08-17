@@ -5,7 +5,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 <AdminLayout title="Upload">
   <h1 class="font-display text-2xl">Upload</h1>
   <p class="mt-2 text-sm text-ink-muted">
-    Files upload directly from your browser to R2 — they never pass through the app server. Each one is then
+    Files upload directly from your browser to the storage bucket — they never pass through the app server. Each one is then
     processed (rotate, watermark, derivatives) and lands here as a draft.
   </p>
 
@@ -116,7 +116,12 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
     local.status = 'uploading';
     render();
 
-    await new Promise<void>((resolve) => {
+    // The PUT's outcome is *checked*. Resolving regardless of status (as this used to)
+    // meant a rejected upload — a CORS block, an expired signature, a 403 — fell through
+    // to completeUpload, which then failed with the storage layer's downstream complaint
+    // ("The specified key does not exist"), sending you looking in entirely the wrong
+    // place. Whatever goes wrong here is reported here.
+    const uploadResult = await new Promise<{ ok: true } | { ok: false; message: string }>((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', data.uploadUrl);
       xhr.setRequestHeader('Content-Type', file.type);
@@ -126,10 +131,32 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
           render();
         }
       });
-      xhr.addEventListener('load', () => resolve());
-      xhr.addEventListener('error', () => resolve());
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true });
+          return;
+        }
+        // Storage errors come back as an XML body whose <Message> is the useful part.
+        const detail = /<Message>([^<]+)<\/Message>/.exec(xhr.responseText ?? '')?.[1];
+        resolve({ ok: false, message: `storage rejected the upload (HTTP ${xhr.status})${detail ? `: ${detail}` : ''}` });
+      });
+      // A blocked CORS preflight and a dropped connection are indistinguishable to
+      // XMLHttpRequest — both surface as `error` with status 0 — so the message names
+      // both rather than guessing.
+      xhr.addEventListener('error', () => {
+        resolve({ ok: false, message: 'could not reach storage — blocked by CORS, or the network failed. Check the bucket CORS origins.' });
+      });
+      xhr.addEventListener('abort', () => resolve({ ok: false, message: 'upload aborted' }));
+      xhr.addEventListener('timeout', () => resolve({ ok: false, message: 'upload timed out' }));
       xhr.send(file);
     });
+
+    if (!uploadResult.ok) {
+      local.status = 'failed';
+      local.error = uploadResult.message;
+      render();
+      return;
+    }
 
     local.status = 'processing';
     render();

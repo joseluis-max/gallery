@@ -1,0 +1,91 @@
+---
+import ChartFrame from './ChartFrame.astro';
+import { emptyMaxFor, formatAxisValue, formatValue, layoutLine, type ChartDatum, type ValueFormat } from '../../lib/charts';
+
+/** A continuous daily series (orders or revenue per day over the last N days), where a
+ *  column per day would be too thin to read. */
+interface Props {
+  title: string;
+  subtitle?: string;
+  data: ChartDatum[];
+  format: ValueFormat;
+  labelHeading?: string;
+  valueHeading?: string;
+}
+
+const { title, subtitle, data, format, labelHeading = 'Day', valueHeading = 'Total' } = Astro.props;
+
+const WIDTH = 720;
+const HEIGHT = 200;
+const PADDING = { top: 18, right: 16, bottom: 26, left: 58 };
+
+const layout = layoutLine(data, { width: WIDTH, height: HEIGHT, padding: PADDING, emptyMax: emptyMaxFor(format) });
+const baseline = layout.plot.y + layout.plot.height;
+const endPoint = layout.points.at(-1);
+
+// Every ~7th day gets a tick label; the rest are carried by the tooltip and the table.
+const labelEvery = Math.max(1, Math.ceil(data.length / 8));
+const hitWidth = data.length > 1 ? layout.plot.width / (data.length - 1) : layout.plot.width;
+---
+
+<ChartFrame title={title} subtitle={subtitle} data={data} format={format} labelHeading={labelHeading} valueHeading={valueHeading}>
+  <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} class="h-auto w-full" role="img" aria-label={title}>
+    {
+      layout.ticks.map((tick) => (
+        <g>
+          <line
+            x1={layout.plot.x}
+            y1={tick.offset}
+            x2={layout.plot.x + layout.plot.width}
+            y2={tick.offset}
+            stroke="var(--color-border)"
+            stroke-width="1"
+          />
+          <text x={layout.plot.x - 8} y={tick.offset + 4} text-anchor="end" font-size="11" fill="var(--color-ink-muted)">
+            {formatAxisValue(tick.value, format)}
+          </text>
+        </g>
+      ))
+    }
+
+    {layout.areaPath && <path d={layout.areaPath} fill="var(--color-data-wash)" />}
+    <path d={layout.path} fill="none" stroke="var(--color-data)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+    {
+      endPoint && (
+        <g>
+          {/* 2px ring in the surface color keeps the end marker legible where it
+              crosses the line or the gridline underneath it. */}
+          <circle cx={endPoint.x} cy={endPoint.y} r="4" fill="var(--color-data)" stroke="var(--color-surface)" stroke-width="2" />
+          <text x={endPoint.x} y={endPoint.y - 10} text-anchor="end" font-size="11" fill="var(--color-ink)">
+            {formatAxisValue(endPoint.value, format)}
+          </text>
+        </g>
+      )
+    }
+
+    {
+      layout.points.map((point, index) => (
+        <g>
+          <rect x={point.x - hitWidth / 2} y={layout.plot.y} width={hitWidth} height={layout.plot.height} fill="transparent">
+            <title>{`${point.label}: ${formatValue(point.value, format)}`}</title>
+          </rect>
+          {index % labelEvery === 0 && (
+            <text x={point.x} y={baseline + 16} text-anchor="middle" font-size="11" fill="var(--color-ink-muted)">
+              {point.label}
+            </text>
+          )}
+        </g>
+      ))
+    }
+
+    <line
+      x1={layout.plot.x}
+      y1={baseline}
+      x2={layout.plot.x + layout.plot.width}
+      y2={baseline}
+      stroke="var(--color-border)"
+      stroke-width="1"
+    />
+  </svg>
+</ChartFrame>

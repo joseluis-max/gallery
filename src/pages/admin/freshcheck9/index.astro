@@ -1,85 +1,64 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import BarChart from '../../../components/admin/BarChart.astro';
+import ColumnChart from '../../../components/admin/ColumnChart.astro';
+import LineChart from '../../../components/admin/LineChart.astro';
+import StatTile from '../../../components/admin/StatTile.astro';
+import { getDailyRevenue, getDashboardKpis, getMonthlyRevenue, getStatusCounts, getTopPhotos } from '../../../lib/analytics';
+import { formatCents, formatCount, percentChange, type ChartDatum } from '../../../lib/charts';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
+import { countActiveAdmins, findActiveUserById, isAdmin } from '../../../lib/users';
 
-// The admin panel has exactly one entry point: this page. Unauthenticated visitors see
-// a sign-in form rendered right here (no separate route, no redirect target to guard
-// separately) — everything else under /admin/* bounces back to this same URL via
-// src/middleware.ts until a session exists.
-const authed = await Astro.session?.get('adminAuthed');
+// The admin panel has exactly one entry point: this page. Visitors without an admin
+// session see a sign-in form rendered right here (no separate route, no redirect target
+// to guard separately) — everything else under /admin/* bounces back to this same URL
+// via src/middleware.ts until an admin session exists.
+const sessionUser = await Astro.session?.get('user');
+
+const ORDER_STATUSES = ['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'] as const;
+
+const db = await getDb(getDbConfig());
+
+// This route is the one /admin path middleware deliberately doesn't guard (it *is* the
+// fallback it rewrites to), so it revalidates the session against the database itself
+// rather than inheriting that check.
+const authed = isAdmin(sessionUser) && (await findActiveUserById(db, sessionUser!.id))?.role === 'admin';
+
+// Surfaced on the sign-in form: with no admin account in the database there is nothing
+// to sign in as, and the fix is a CLI command rather than anything on this screen.
+const adminAccountCount = authed ? 1 : await countActiveAdmins(db);
 
 let dashboard: {
-  revenueThisMonth: number;
-  revenueLastMonth: number;
-  countsByStatus: Record<string, number>;
-  units: Record<string, number>;
-  bestSellers: { _id: string; title: string; units: number }[];
+  kpis: Awaited<ReturnType<typeof getDashboardKpis>>;
+  monthlyRevenue: ChartDatum[];
+  dailyOrders: ChartDatum[];
+  bestSellers: ChartDatum[];
+  statusCounts: ChartDatum[];
   recentActivity: Record<string, unknown>[];
-  paidNotShipped: number;
-  failedUploads: number;
 } | null = null;
 
 if (authed) {
-  const db = await getDb(getDbConfig());
-
-  const now = new Date();
-  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
-  async function revenueSince(from: Date, to?: Date): Promise<number> {
-    const match: Record<string, unknown> = { status: { $in: ['paid', 'fulfilled'] }, createdAt: { $gte: from } };
-    if (to) (match.createdAt as Record<string, unknown>).$lt = to;
-    const [row] = await db
-      .collection('orders')
-      .aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: '$totalCents' } } }])
-      .toArray();
-    return row?.total ?? 0;
-  }
-
-  const [revenueThisMonth, revenueLastMonth] = await Promise.all([
-    revenueSince(startOfThisMonth),
-    revenueSince(startOfLastMonth, startOfThisMonth),
+  const [kpis, monthly, daily, topPhotos, statusCounts, recentActivity] = await Promise.all([
+    getDashboardKpis(db),
+    getMonthlyRevenue(db, 12),
+    getDailyRevenue(db, 30),
+    getTopPhotos(db, 5),
+    getStatusCounts(db),
+    db.collection('auditLog').find({}).sort({ at: -1 }).limit(10).toArray(),
   ]);
 
-  const statusCounts = await db
-    .collection('orders')
-    .aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])
-    .toArray();
-  const countsByStatus = Object.fromEntries(statusCounts.map((r) => [r._id, r.count]));
-
-  const unitsByType = await db
-    .collection('orders')
-    .aggregate([
-      { $match: { status: { $in: ['paid', 'fulfilled'] } } },
-      { $unwind: '$items' },
-      { $group: { _id: '$items.type', units: { $sum: '$items.qty' } } },
-    ])
-    .toArray();
-  const units = Object.fromEntries(unitsByType.map((r) => [r._id, r.units]));
-
-  const bestSellers = (await db
-    .collection('orders')
-    .aggregate([
-      { $match: { status: { $in: ['paid', 'fulfilled'] } } },
-      { $unwind: '$items' },
-      { $group: { _id: '$items.photoSlug', title: { $first: '$items.photoTitle' }, units: { $sum: '$items.qty' } } },
-      { $sort: { units: -1 } },
-      { $limit: 5 },
-    ])
-    .toArray()) as { _id: string; title: string; units: number }[];
-
-  const recentActivity = await db.collection('auditLog').find({}).sort({ at: -1 }).limit(10).toArray();
-
-  const paidNotShipped = await db.collection('orders').countDocuments({ status: 'paid' });
-  const failedUploads = await db.collection('uploadJobs').countDocuments({ status: 'failed' });
-
-  dashboard = { revenueThisMonth, revenueLastMonth, countsByStatus, units, bestSellers, recentActivity, paidNotShipped, failedUploads };
+  dashboard = {
+    kpis,
+    monthlyRevenue: monthly.revenue,
+    dailyOrders: daily.orders,
+    bestSellers: topPhotos.map((photo) => ({ key: photo.slug, label: photo.title, value: photo.units })),
+    statusCounts: ORDER_STATUSES.map((status) => ({ key: status, label: status, value: statusCounts[status] ?? 0 })),
+    recentActivity,
+  };
 }
 
-function fmt(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+const revenueDelta = dashboard ? percentChange(dashboard.kpis.revenueThisMonthCents, dashboard.kpis.revenueLastMonthCents) : null;
 ---
 
 {
@@ -101,6 +80,32 @@ function fmt(cents: number): string {
       <body class="flex min-h-screen items-center justify-center bg-surface text-ink font-body antialiased">
         <form data-signin-form class="w-full max-w-xs space-y-4 px-6">
           <h1 class="font-display text-xl">Admin</h1>
+
+          {sessionUser && (
+            <p class="text-sm text-ink-muted">
+              Signed in as {sessionUser.email}, which is not an admin account.
+              <button type="button" data-signout class="mt-1 block underline hover:text-accent">
+                Sign out
+              </button>
+            </p>
+          )}
+
+          {adminAccountCount === 0 && (
+            <p class="border border-accent p-3 text-xs text-ink-muted">
+              No admin account exists yet. Create one with <code>pnpm create-admin &lt;email&gt; &lt;password&gt;</code>.
+            </p>
+          )}
+
+          <label class="block text-sm">
+            Email
+            <input
+              type="email"
+              name="email"
+              autocomplete="username"
+              required
+              class="mt-1 block w-full border border-border bg-transparent px-3 py-2"
+            />
+          </label>
           <label class="block text-sm">
             Password
             <input
@@ -123,16 +128,29 @@ function fmt(cents: number): string {
           const form = document.querySelector<HTMLFormElement>('[data-signin-form]')!;
           const errorEl = document.querySelector<HTMLElement>('[data-signin-error]')!;
 
+          document.querySelector('[data-signout]')?.addEventListener('click', async () => {
+            await actions.auth.logout({});
+            window.location.reload();
+          });
+
           form.addEventListener('submit', async (event) => {
             event.preventDefault();
             errorEl.hidden = true;
 
+            const email = (form.elements.namedItem('email') as HTMLInputElement).value;
             const password = (form.elements.namedItem('password') as HTMLInputElement).value;
-            const { error } = await actions.admin.login({ password });
+            const { data, error } = await actions.auth.login({ email, password });
 
             if (error) {
               errorEl.textContent =
-                error.code === 'TOO_MANY_REQUESTS' ? 'Too many attempts. Try again later.' : 'Incorrect password.';
+                error.code === 'TOO_MANY_REQUESTS' ? 'Too many attempts. Try again later.' : 'Incorrect email or password.';
+              errorEl.hidden = false;
+              return;
+            }
+            if (data.user.role !== 'admin') {
+              // Signing in worked, but this account can't see the panel — say so here
+              // rather than reloading into an identical-looking form.
+              errorEl.textContent = 'That account does not have admin access.';
               errorEl.hidden = false;
               return;
             }
@@ -149,83 +167,84 @@ function fmt(cents: number): string {
     <AdminLayout title="Dashboard">
       <h1 class="font-display text-2xl">Dashboard</h1>
 
-      {(dashboard.paidNotShipped > 0 || dashboard.failedUploads > 0) && (
+      {(dashboard.kpis.paidNotShipped > 0 || dashboard.kpis.failedUploads > 0) && (
         <div class="mt-6 space-y-2">
-          {dashboard.paidNotShipped > 0 && (
+          {dashboard.kpis.paidNotShipped > 0 && (
             <a href="/admin/orders?status=paid" class="block border border-accent p-3 text-sm">
-              {dashboard.paidNotShipped} paid order(s) awaiting fulfilment →
+              {dashboard.kpis.paidNotShipped} paid order(s) awaiting fulfilment →
             </a>
           )}
-          {dashboard.failedUploads > 0 && (
+          {dashboard.kpis.failedUploads > 0 && (
             <a href="/admin/upload" class="block border border-accent p-3 text-sm">
-              {dashboard.failedUploads} failed upload job(s) →
+              {dashboard.kpis.failedUploads} failed upload job(s) →
             </a>
           )}
         </div>
       )}
 
       <div class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div class="border border-border p-4">
-          <p class="text-xs uppercase tracking-widest text-ink-muted">Revenue this month</p>
-          <p class="mt-1 font-display text-2xl">{fmt(dashboard.revenueThisMonth)}</p>
-        </div>
-        <div class="border border-border p-4">
-          <p class="text-xs uppercase tracking-widest text-ink-muted">Revenue last month</p>
-          <p class="mt-1 font-display text-2xl">{fmt(dashboard.revenueLastMonth)}</p>
-        </div>
-        <div class="border border-border p-4">
-          <p class="text-xs uppercase tracking-widest text-ink-muted">Prints sold</p>
-          <p class="mt-1 font-display text-2xl">{dashboard.units.print ?? 0}</p>
-        </div>
-        <div class="border border-border p-4">
-          <p class="text-xs uppercase tracking-widest text-ink-muted">Digital sold</p>
-          <p class="mt-1 font-display text-2xl">{dashboard.units.digital ?? 0}</p>
+        <StatTile
+          label="Revenue this month"
+          value={formatCents(dashboard.kpis.revenueThisMonthCents)}
+          deltaPct={revenueDelta}
+          deltaLabel="vs last month"
+        />
+        <StatTile label="Orders this month" value={formatCount(dashboard.kpis.ordersThisMonth)} />
+        <StatTile label="Average order" value={formatCents(dashboard.kpis.averageOrderCents)} />
+        <StatTile label="Customer accounts" value={formatCount(dashboard.kpis.customerCount)} href="/admin/customers" />
+      </div>
+
+      <div class="mt-8 space-y-6">
+        <ColumnChart
+          title="Revenue — last 12 months"
+          subtitle="Paid and fulfilled orders, by calendar month."
+          data={dashboard.monthlyRevenue}
+          format="currency"
+          valueHeading="Revenue"
+        />
+
+        <LineChart
+          title="Orders — last 30 days"
+          subtitle="Paid and fulfilled orders, by day."
+          data={dashboard.dailyOrders}
+          format="count"
+          valueHeading="Orders"
+        />
+
+        <div class="grid gap-6 lg:grid-cols-2">
+          <BarChart
+            title="Best sellers"
+            subtitle="Units sold, all time."
+            data={dashboard.bestSellers}
+            format="count"
+            labelHeading="Photograph"
+            valueHeading="Units"
+          />
+          <BarChart
+            title="Orders by status"
+            subtitle="Every order ever created, including unpaid ones."
+            data={dashboard.statusCounts}
+            format="count"
+            labelHeading="Status"
+            valueHeading="Orders"
+          />
         </div>
       </div>
 
-      <div class="mt-8 grid gap-8 md:grid-cols-2">
-        <div>
-          <h2 class="text-sm uppercase tracking-widest text-ink-muted">Orders by status</h2>
-          <table class="mt-3 w-full text-sm">
-            <tbody>
-              {(['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'] as const).map((status) => (
-                <tr class="border-t border-border">
-                  <td class="py-1.5 capitalize">{status}</td>
-                  <td class="py-1.5 text-right">{dashboard!.countsByStatus[status] ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div class="mt-10">
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-sm uppercase tracking-widest text-ink-muted">Recent activity</h2>
+          <a href="/admin/activity" class="text-sm underline">
+            All activity
+          </a>
         </div>
-
-        <div>
-          <h2 class="text-sm uppercase tracking-widest text-ink-muted">Best sellers</h2>
-          <table class="mt-3 w-full text-sm">
-            <tbody>
-              {dashboard.bestSellers.map((row) => (
-                <tr class="border-t border-border">
-                  <td class="py-1.5">{row.title}</td>
-                  <td class="py-1.5 text-right">{row.units}</td>
-                </tr>
-              ))}
-              {dashboard.bestSellers.length === 0 && (
-                <tr>
-                  <td class="py-1.5 text-ink-muted">No sales yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="mt-8">
-        <h2 class="text-sm uppercase tracking-widest text-ink-muted">Recent activity</h2>
         <table class="mt-3 w-full text-sm">
           <tbody>
             {dashboard.recentActivity.map((entry) => (
               <tr class="border-t border-border">
                 <td class="py-1.5 text-ink-muted">{new Date(entry.at as string).toLocaleString()}</td>
                 <td class="py-1.5">{entry.action as string}</td>
+                <td class="py-1.5 text-ink-muted">{entry.actor as string}</td>
                 <td class="py-1.5 text-ink-muted">
                   {entry.targetType as string}/{entry.targetId as string}
                 </td>

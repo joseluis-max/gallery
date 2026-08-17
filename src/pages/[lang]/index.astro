@@ -1,17 +1,16 @@
 ---
 import MosaicGrid, { type GridItem } from '../../components/MosaicGrid.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getDbConfig, getR2Config } from '../../lib/config';
+import { createStorage, getDbConfig } from '../../lib/config';
 import { getDb } from '../../lib/db';
 import { getDictionary, type Locale } from '../../lib/i18n';
 import { getFeaturedPhotos, getPhotoImageUrls } from '../../lib/photos';
-import { createStorageAdapter } from '../../lib/storage';
 
 const lang = Astro.params.lang as Locale;
 const t = getDictionary(lang);
 
 const db = await getDb(getDbConfig());
-const storage = createStorageAdapter('r2', getR2Config());
+const storage = createStorage();
 const featured = await getFeaturedPhotos(db, 6);
 
 const items: GridItem[] = featured.map((photo) => {

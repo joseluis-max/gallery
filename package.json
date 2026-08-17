@@ -15,8 +15,9 @@
     "test:watch": "vitest",
     "ingest": "tsx scripts/ingest.ts",
     "init-db": "tsx scripts/init-db.ts",
+    "verify-storage": "tsx scripts/verify-storage.ts",
     "generate:placeholders": "tsx scripts/generate-placeholders.ts",
-    "hash-admin-password": "tsx scripts/hash-admin-password.ts"
+    "create-admin": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@astrojs/node": "11.0.2",

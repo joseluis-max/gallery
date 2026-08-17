@@ -3,7 +3,7 @@
 // Run locally by José, not on the server — keeps sharp off the deploy target and avoids
 // request timeouts processing 24MP files. Idempotent on slug (upsert).
 //
-// --dry-run touches neither R2 nor Mongo: derivatives are written to
+// --dry-run touches neither cloud storage nor Mongo: derivatives are written to
 // ./tmp/ingest-preview/ via the same LocalFsStorageAdapter used by unit tests, and the
 // planned Mongo document is printed instead of written.
 import { existsSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { defaultWatermarkConfig } from '../watermark.config.ts';
 import { getDb } from '../src/lib/db.ts';
 import { processOriginal } from '../src/lib/images.ts';
 import { createStorageAdapter, type StorageAdapter } from '../src/lib/storage.ts';
-import { getDbConfig, getR2Config } from './config.ts';
+import { getDbConfig, getStorageAdapter } from './config.ts';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tiff', '.tif']);
 const METADATA_PATH = resolve('seed/metadata.json');
@@ -67,9 +67,11 @@ function slugFromFilename(filename: string): string {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
+  // A dry run always writes to its own throwaway directory, whatever STORAGE_DRIVER
+  // says — that's the whole point of it needing no credentials.
   const storage: StorageAdapter = args.dryRun
     ? createStorageAdapter('local', resolve('tmp/ingest-preview'))
-    : createStorageAdapter('r2', getR2Config());
+    : getStorageAdapter();
 
   const files = (await readdir(args.inputDir)).filter((f) => IMAGE_EXTENSIONS.has(extname(f).toLowerCase()));
   if (files.length === 0) {
@@ -134,7 +136,7 @@ async function main() {
         // since that would double-encode the bucket into the key and break
         // storage.publicUrl()/getPresignedGetUrl() lookups against what was actually
         // uploaded above.
-        r2: { originalKey, publicKey: publicWebpKey },
+        storage: { originalKey, publicKey: publicWebpKey },
         status: 'draft',
       };
       console.log(`\n[dry-run] ${slug}${meta ? '' : ' (no seed/metadata.json entry — using slug as title)'}`);
@@ -175,8 +177,8 @@ async function main() {
           aspectRatio: processed.aspectRatio,
           maxPrintCm: processed.maxPrintCm,
           lqip: processed.lqip,
-          'r2.originalKey': originalKey,
-          'r2.publicKey': publicWebpKey,
+          'storage.originalKey': originalKey,
+          'storage.publicKey': publicWebpKey,
           updatedAt: new Date(),
         },
         $setOnInsert: {
@@ -194,7 +196,7 @@ async function main() {
     console.log(`ingested: ${slug}`);
   }
 
-  console.log(`\nDone. ${files.length} file(s) ${args.dryRun ? 'previewed (no R2/Mongo writes)' : 'ingested'}.`);
+  console.log(`\nDone. ${files.length} file(s) ${args.dryRun ? 'previewed (no storage/Mongo writes)' : 'ingested'}.`);
   process.exit(0);
 }
 

@@ -44,6 +44,11 @@ export interface Fulfillment {
 
 export interface OrderDoc {
   _id: ObjectId;
+  /** Set only when the order was placed by a signed-in account, and never inferred
+   *  afterwards from a matching email — signup emails are unverified, so back-filling
+   *  by address would let anyone claim a stranger's order history by registering with
+   *  their address. Guest orders simply stay guest orders. */
+  userId?: ObjectId;
   items: OrderItem[];
   subtotalCents: number;
   shippingCents: number;
@@ -65,24 +70,29 @@ export interface NewOrderInput {
   subtotalCents: number;
   shippingCents: number;
   totalCents: number;
+  /** Present when a signed-in account placed the order — this is the only way an order
+   *  is ever bound to a user. */
+  user?: { id: ObjectId; email: string; name?: string };
 }
 
 /**
- * The order is created before the Stripe Checkout Session exists, so there's no
- * customer email yet — Stripe collects it during hosted checkout, and the webhook
+ * The order is created before the Stripe Checkout Session exists, so for a guest there's
+ * no customer email yet — Stripe collects it during hosted checkout, and the webhook
  * back-fills `customer`/`shippingAddress` onto this same document when payment
- * completes (see markOrderPaid).
+ * completes (see markOrderPaid). A signed-in buyer's account email is seeded here, and
+ * Stripe's own (possibly different) billing email overwrites it at that same point.
  */
 export async function createPendingOrder(db: Db, input: NewOrderInput): Promise<OrderDoc> {
   const now = new Date();
   const doc: Omit<OrderDoc, '_id'> = {
+    ...(input.user ? { userId: input.user.id } : {}),
     items: input.items,
     subtotalCents: input.subtotalCents,
     shippingCents: input.shippingCents,
     totalCents: input.totalCents,
     currency: 'usd',
     status: 'pending',
-    customer: { email: '' },
+    customer: input.user ? { email: input.user.email, name: input.user.name } : { email: '' },
     history: [{ status: 'pending', at: now, actor: 'system', note: 'Order created, awaiting payment' }],
     createdAt: now,
     updatedAt: now,
@@ -132,4 +142,24 @@ export async function getOrderById(db: Db, id: ObjectId): Promise<OrderDoc | nul
 
 export async function getOrderByStripeSessionId(db: Db, stripeSessionId: string): Promise<OrderDoc | null> {
   return db.collection<OrderDoc>('orders').findOne({ stripeSessionId });
+}
+
+/** Orders a signed-in customer may see in their account area. Keyed on `userId` only —
+ *  see the field's comment on why matching by email would be a hole, not a feature. */
+export async function listOrdersForUser(db: Db, userId: ObjectId, limit = 100): Promise<OrderDoc[]> {
+  return db.collection<OrderDoc>('orders').find({ userId }).sort({ createdAt: -1 }).limit(limit).toArray();
+}
+
+/**
+ * Whether a given viewer may see an order.
+ *
+ * Guest orders stay reachable by anyone holding the (unguessable, 96-bit) order id, as
+ * they were before accounts existed — that link is what a guest gets after checkout and
+ * in their confirmation email, and there's no account to authenticate them against.
+ * Orders owned by an account are restricted to that account and to admins.
+ */
+export function canViewOrder(order: Pick<OrderDoc, 'userId'>, viewer: { id: string; role: string } | undefined): boolean {
+  if (!order.userId) return true;
+  if (!viewer) return false;
+  return viewer.role === 'admin' || order.userId.toString() === viewer.id;
 }

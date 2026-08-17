@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import { z } from 'astro/zod';
 import { ActionError, defineAction } from 'astro:actions';
 import { admin } from './admin';
+import { auth } from './auth';
 import { addCartItem, removeCartItem, updateCartItemQty } from '../lib/cart';
 import { getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
 import { getDb } from '../lib/db';
@@ -35,6 +36,7 @@ function parsePhotoId(raw: string): InstanceType<typeof ObjectId> {
 
 export const server = {
   admin,
+  auth,
 
   quotePrice: defineAction({
     accept: 'json',
@@ -219,7 +221,16 @@ export const server = {
       const shippingCents = computeShippingCents(settings, hasPrintItem);
       const totalCents = subtotalCents + shippingCents;
 
-      const order = await createPendingOrder(db, { items: orderItems, subtotalCents, shippingCents, totalCents });
+      // Checkout stays open to guests — an account is a convenience (order history,
+      // saved details), never a gate in front of a purchase.
+      const sessionUser = await context.session?.get('user');
+      const order = await createPendingOrder(db, {
+        items: orderItems,
+        subtotalCents,
+        shippingCents,
+        totalCents,
+        ...(sessionUser ? { user: { id: new ObjectId(sessionUser.id), email: sessionUser.email, name: sessionUser.name } } : {}),
+      });
 
       const stripe = createStripeClient(getStripeConfig().secretKey);
       const siteUrl = getPublicSiteUrl();
@@ -242,6 +253,9 @@ export const server = {
         mode: 'payment',
         line_items: lineItems,
         metadata: { orderId: order._id.toString() },
+        // Prefills (and locks) the email field for a signed-in buyer; Stripe still
+        // collects it itself for guests.
+        ...(sessionUser ? { customer_email: sessionUser.email } : {}),
         success_url: `${siteUrl}/${input.lang}/order/${order._id.toString()}`,
         cancel_url: `${siteUrl}/${input.lang}/cart`,
         ...(hasPrintItem

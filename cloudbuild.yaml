@@ -1,0 +1,68 @@
+# Builds the container and deploys it to Cloud Run.
+#
+#   gcloud builds submit --config cloudbuild.yaml
+#
+# A build config rather than `gcloud run deploy --source .` for one reason:
+# PUBLIC_SITE_URL is a *client* astro:env variable, inlined into the built output
+# (canonical URLs, hreflang, sitemap, OG tags). It must reach `docker build` as a build
+# arg, and `run deploy --source` has no way to pass one.
+substitutions:
+  _SERVICE: valdiviezo-gallery
+  _REGION: us-east1
+  _REPO: valdiviezo
+  # The service URL as Cloud Run actually assigned it. Do not try to predict this: this
+  # project got the hashed form (SERVICE-HASH-REGIONCODE.a.run.app) rather than the
+  # deterministic SERVICE-PROJECTNUMBER.REGION.run.app form, so the first deploy is what
+  # tells you the value. Override with a custom domain once one is attached, and rebuild:
+  # changing it requires a new image, not just a new revision.
+  _SITE_URL: https://valdiviezo-gallery-fvve3xyyxq-ue.a.run.app
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - PUBLIC_SITE_URL=${_SITE_URL}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}']
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      # A storefront: unauthenticated by definition. The admin panel is guarded by the
+      # application's own session, not by Cloud Run IAM.
+      - --allow-unauthenticated
+      # Runs as the app's own service account, not the default compute one, so its
+      # permissions are exactly "read these five secrets, read/write this one bucket".
+      - --service-account=valdiviezo-storage@$PROJECT_ID.iam.gserviceaccount.com
+      # Secrets stay in Secret Manager and are mounted as env vars at start; they are
+      # never baked into the image or visible in the revision's plain config.
+      - --set-secrets=MONGODB_URI=mongodb-uri:latest,GCS_ACCESS_KEY_ID=gcs-access-key-id:latest,GCS_SECRET_ACCESS_KEY=gcs-secret-access-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest
+      - --set-env-vars=MONGODB_DB_NAME=gallery,STORAGE_DRIVER=gcs,GCS_BUCKET=valdiviezo-gallery,GCS_ORIGINALS_PREFIX=originals,GCS_PUBLIC_PREFIX=public,DOWNLOAD_TOKEN_TTL_DAYS=7,DOWNLOAD_TOKEN_MAX_USES=5
+      # sharp on a 25MB original is memory- and CPU-hungry; the default 512MiB is not
+      # enough to hold a 24MP decode.
+      - --memory=1Gi
+      - --cpu=1
+      - --timeout=300
+      - --max-instances=4
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest

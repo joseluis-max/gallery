@@ -1,15 +1,18 @@
 # José Valdiviezo — Photography Gallery & Print Shop
 
-A white, minimalist, bilingual (es/en) Astro storefront for a Galápagos wildlife/landscape
+A white, minimalist, bilingual (es/en) Astro storefront for a wildlife and nature
 photographer based in Cuenca, Ecuador. Sells physical prints in customer-chosen sizes and
-digital downloads, with a full admin panel for uploads, catalog, orders, and settings.
+digital downloads, with customer accounts, and a full admin panel for uploads, catalog,
+orders, customers, analytics, and settings.
 
 ## Stack
 
 - **Astro 7** (SSR, `output: 'server'`) + **@astrojs/node** (standalone)
 - **Tailwind CSS 4** (CSS-first `@theme`, via the Vite plugin)
 - **MongoDB Atlas** (`mongodb` driver)
-- **Cloudflare R2** (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`)
+- **Google Cloud Storage** (one bucket, via its S3-compatible API — `@aws-sdk/client-s3`
+  + `@aws-sdk/s3-request-presigner`), or local disk in development, selected with
+  `STORAGE_DRIVER`
 - **Stripe** (hosted Checkout Sessions)
 - **sharp** (image pipeline — CLI ingest and admin browser upload share the same code)
 - **zod 4** (Actions input, `astro:env` schema)
@@ -17,17 +20,28 @@ digital downloads, with a full admin panel for uploads, catalog, orders, and set
 
 ## The one thing that actually enforces the paywall
 
-Two physically separate classes of image bytes live in two different R2 buckets:
+Two separate classes of image bytes, under two prefixes of one bucket:
 
-| | Bucket | Access | What it is |
+| | Prefix | Access | What it is |
 |---|---|---|---|
-| **Original** | `originals` | Private — no public URL, ever | Untouched 24MP A7III file |
-| **Derivative** | `public` | Public + CDN | ≤2000px long edge, watermark burned in, EXIF stripped |
+| **Original** | `originals/` | Private — no public URL, ever | Untouched 24MP A7III file |
+| **Derivative** | `public/` | Public + CDN | ≤2000px long edge, watermark burned in, EXIF stripped |
 
 The public site only ever renders `public/` derivatives. There is no code path from a
-public page to an original. After Stripe confirms payment, a short-lived (5-minute)
-presigned URL to the original is minted on demand and bound to a single-use-limited,
-expiring download token — never a durable public link.
+public page to an original: `StorageAdapter.publicUrl()` takes no bucket parameter and
+hardcodes the public prefix, so it is not *possible* to construct a public URL for an
+original.
+
+After Stripe confirms payment, a short-lived (5-minute) presigned URL to the original is
+minted on demand and bound to a single-use-limited, expiring download token — never a
+durable public link.
+
+The separation between the two prefixes is a **per-object `public-read` ACL** on
+derivatives — the bucket itself grants the public nothing. (GCS forbids IAM conditions
+on `allUsers` bindings, so a prefix-scoped public policy isn't available; see "Storage
+drivers" below.) A derivative that somehow missed its ACL is a broken thumbnail; there
+is no path in this scheme where an original becomes public. Run `pnpm verify-storage`
+to prove it holds.
 
 **Honest limitation:** anything rendered in a browser can be screenshotted. That is not
 fixable from the server side, and this project doesn't pretend otherwise. The defenses
@@ -54,17 +68,19 @@ pnpm dev
    ```bash
    pnpm run init-db
    ```
-3. **Ingest photos** — real run uploads to R2 and upserts Mongo; `--dry-run` writes
+3. **Ingest photos** — real run uploads to the configured bucket and upserts Mongo; `--dry-run` writes
    derivatives to `./tmp/ingest-preview/` and prints the planned document instead:
    ```bash
    pnpm ingest ./seed/photos --collection galapagos --dry-run
-   pnpm ingest ./seed/photos --collection galapagos   # real run, needs R2 + Mongo
+   pnpm ingest ./seed/photos --collection galapagos   # real run, needs GCS + Mongo
    ```
-4. **Generate an admin password hash**, then paste it into `.env` as
-   `ADMIN_PASSWORD_HASH`:
+4. **Create the first admin account** (accounts live in Mongo, not in `.env`):
    ```bash
-   pnpm hash-admin-password "your-real-password"
+   pnpm create-admin jose@example.com "your-real-password" "José Valdiviezo"
    ```
+   Re-running it against an existing address promotes that account to admin, re-enables
+   it, and resets its password — which is also the way back in if every admin gets
+   locked out.
 
 ### Scripts
 
@@ -77,8 +93,9 @@ pnpm dev
 | `pnpm test` | Unit tests (vitest) |
 | `pnpm ingest <dir> [--collection=x] [--dry-run]` | Run the image pipeline over a folder |
 | `pnpm run init-db` | Create Mongo collections + indexes |
+| `pnpm verify-storage` | Prove the configured bucket works *and* that originals aren't public |
 | `pnpm run generate:placeholders` | Generate synthetic test photos from `seed/metadata.json` |
-| `pnpm hash-admin-password <password>` | Print a scrypt hash for `ADMIN_PASSWORD_HASH` |
+| `pnpm create-admin <email> <password> [name]` | Create (or promote) an admin account |
 
 ## Environment variables
 
@@ -86,12 +103,23 @@ See `.env.example` for the full list with inline comments. Summary:
 
 - `PUBLIC_SITE_URL` — absolute site URL, used for hreflang/sitemap/OG tags.
 - `MONGODB_URI`, `MONGODB_DB_NAME` — Atlas connection.
-- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_ORIGINALS`,
-  `R2_BUCKET_PUBLIC`, `R2_PUBLIC_BASE_URL` — Cloudflare R2. The originals bucket must
-  have **no public access policy and no CDN binding** — that's the enforcement boundary.
+- `STORAGE_DRIVER` — `gcs` | `local` (default `gcs`). The `local` driver needs no
+  credentials at all; a missing GCS variable fails at startup naming the variable *and*
+  the driver that wanted it, rather than surfacing later as an opaque SDK error
+  mid-upload.
+- `GCS_ACCESS_KEY_ID`, `GCS_SECRET_ACCESS_KEY`, `GCS_BUCKET`, `GCS_ORIGINALS_PREFIX`,
+  `GCS_PUBLIC_PREFIX`, `GCS_PUBLIC_BASE_URL` (optional) — Google Cloud Storage.
+- `LOCAL_STORAGE_DIR` — where the `local` driver keeps its two prefixes.
+
+  The bucket must grant the public nothing: derivatives are readable because of their
+  own object ACL, which is what keeps `originals/` private in the same bucket.
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — Stripe (test-mode keys while developing).
-- `ADMIN_PASSWORD_HASH` — output of `pnpm hash-admin-password`.
 - `DOWNLOAD_TOKEN_TTL_DAYS` (default 7), `DOWNLOAD_TOKEN_MAX_USES` (default 5).
+
+There is deliberately **no admin credential in the environment**. `ADMIN_PASSWORD_HASH`
+used to live here; admin access is now a `users` document with `role: 'admin'`, created
+with `pnpm create-admin`. An existing deployment can drop the variable from its `.env` —
+nothing reads it — and run `pnpm create-admin` once to get back into the panel.
 
 `astro:env` validates all of this at startup — a missing required secret fails fast
 rather than surfacing as a confusing runtime error later.
@@ -120,28 +148,211 @@ Before shooting for production, point `pnpm ingest` at the actual full-res Sony 
 originals — that's the whole reason `scripts/ingest.ts` takes an arbitrary input
 directory rather than being hardcoded to `seed/photos/`.
 
-### Previewing the gallery locally without R2
+### Previewing the gallery locally without a bucket
 
 `scripts/seed-preview.ts` (`pnpm tsx scripts/seed-preview.ts`) is a dev-only convenience:
 it runs the real photos through the real image pipeline, writes the watermarked
 derivatives straight into `public/local-public/` (served by Astro itself, git-ignored),
 and upserts them into Mongo as `status: 'published'` — so the actual gallery, detail, and
-admin pages render against real content and a real database with zero R2 setup. Requires
-a real `MONGODB_URI`; doesn't touch R2 or Stripe. Not part of the production ingest path
-— `pnpm ingest` (uploads to R2, defaults new photos to `draft`) is what actually publishes
+admin pages render against real content and a real database with zero cloud setup.
+Requires a real `MONGODB_URI`; touches neither GCS nor Stripe. Not part of the production
+ingest path — `pnpm ingest` (uploads to the bucket, defaults new photos to `draft`) is what actually publishes
 a shoot.
+
+## Storage drivers
+
+Where the image bytes live is one environment variable. Both drivers implement the same
+`StorageAdapter` interface (`src/lib/storage.ts`), so nothing above that seam — the
+pages, the admin panel, `pnpm ingest` — knows which one is in use.
+
+| `STORAGE_DRIVER` | Backend | Browser upload goes to | Use it for |
+|---|---|---|---|
+| `gcs` | Google Cloud Storage, one bucket | GCS directly (presigned) | production |
+| `local` | disk under `LOCAL_STORAGE_DIR` | the app's own admin route | development |
+
+The default is `gcs`: a deployment that forgets to set `STORAGE_DRIVER` should fail
+loudly on a missing credential, not silently write customer uploads to a container's
+disk.
+
+### Google Cloud Storage — one bucket, two prefixes
+
+The live bucket is `gs://valdiviezo-gallery` (project `boxwood-theory-473017-t1`,
+US-EAST1). Originals live under `originals/`, derivatives under `public/`.
+
+**How the split is enforced, and why it isn't bucket policy.** The obvious design — one
+bucket, a public-read IAM binding conditioned on the `public/` prefix — is *impossible*
+in Cloud Storage. GCS rejects it outright:
+
+```
+ERROR: LintValidationUnits/PublicResourceAllowConditionCheck
+       Conditions are not allowed on public resources.
+```
+
+IAM Conditions cannot be attached to an `allUsers` binding, so the only bucket-wide
+public binding available would expose `originals/` too. One bucket therefore requires
+**fine-grained ACLs**: the bucket carries no public binding at all, and each derivative
+is made readable individually with a `public-read` object ACL, applied by
+`putObject` only when writing to the public class.
+
+That has one genuine advantage over the prefix-condition design and one cost:
+
+- **Fails safe.** A derivative written without the ACL is simply unreadable — a broken
+  thumbnail, immediately visible, harmless. There is no mistake in this scheme whose
+  failure mode is "an original became world-readable".
+- **Uniform bucket-level access must stay OFF**, since UBLA disables object ACLs. That
+  means object ACLs are part of the security model, which most GCS hardening advice
+  tells you to avoid. Two buckets would avoid it; one bucket cannot.
+
+The code holds up its end: `GcsStorageAdapter` routes every read, write, signature, and
+URL through one `objectName()` helper, and the ACL is applied on `bucket === 'public'`
+rather than on trust in the call site — so nothing can write, sign, or link an original
+outside the originals prefix, and `publicUrl()` can only ever name the public prefix.
+
+Setup (already applied to `valdiviezo-gallery`):
+
+1. **One bucket, fine-grained access, public access prevention off** — PAP is enforced
+   by default on new buckets and blocks the per-object ACL outright:
+   ```bash
+   gcloud storage buckets create gs://valdiviezo-gallery --no-uniform-bucket-level-access
+   gcloud storage buckets update gs://valdiviezo-gallery --no-public-access-prevention
+   ```
+2. **A service account with `objectAdmin` on the bucket**, and **HMAC keys** for it
+   (Cloud Storage → Settings → Interoperability, or the CLI below). The S3-compatible
+   XML API is what makes presigned browser uploads possible; a service-account JSON key
+   can't be used by the AWS SDK this project depends on:
+   ```bash
+   gcloud iam service-accounts create valdiviezo-storage
+   gcloud storage buckets add-iam-policy-binding gs://valdiviezo-gallery \
+     --member=serviceAccount:valdiviezo-storage@<project>.iam.gserviceaccount.com \
+     --role=roles/storage.objectAdmin
+   gcloud storage hmac create valdiviezo-storage@<project>.iam.gserviceaccount.com
+   ```
+3. **CORS**, so the browser's direct `PUT` is allowed. Add the production origin here
+   before going live — only `localhost:4321` is configured today:
+   ```bash
+   cat > cors.json <<'JSON'
+   [{ "origin": ["http://localhost:4321", "https://your-domain.example"],
+      "method": ["PUT", "GET", "HEAD"],
+      "responseHeader": ["Content-Type", "Content-Length"], "maxAgeSeconds": 3600 }]
+   JSON
+   gcloud storage buckets update gs://valdiviezo-gallery --cors-file=cors.json
+   ```
+4. Set `STORAGE_DRIVER=gcs` plus the `GCS_*` variables (see `.env.example`), then
+   **verify the boundary before uploading anything**:
+   ```bash
+   pnpm verify-storage
+   ```
+   It writes a probe object under each prefix and checks the four properties that
+   matter: writes succeed, an original reads back intact, the derivative is publicly
+   readable (200), and the *same original* fetched without a signature is **not**
+   (403/404) while a presigned URL for it is (200). Then it deletes the probes. Re-run
+   it after any change to the bucket's permissions.
+
+`GCS_PUBLIC_BASE_URL` is optional and defaults to
+`https://storage.googleapis.com/<bucket>`; point it at Cloud CDN or a custom domain in
+production. `GCS_ORIGINALS_PREFIX`/`GCS_PUBLIC_PREFIX` default to `originals`/`public`
+and must match whatever the IAM condition above names.
+
+### Local driver
+
+`STORAGE_DRIVER=local` writes to `LOCAL_STORAGE_DIR` (default `tmp/local-storage`,
+git-ignored) and needs no cloud account at all. Two routes exist solely for it, and both
+404 under any other driver so a misconfiguration can't turn the app server into an
+upload proxy for a cloud bucket:
+
+- `src/pages/api/admin/upload/[...key].ts` — the browser's `PUT` target, standing in for
+  a presigned URL. It carries no signature, so the **admin session is** the
+  authorization.
+- `src/pages/local-public/[...key].ts` — serves the public bucket's derivatives. It can
+  only ever read the public directory, the same structural guarantee `publicUrl()` has.
+
+Keys reaching those routes become filesystem paths, so both run through
+`isSafeObjectKey` (`src/lib/storageKeys.ts`) — cloud drivers don't need that check,
+which is precisely why it's easy to forget when adding a disk-backed one.
+
+The honest limitations: no CDN, the bytes live wherever the process runs, and digital
+downloads stream *through* the app server because there's no presigned URL to redirect
+to. All fine for development, none of it fine for production.
+
+## Accounts & access
+
+One `users` collection, one sign-in code path, two roles.
+
+| | Customer | Admin |
+|---|---|---|
+| Signs in at | `/{es,en}/account/login` | `/admin` |
+| Created by | public sign-up form | `pnpm create-admin`, or another admin in `/admin/customers` |
+| Can see | own profile + own orders | the whole panel |
+
+- **An admin is a `users` document with `role: 'admin'`, not a separate credential.**
+  `actions.auth.login` is the only sign-in handler for both roles; the admin panel just
+  refuses a session whose role isn't `admin`. The public sign-up form always creates a
+  `customer` regardless of what it posts — privileged accounts come only from an existing
+  admin or the CLI.
+- **The session cookie is a snapshot, so privileged surfaces re-read the account.**
+  `requireAdmin` (Actions), `src/middleware.ts` (admin pages), and the account mutations
+  all call `findActiveUserById` rather than trusting the cookie's `role`. Disabling or
+  demoting someone therefore takes effect on their *next request* instead of whenever
+  their cookie happens to expire — verified live by disabling an admin mid-session and
+  watching their open panel bounce to the sign-in form.
+- **Checkout stays open to guests.** An account is a convenience (order history, a
+  prefilled email), never a gate in front of a purchase.
+- **Orders bind to a user only at checkout time, never by matching email afterwards.**
+  Sign-up emails are unverified, so back-filling `userId` from `customer.email` would let
+  anyone read a stranger's order history by registering with their address. The
+  consequence is deliberate and worth knowing: orders placed as a guest do **not** appear
+  in an account created later with the same address. Adding email verification is the
+  prerequisite for changing that.
+- **Order pages follow from the same rule.** A guest order stays reachable by its
+  unguessable id (that link is what the buyer gets after checkout, and there's no account
+  to authenticate them against); an order owned by an account is visible only to that
+  account and to admins, and 404s — not 403s — for anyone else, so the response can't
+  confirm that an order id exists.
+- **Two guards keep the panel from being locked shut:** you can't demote or disable your
+  own admin account, and you can't remove the last enabled admin. Both are check-then-act
+  against a concurrent second admin, which is why `pnpm create-admin` remains the
+  documented recovery path.
+- **Sign-in and sign-up are rate limited per IP per surface** (`lib/auth.ts`'s
+  `rateLimitKey`), so a customer fumbling their password can't consume the admin panel's
+  attempt budget from the same office IP. Wrong password, unknown address, and disabled
+  account are all reported identically, so the form can't be used to enumerate accounts.
+
+## Admin analytics
+
+`/admin` and `/admin/analytics` render **server-side SVG charts** — no charting library,
+no client-side plotting code, nothing to hydrate:
+
+- `lib/analytics.ts` holds the reporting queries. "Revenue" always means orders in `paid`
+  or `fulfilled`, and time bucketing happens in JS (pure, unit-tested) rather than in a
+  `$dateToString` stage, because month/day boundaries follow the server's local timezone —
+  a Mongo aggregation would silently reinterpret them as UTC and move an evening order in
+  Ecuador into the wrong day.
+- `lib/charts.ts` holds the geometry (scales, ticks, bar paths, line paths) as pure
+  functions, so the arithmetic is testable instead of buried in a template. The `.astro`
+  components in `src/components/admin/` are markup over its output.
+- Every chart plots **one series in one hue** (`--color-data`, its own token: the light
+  step is the brand accent, the dark step was chosen and validated against the dark
+  surface rather than inherited), carries a **collapsed table twin** with exact values so
+  nothing is reachable by hover alone, and grows bars from a single baseline with rounded
+  data-ends. Axis ticks never go fractional — cents and unit counts are both whole
+  numbers.
 
 ## Architecture notes
 
 - **`lib/` is framework-independent.** `lib/pricing.ts`, `lib/images.ts`,
   `lib/downloads.ts`, `lib/storage.ts`, `lib/cart.ts` etc. take configuration as
-  parameters and never import `astro:env` or Mongo/R2 clients directly — that's what
+  parameters and never import `astro:env` or Mongo/storage clients directly — that's what
   makes them unit-testable and shared cleanly between the Astro app and the plain-Node
   CLI scripts (`scripts/ingest.ts`, `scripts/init-db.ts`).
 - **One image pipeline, two entry points.** `lib/images.ts`'s `processOriginal()` is
   called identically by `scripts/ingest.ts` (CLI) and the admin upload flow
   (`src/actions/admin.ts`'s `completeUpload`/`retryUploadJob`) — there is no second,
   divergent implementation of the watermark/rotate/derivative logic.
+- **One storage seam, three backends.** Nothing outside `src/lib/config.ts`'s
+  `createStorage()` (and its CLI twin in `scripts/config.ts`) names a storage driver;
+  every page, action, and route asks for a `StorageAdapter` and gets whichever one
+  `STORAGE_DRIVER` selects. Swapping in another S3-compatible provider is a constructor,
+  not a reimplementation.
 - **Prices are computed server-side only, every time.** `lib/pricing.ts`'s
   `computePrintPrice()` is a pure function of `(input, ctx)` fed identically by the live
   quote UI action (`quotePrice`) and the checkout action's authoritative re-pricing. The
@@ -153,11 +364,14 @@ a shoot.
   expiry/use-cap guards baked into the filter, to avoid a race where concurrent requests
   could exceed `maxUses`.
 - **Every admin mutation writes an audit log entry** via the single `writeAuditLog()`
-  helper (`lib/audit.ts`), and every admin Action (except `login`) is defined through
-  `defineAdminAction()` (`src/actions/adminGuard.ts`), which enforces the session check
-  structurally rather than relying on each handler remembering to call it.
+  helper (`lib/audit.ts`), and every admin Action is defined through
+  `defineAdminAction()` (`src/actions/adminGuard.ts`), which enforces the auth check
+  structurally rather than relying on each handler remembering to call it. Entries record
+  *which* admin acted (their email), now that there can be more than one — including
+  sign-ins and every account change.
 - **Admin sign-in lives inline at `/admin`**, not on a separate route — one entry point
-  into the panel, with no separate login route to guard.
+  into the panel, with no separate login route to guard. Sign-in itself is
+  `actions.auth.login`, shared with the public account area.
 - **`i18n.routing` is `'manual'`, applied selectively in `src/middleware.ts`.** Astro's
   built-in (non-manual) i18n enforcement 404s *every* "page"-type route without a locale
   prefix, project-wide — not just ones nested under `[lang]`. That silently 404'd the
@@ -179,7 +393,7 @@ a shoot.
 ## Verification performed in this build
 
 A real MongoDB Atlas cluster was connected and used for live verification later in the
-build (Cloudflare R2 and Stripe credentials remain throwaway placeholders — `.env` still
+build (Google Cloud Storage and Stripe credentials remain unset — `.env` still
 satisfies `astro:env`'s startup validation only for those). What was actually verified:
 
 - **Live against real Atlas:** `pnpm run init-db` (collections/indexes created for real),
@@ -195,22 +409,61 @@ satisfies `astro:env`'s startup validation only for those). What was actually ve
   browsing because the browser still renders a 404-status body, only caught by explicitly
   checking `fetch()` response status codes.
 
+- **Accounts, verified end to end against the compiled production build** (`node
+  dist/server/entry.mjs`) pointed at a throwaway `gallery_authcheck` database, dropped
+  afterwards: `pnpm create-admin` (create, idempotent re-run, short-password rejection);
+  admin sign-in, and every `/admin/*` route serving the sign-in form instead of its
+  content without a session; customer sign-up (with duplicate-email and weak-password
+  rejection), account page in both locales, profile edit, password change, sign-out;
+  a signed-in *customer* being refused the panel and every admin Action (401
+  `ADMIN_AUTH_REQUIRED`); creating/promoting/disabling accounts from the panel, an admin
+  password reset, the self-lockout and last-admin guards firing, a disabled account being
+  refused sign-in; **an admin disabled mid-session losing their already-open panel on the
+  next request**; order visibility (an account-owned order 404s for anonymous visitors,
+  200s for its owner and for admins, while a guest order stays link-accessible); the
+  `?next=` open-redirect guard rewriting an off-site target back to `/es/account`; and
+  the dashboard/analytics charts rendering real SVG marks against seeded orders.
+- **The upload path, verified end to end on the `local` driver** against the compiled
+  build: `requestUploadUrl` → browser `PUT` to `/api/admin/upload/...` → `completeUpload`
+  running the real sharp pipeline. A 6000×4000 original came out as 2000×1333 watermarked
+  `.webp` + `.jpg` derivatives, served with the right content types from
+  `/local-public/...`, landing as a **draft** invisible in the public gallery until
+  published. Also checked: the original is *not* reachable through the public route
+  (404), path traversal is rejected on both local routes, an unauthenticated `PUT`
+  to the upload route is 401, and deleting the photo removed every byte from disk.
+- **A real pre-existing bug this surfaced, now fixed:** `orders.stripeSessionId` had a
+  unique but *non-sparse* index, so only one order could exist without a session id at a
+  time. Since `createPendingOrder` inserts before `attachStripeSession` runs, a second
+  checkout starting in that window failed to insert — and any order that never got a
+  session id would have blocked all later ones permanently. The index is now
+  `{ unique: true, sparse: true }`, and `init-db` drops/recreates an index whose options
+  changed rather than erroring on the conflict.
 - `pnpm build` and `pnpm check` — clean, including under Astro 7's stricter Rust
   compiler (unclosed tags are hard errors now).
-- `pnpm test` — 85 unit tests covering `lib/pricing.ts` (aspect tolerance, `maxPrintCm`
+- `pnpm test` — 168 unit tests covering `lib/pricing.ts` (aspect tolerance, `maxPrintCm`
   rejection, paper multipliers, per-photo overrides, custom-size clamping),
   `lib/downloads.ts` (token generation/hashing, expiry/exhaustion, the atomic
   consume-token race guard), `lib/orders.ts` (the `status:'pending'` guard filter that
   makes double-processing a payment structurally impossible, conditional customer/
-  shipping-address merge), `lib/storage.ts` (local adapter real I/O, R2 adapter checksum
-  config), `lib/images.ts` (run for real against the generated placeholders — including
+  shipping-address merge), `lib/storage.ts` (local adapter real I/O and its two URL
+  modes, the GCS endpoint/path-style/checksum config, single-bucket prefixing, and that
+  `publicUrl` can only ever name the public prefix), `lib/storageKeys.ts` (traversal, absolute
+  paths, and backslash separators rejected before a key becomes a filesystem path),
+  `lib/images.ts` (run for real against the generated placeholders — including
   asserting the sideways fixture comes out correctly oriented and that watermark
   compositing visibly changes the expected pixel region), `lib/auth.ts` (password
   hash/verify, rate limiting), `lib/cart.ts`, `lib/slug.ts`, `lib/serialize.ts`, the
-  download-delivery API route's status-code mapping, and the Stripe webhook route
+  download-delivery API route's status-code mapping, the Stripe webhook route
   (missing/invalid signature, first-time processing, idempotent replay of an
   already-processed event, and that a mid-handler failure leaves the event unmarked so
-  Stripe's own retry can reprocess it).
+  Stripe's own retry can reprocess it), `lib/users.ts` (email normalization, password
+  policy, duplicate-key → `EMAIL_TAKEN`, that a disabled account fails authentication
+  even with the right password, and that the session snapshot never carries the password
+  hash), `lib/charts.ts` (tick rounding, the all-zero and single-point axes, mark
+  geometry staying inside the plot), `lib/analytics.ts` (month/day bucketing across year
+  boundaries, half-open bucket edges, empty periods reported as zero), and
+  `lib/redirects.ts` (the `?next=` open-redirect guard), and `lib/db.ts` (that a failed
+  connection is not cached, so an instance recovers instead of replaying one error).
 - `pnpm ingest ./seed/photos --dry-run` — full pipeline (EXIF read, auto-rotate,
   watermark, derivative encode, LQIP) against the synthetic placeholders, with the
   sideways fixture visually confirmed to come out upright and the watermark confirmed
@@ -223,12 +476,30 @@ satisfies `astro:env`'s startup validation only for those). What was actually ve
   the full admin sign-in flow (unauthenticated → form → submit → session set → guarded
   pages recognize the session → logout) was exercised live end-to-end.
 
-### Deferred — needs real R2/Stripe credentials, not part of this session
+### Verified live against `gs://valdiviezo-gallery`
 
-Once real R2 and Stripe values are in `.env` (real `MONGODB_URI` is already live):
+The storage half is no longer deferred. Against the real bucket, through the compiled
+build: a 6000×4000 original presigned and `PUT` **directly to GCS** (never through the
+app server), pulled back for the sharp pipeline, and written out as 2000×1333
+watermarked `.webp` + `.jpg` derivatives. Then, on those real objects:
 
-- [ ] A real (non-dry-run) `pnpm ingest`, uploading to real R2.
-- [ ] Confirm `curl`-ing an `originals/` key directly returns 403 (no public policy).
+| URL | Expected | Got |
+|---|---|---|
+| `public/img-gcs.webp` | 200 | **200** |
+| `public/img-gcs.jpg` | 200 | **200** |
+| `originals/uploads/…jpg` | 403 | **403** |
+| bucket listing (enumeration) | 403 | **403** |
+
+The fetched derivative was confirmed to decode as a real 2000×1333 JPEG rather than an
+error page, the admin catalog and public gallery both rendered
+`storage.googleapis.com/valdiviezo-gallery/public/...` URLs, and deleting the photo
+removed all three objects from the bucket. `pnpm verify-storage` passes end to end.
+
+### Deferred — needs real Stripe credentials, not part of this session
+
+Once real Stripe values are in `.env`:
+
+- [ ] A real (non-dry-run) `pnpm ingest`, uploading to the real bucket.
 - [ ] Cart/checkout pages against real seeded data (gallery/detail/admin already verified
       live — see above).
 - [ ] Stripe test-mode checkout end to end: `stripe listen --forward-to
@@ -237,17 +508,116 @@ Once real R2 and Stripe values are in `.env` (real `MONGODB_URI` is already live
       original as an attachment, and a **replayed webhook mints no second token**.
 - [ ] Confirm an expired/over-used download token 403s, and that hitting the order
       success URL without ever paying leaves the order `pending`.
-- [ ] Admin: upload a real ~25MB A7III frame through `/admin/upload`, confirm in the
-      network panel that it goes **directly to R2** (never through the app server),
-      lands as a draft, shows the watermarked preview, and only becomes publicly visible
-      after clicking publish. Confirm a failed job stays retryable.
+- [ ] Admin: upload a real ~25MB A7III frame through `/admin/upload` from an actual
+      browser (the flow is verified, but not yet at full-resolution file sizes, and the
+      bucket CORS rule currently lists only `localhost:4321`). Confirm a failed job stays
+      retryable.
 - [ ] Edit a price in `/admin/settings`, confirm the before/after diff appears in
       `/admin/activity`.
+- [ ] Place a real test order while signed in, and confirm it appears under
+      `/{lang}/account` and on that customer's `/admin/customers/[id]` page.
 - [ ] Lighthouse pass on the gallery for CLS/LCP (needs real images served over HTTP).
 
-## Deploying
+### Not built, and why
 
-`output: 'server'` + `@astrojs/node` standalone — deploy `dist/` plus `node_modules` to
-Fly.io, Railway, Render, or a plain VPS, run `node dist/server/entry.mjs`, and set the
-environment variables from `.env.example` on the host. Point the Stripe webhook endpoint
-at `https://<your-domain>/api/stripe-webhook` in the Stripe dashboard once deployed.
+- **Email verification and "forgot password" are absent** because `lib/email.ts` still
+  has no real provider behind it (see the architecture note). Both are the same small
+  piece of work — a hashed, expiring, single-use token, exactly like `lib/downloads.ts` —
+  once a provider is wired up. Until then, a forgotten password is reset by an admin in
+  `/admin/customers/[id]`, and unverified addresses are why guest orders are never
+  claimed into an account by email match.
+- **No third-party sign-in (Google/Apple).** It would add an OAuth dependency and a
+  second identity path to keep correct, for a shop whose accounts exist mainly to show
+  someone their own order history.
+
+## Deploying to Cloud Run
+
+The service is `valdiviezo-gallery` in `us-east1` (project `boxwood-theory-473017-t1`),
+running as the `valdiviezo-storage` service account — the same one that owns the bucket
+HMAC keys, so its entire authority is "read five secrets, read/write one bucket".
+
+```bash
+gcloud builds submit --config cloudbuild.yaml --region=us-east1
+```
+
+That one command builds the image, pushes it to Artifact Registry, and rolls out a new
+Cloud Run revision. Three things about this setup are non-obvious enough to be worth
+stating:
+
+- **Sessions must not live on the filesystem.** `@astrojs/node` defaults to a local-disk
+  session store, which is silently wrong on Cloud Run: containers are ephemeral and
+  requests spread across instances, so a signed-in visitor would be randomly signed out
+  and their cart randomly empty. `src/lib/sessionDriver.ts` stores sessions in Mongo
+  instead, with a TTL index so abandoned ones expire. It's wired as a driver *entrypoint*
+  rather than inline options because Astro inlines inline driver config **at build time**,
+  which would bake the database URI into the image.
+- **`PUBLIC_SITE_URL` is baked into the image, not injected at runtime.** It's a `client`
+  astro:env variable, so it's inlined into canonical URLs, hreflang, the sitemap, and OG
+  tags during the build — hence the `--build-arg` and the `_SITE_URL` substitution in
+  `cloudbuild.yaml`. Changing the domain means a **rebuild**, not just a new revision.
+  Don't try to predict the Cloud Run URL either: this service got the hashed
+  `SERVICE-HASH-ue.a.run.app` form rather than the deterministic
+  `SERVICE-PROJECTNUMBER.REGION.run.app` one.
+- **Secrets come from Secret Manager**, mounted as environment variables by the revision
+  (`mongodb-uri`, `gcs-access-key-id`, `gcs-secret-access-key`, `stripe-secret-key`,
+  `stripe-webhook-secret`). Nothing secret is in the image, in `cloudbuild.yaml`, or in
+  the revision's plain config. `.dockerignore` excludes `.env` from the build context.
+
+`--memory=1Gi` is deliberate: sharp decoding a 24MP original does not fit comfortably in
+Cloud Run's 512MiB default.
+
+### A bug this deploy exposed: never cache a rejected connection promise
+
+`lib/db.ts` caches its `MongoClient.connect()` promise on `globalThis`, which is right —
+one connection pool per process. But it cached the promise *whatever it resolved to*, so
+a process that started while the database was unreachable cached the **rejection** and
+replayed that identical error for the rest of its life. It never retried, so it could not
+recover even after the database came back.
+
+That is precisely what happened here: the first Cloud Run container booted while Atlas
+was still refusing its IP, and then served the same `MongoServerSelectionError` forever —
+including after the Atlas access list was fixed. The tell was that every log line carried
+an identical TLS session id (`C0ACDA7E037F0000`): one cached error object, not repeated
+connection attempts.
+
+Both `lib/db.ts` and `lib/sessionDriver.ts` now clear the cache on failure so the next
+request opens a fresh connection, and `tests/lib/db.test.ts` pins the behaviour. Worth
+remembering as a class of bug: **a cached promise caches failure too**, and on a
+long-lived server that turns a transient outage into a permanent one.
+
+### MongoDB Atlas must allow the connection
+
+Cloud Run egresses from a large, changing pool of Google IPs. If the Atlas cluster's
+Network Access list doesn't include them, **every request 500s** with a confusing
+symptom — not a timeout or an auth error, but a TLS handshake failure:
+
+```
+MongoServerSelectionError: ... tlsv1 alert internal error ... SSL alert number 80
+```
+
+That is Atlas rejecting an unlisted source IP at the TLS layer. Two ways to fix it:
+
+- **Allow `0.0.0.0/0`** in Atlas → Network Access. Simplest; the cluster is then
+  protected by its credentials alone, which for a SRV-less URI with a strong password is
+  the usual serverless tradeoff.
+- **Give Cloud Run a static egress IP** — a VPC connector plus Cloud NAT with a reserved
+  address, then allowlist just that address. Stricter, and costs roughly $45/month in
+  connector and NAT charges for a shop this size.
+
+### Still to do before this is a public storefront
+
+- [ ] Real Stripe keys in the `stripe-secret-key` / `stripe-webhook-secret` secrets
+      (they currently hold the local placeholders, so checkout will fail), and the
+      webhook endpoint pointed at `https://<service-url>/api/stripe-webhook`.
+- [ ] A custom domain mapped to the service, then a rebuild with `_SITE_URL` set to it
+      and that origin added to the bucket's CORS rule.
+- [ ] Cloud CDN in front of the public prefix, with `GCS_PUBLIC_BASE_URL` pointed at it.
+
+## Deploying elsewhere
+
+`output: 'server'` + `@astrojs/node` standalone, so the `Dockerfile` here works anywhere
+that runs a container (Fly.io, Railway, Render, a plain VPS). Set the environment
+variables from `.env.example` on the host, remembering that `PUBLIC_SITE_URL` is a build
+argument rather than a runtime variable, and point the Stripe webhook endpoint at
+`https://<your-domain>/api/stripe-webhook` once deployed. The Mongo-backed session store
+is what makes more than one instance safe; keep it whatever the host.

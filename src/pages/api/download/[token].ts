@@ -1,8 +1,7 @@
 import type { APIRoute } from 'astro';
 import { consumeDownloadToken } from '../../../lib/downloads';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { createStorage, getDbConfig, getStorageDriver } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
-import { createStorageAdapter } from '../../../lib/storage';
 
 export const prerender = false;
 
@@ -33,8 +32,25 @@ export const GET: APIRoute = async ({ params, request, clientAddress }) => {
     return new Response('This download link is no longer valid.', { status: 403 });
   }
 
-  const storage = createStorageAdapter('r2', getR2Config());
+  const storage = createStorage();
   const filename = result.photoOriginalKey.split('/').pop() ?? 'photo.jpg';
+
+  // Cloud drivers hand the buyer a short-lived presigned URL and step out of the way, so
+  // 25MB originals never stream through the app server. The local driver has no such URL
+  // to hand out (its objects are files on disk, and a browser can't follow `file://`),
+  // so there the bytes do go through the server — acceptable, because local storage is
+  // a development mode by definition.
+  if (getStorageDriver() === 'local') {
+    const bytes = await storage.getObject({ bucket: 'originals', key: result.photoOriginalKey });
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
   const url = await storage.getPresignedGetUrl({
     bucket: 'originals',
     key: result.photoOriginalKey,

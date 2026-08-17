@@ -1,0 +1,139 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import BarChart from '../../../components/admin/BarChart.astro';
+import ColumnChart from '../../../components/admin/ColumnChart.astro';
+import LineChart from '../../../components/admin/LineChart.astro';
+import StatTile from '../../../components/admin/StatTile.astro';
+import {
+  getDailyRevenue,
+  getDashboardKpis,
+  getMonthlyRevenue,
+  getNewCustomersByMonth,
+  getPaperMix,
+  getTopPhotos,
+  getUnitsByType,
+} from '../../../lib/analytics';
+import { formatCents, formatCount, percentChange } from '../../../lib/charts';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+
+// One window for the whole page, chosen from a single control above the charts rather
+// than per-card filters — every chart below re-renders against the same slice.
+const RANGES = [
+  { key: '30', days: 30, label: 'Last 30 days' },
+  { key: '90', days: 90, label: 'Last 90 days' },
+  { key: '365', days: 365, label: 'Last 12 months' },
+] as const;
+const rangeKey = Astro.url.searchParams.get('range') ?? '30';
+const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0];
+
+const [kpis, monthly, daily, newCustomers, topPhotos, paperMix, units] = await Promise.all([
+  getDashboardKpis(db),
+  getMonthlyRevenue(db, 12),
+  getDailyRevenue(db, range.days),
+  getNewCustomersByMonth(db, 12),
+  getTopPhotos(db, 8),
+  getPaperMix(db),
+  getUnitsByType(db),
+]);
+
+const revenueDelta = percentChange(kpis.revenueThisMonthCents, kpis.revenueLastMonthCents);
+const rangeRevenue = daily.revenue.reduce((sum, point) => sum + point.value, 0);
+const rangeOrders = daily.orders.reduce((sum, point) => sum + point.value, 0);
+---
+
+<AdminLayout title="Analytics">
+  <div class="flex flex-wrap items-baseline justify-between gap-3">
+    <h1 class="font-display text-2xl">Analytics</h1>
+    <form class="flex items-center gap-2 text-sm">
+      <label for="range" class="text-ink-muted">Range</label>
+      <select id="range" name="range" class="border border-border bg-transparent px-2 py-1.5" onchange="this.form.submit()">
+        {RANGES.map((option) => <option value={option.key} selected={option.key === range.key}>{option.label}</option>)}
+      </select>
+      <noscript><button type="submit" class="rounded-full border border-ink px-4 py-1.5">Apply</button></noscript>
+    </form>
+  </div>
+
+  <div class="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+    <StatTile label={`Revenue — ${range.label.toLowerCase()}`} value={formatCents(rangeRevenue)} />
+    <StatTile label={`Orders — ${range.label.toLowerCase()}`} value={formatCount(rangeOrders)} />
+    <StatTile
+      label="Revenue this month"
+      value={formatCents(kpis.revenueThisMonthCents)}
+      deltaPct={revenueDelta}
+      deltaLabel="vs last month"
+    />
+    <StatTile label="Average order" value={formatCents(kpis.averageOrderCents)} />
+  </div>
+
+  <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+    <StatTile label="Prints sold" value={formatCount(units.print ?? 0)} />
+    <StatTile label="Digital sold" value={formatCount(units.digital ?? 0)} />
+    <StatTile label="Customer accounts" value={formatCount(kpis.customerCount)} href="/admin/customers" />
+    <StatTile label="Published photos" value={formatCount(kpis.publishedPhotos)} href="/admin/photos" />
+  </div>
+
+  <div class="mt-8 space-y-6">
+    <LineChart
+      title={`Revenue — ${range.label.toLowerCase()}`}
+      subtitle="Paid and fulfilled orders, by day."
+      data={daily.revenue}
+      format="currency"
+      valueHeading="Revenue"
+    />
+
+    <LineChart
+      title={`Orders — ${range.label.toLowerCase()}`}
+      subtitle="Paid and fulfilled orders, by day."
+      data={daily.orders}
+      format="count"
+      valueHeading="Orders"
+    />
+
+    <div class="grid gap-6 lg:grid-cols-2">
+      <ColumnChart
+        title="Revenue by month"
+        subtitle="Last 12 calendar months."
+        data={monthly.revenue}
+        format="currency"
+        valueHeading="Revenue"
+      />
+      <ColumnChart
+        title="Orders by month"
+        subtitle="Last 12 calendar months."
+        data={monthly.orders}
+        format="count"
+        valueHeading="Orders"
+      />
+    </div>
+
+    <ColumnChart
+      title="New customer accounts by month"
+      subtitle="Registrations, last 12 calendar months. Guest checkouts aren't counted."
+      data={newCustomers}
+      format="count"
+      valueHeading="Signups"
+    />
+
+    <div class="grid gap-6 lg:grid-cols-2">
+      <BarChart
+        title="Top photographs by revenue"
+        subtitle="All time, prints and digital combined."
+        data={topPhotos.map((photo) => ({ key: photo.slug, label: photo.title, value: photo.revenueCents }))}
+        format="currency"
+        labelHeading="Photograph"
+        valueHeading="Revenue"
+      />
+      <BarChart
+        title="Paper stock mix"
+        subtitle="Print units sold, by paper."
+        data={paperMix.map((row) => ({ key: row.paper, label: row.paper, value: row.units }))}
+        format="count"
+        labelHeading="Paper"
+        valueHeading="Units"
+      />
+    </div>
+  </div>
+</AdminLayout>

@@ -1,0 +1,38 @@
+---
+/**
+ * A number that doesn't need a chart. Revenue this month against last month is two
+ * values — a two-bar chart of it would be all chrome and no information, so it's a
+ * tile with a delta instead.
+ */
+interface Props {
+  label: string;
+  value: string;
+  /** Percentage change vs the named comparison period; `null` when there's no
+   *  baseline (a first month with nothing to compare against shows no delta at all
+   *  rather than a meaningless +100%). */
+  deltaPct?: number | null;
+  deltaLabel?: string;
+  href?: string;
+}
+
+const { label, value, deltaPct = null, deltaLabel, href } = Astro.props;
+
+const Tag = href ? 'a' : 'div';
+const direction = deltaPct === null ? 'flat' : deltaPct > 0 ? 'up' : deltaPct < 0 ? 'down' : 'flat';
+// Revenue up is good, so direction maps to sentiment here — never assume that in
+// general (returns, refunds, latency all invert it).
+const deltaClass = direction === 'up' ? 'text-data' : direction === 'down' ? 'text-accent' : 'text-ink-muted';
+const arrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '';
+---
+
+<Tag class={`block border border-border p-4 ${href ? 'hover:border-ink' : ''}`} href={href}>
+  <p class="text-xs uppercase tracking-widest text-ink-muted">{label}</p>
+  <p class="mt-1 font-body text-2xl font-semibold">{value}</p>
+  {
+    deltaPct !== null && (
+      <p class={`mt-1 text-xs ${deltaClass}`}>
+        {arrow} {Math.abs(deltaPct).toFixed(0)}%{deltaLabel ? ` ${deltaLabel}` : ''}
+      </p>
+    )
+  }
+</Tag>

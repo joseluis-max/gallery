@@ -24,9 +24,13 @@ export function verifyPassword(password: string, stored: string): boolean {
   return timingSafeEqual(actual, expected);
 }
 
-// In-memory per-IP rate limiter — sufficient for a single-process Node standalone
-// deployment (this whole project's target). Would need a shared store (Mongo/Redis) if
-// ever run behind a load balancer with multiple instances.
+// In-memory rate limiter — sufficient for a single-process Node standalone deployment
+// (this whole project's target). Would need a shared store (Mongo/Redis) if ever run
+// behind a load balancer with multiple instances.
+//
+// The key is caller-supplied rather than always an IP so each sign-in surface gets its
+// own bucket (see `rateLimitKey`): a customer fumbling their password on /es/account/
+// login must not consume the admin panel's attempt budget from the same office IP.
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
 
@@ -37,21 +41,25 @@ interface AttemptWindow {
 
 const attempts = new Map<string, AttemptWindow>();
 
-export function isRateLimited(ip: string, now = Date.now()): boolean {
-  const entry = attempts.get(ip);
+export function rateLimitKey(scope: string, ip: string): string {
+  return `${scope}:${ip}`;
+}
+
+export function isRateLimited(key: string, now = Date.now()): boolean {
+  const entry = attempts.get(key);
   if (!entry || now > entry.resetAt) return false;
   return entry.count >= MAX_ATTEMPTS;
 }
 
-export function recordFailedAttempt(ip: string, now = Date.now()): void {
-  const entry = attempts.get(ip);
+export function recordFailedAttempt(key: string, now = Date.now()): void {
+  const entry = attempts.get(key);
   if (!entry || now > entry.resetAt) {
-    attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
   } else {
     entry.count += 1;
   }
 }
 
-export function clearAttempts(ip: string): void {
-  attempts.delete(ip);
+export function clearAttempts(key: string): void {
+  attempts.delete(key);
 }

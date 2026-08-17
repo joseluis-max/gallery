@@ -26,7 +26,7 @@ export interface PhotoDoc {
   width: number;
   height: number;
   aspectRatio: number;
-  r2: { originalKey: string; publicKey: string };
+  storage: { originalKey: string; publicKey: string };
   lqip: string;
   maxPrintCm: number;
   tags: string[];
@@ -47,8 +47,8 @@ export interface PhotoImageUrls {
 
 /** The public derivative's JPEG fallback shares the WebP key's basename — ingest.ts
  *  always writes both to the same slug. */
-export function getPhotoImageUrls(photo: Pick<PhotoDoc, 'r2'>, storage: StorageAdapter): PhotoImageUrls {
-  const webpKey = photo.r2.publicKey;
+export function getPhotoImageUrls(photo: Pick<PhotoDoc, 'storage'>, storage: StorageAdapter): PhotoImageUrls {
+  const webpKey = photo.storage.publicKey;
   const jpegKey = webpKey.replace(/\.webp$/i, '.jpg');
   return { webp: storage.publicUrl(webpKey), jpeg: storage.publicUrl(jpegKey) };
 }

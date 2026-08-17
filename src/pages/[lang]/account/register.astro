@@ -1,0 +1,96 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { safeRedirectTarget } from '../../../lib/redirects';
+import { MIN_PASSWORD_LENGTH } from '../../../lib/users';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+const next = safeRedirectTarget(Astro.url.searchParams.get('next'), `/${lang}/account`);
+
+const sessionUser = await Astro.session?.get('user');
+if (sessionUser) {
+  return Astro.redirect(sessionUser.role === 'admin' ? '/admin' : next);
+}
+---
+
+<BaseLayout title={`${t.account.registerTitle} — José Valdiviezo`} lang={lang}>
+  <div class="mx-auto max-w-sm px-6 py-16" data-auth-page data-next={next} data-errors={JSON.stringify(t.account.errors)}>
+    <h1 class="font-display text-2xl">{t.account.registerTitle}</h1>
+
+    <form data-register-form class="mt-8 space-y-4">
+      <label class="block text-sm">
+        {t.account.name}
+        <input type="text" name="name" autocomplete="name" required class="mt-1 block w-full border border-border bg-transparent px-3 py-2" />
+      </label>
+      <label class="block text-sm">
+        {t.account.email}
+        <input type="email" name="email" autocomplete="email" required class="mt-1 block w-full border border-border bg-transparent px-3 py-2" />
+      </label>
+      <label class="block text-sm">
+        {t.account.password}
+        <input
+          type="password"
+          name="password"
+          autocomplete="new-password"
+          required
+          minlength={MIN_PASSWORD_LENGTH}
+          class="mt-1 block w-full border border-border bg-transparent px-3 py-2"
+        />
+        <span class="mt-1 block text-xs text-ink-muted">{t.account.passwordHint}</span>
+      </label>
+      <p data-auth-error hidden class="text-sm text-accent"></p>
+      <button
+        type="submit"
+        class="w-full rounded-full bg-ink px-5 py-3 text-sm uppercase tracking-widest text-surface disabled:opacity-40"
+      >
+        {t.account.register}
+      </button>
+    </form>
+
+    <p class="mt-6 text-sm text-ink-muted">
+      {t.account.haveAccount}{' '}
+      <a href={`/${lang}/account/login?next=${encodeURIComponent(next)}`} class="underline hover:text-ink">
+        {t.account.signIn}
+      </a>
+    </p>
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-auth-page]');
+    const form = root?.querySelector<HTMLFormElement>('[data-register-form]');
+    if (!root || !form || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const errorEl = root.querySelector<HTMLElement>('[data-auth-error]')!;
+    const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const messages: Record<string, string> = JSON.parse(root.dataset.errors!);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      submit.disabled = true;
+
+      const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
+      const { error } = await actions.auth.register({
+        name: value('name'),
+        email: value('email'),
+        password: value('password'),
+      });
+
+      if (error) {
+        errorEl.textContent = messages[error.message] ?? messages.UNKNOWN;
+        errorEl.hidden = false;
+        submit.disabled = false;
+        return;
+      }
+
+      window.location.href = root.dataset.next!;
+    });
+  });
+</script>
