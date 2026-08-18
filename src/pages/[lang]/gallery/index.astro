@@ -1,11 +1,10 @@
 ---
 import MosaicGrid, { type GridItem } from '../../../components/MosaicGrid.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
 import { getAllTags, getPhotoImageUrls, getPublishedPhotos } from '../../../lib/photos';
-import { createStorageAdapter } from '../../../lib/storage';
 
 const lang = Astro.params.lang as Locale;
 const t = getDictionary(lang);
@@ -13,7 +12,7 @@ const t = getDictionary(lang);
 const activeTag = Astro.url.searchParams.get('tag') ?? undefined;
 
 const db = await getDb(getDbConfig());
-const storage = createStorageAdapter('r2', getR2Config());
+const storage = createStorage();
 const [photos, tags] = await Promise.all([getPublishedPhotos(db, { tag: activeTag }), getAllTags(db)]);
 
 const items: GridItem[] = photos.map((photo) => {
@@ -30,14 +29,14 @@ const items: GridItem[] = photos.map((photo) => {
 });
 ---
 
-<BaseLayout title={`${t.gallery.title} — José Valdiviezo`} lang={lang}>
+<BaseLayout title={`${t.gallery.title} — José Valdiviezo`} description={t.about.body} lang={lang}>
   <div class="px-6 pb-6 pt-12 md:px-12">
     <h1 class="font-display text-3xl">{t.gallery.title}</h1>
 
     <nav class="mt-6 flex flex-wrap gap-2 text-xs uppercase tracking-widest" aria-label="Filter by tag">
       <a
         href={`/${lang}/gallery`}
-        class={`rounded-full border px-3 py-1.5 ${!activeTag ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted hover:text-ink'}`}
+        class={`chip py-1.5 ${!activeTag ? 'border-ink bg-ink text-surface' : 'text-ink-muted hover:text-ink'}`}
       >
         {t.gallery.allTags}
       </a>
@@ -45,7 +44,7 @@ const items: GridItem[] = photos.map((photo) => {
         tags.map((tag) => (
           <a
             href={`/${lang}/gallery?tag=${encodeURIComponent(tag)}`}
-            class={`rounded-full border px-3 py-1.5 ${activeTag === tag ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted hover:text-ink'}`}
+            class={`chip py-1.5 ${activeTag === tag ? 'border-ink bg-ink text-surface' : 'text-ink-muted hover:text-ink'}`}
           >
             {tag}
           </a>

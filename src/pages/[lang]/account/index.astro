@@ -1,0 +1,200 @@
+---
+import { ObjectId } from 'mongodb';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { listOrdersForUser } from '../../../lib/orders';
+import { MIN_PASSWORD_LENGTH } from '../../../lib/users';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+const sessionUser = await Astro.session?.get('user');
+if (!sessionUser) {
+  return Astro.redirect(`/${lang}/account/login?next=${encodeURIComponent(`/${lang}/account`)}`);
+}
+
+const db = await getDb(getDbConfig());
+// Guest orders placed with the same address deliberately don't appear here — see the
+// `userId` comment in lib/orders.ts.
+const orders = await listOrdersForUser(db, new ObjectId(sessionUser.id));
+
+function fmt(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+---
+
+<BaseLayout title={`${t.account.accountTitle} — José Valdiviezo`} lang={lang}>
+  <div
+    class="mx-auto max-w-2xl px-6 py-16"
+    data-account-page
+    data-lang={lang}
+    data-errors={JSON.stringify(t.account.errors)}
+    data-success={JSON.stringify({ profile: t.account.savedProfile, password: t.account.savedPassword })}
+  >
+    <div class="flex flex-wrap items-baseline justify-between gap-3">
+      <h1 class="font-display text-2xl">{t.account.accountTitle}</h1>
+      <button type="button" data-logout class="text-sm text-ink-muted underline hover:text-accent">
+        {t.account.signOut}
+      </button>
+    </div>
+    <p class="mt-2 text-sm text-ink-muted">{sessionUser.email}</p>
+
+    {
+      sessionUser.role === 'admin' && (
+        <a href="/admin" class="panel mt-6 inline-block px-4 py-2 text-sm hover:border-ink">
+          {lang === 'es' ? 'Ir al panel de administración' : 'Go to the admin panel'} →
+        </a>
+      )
+    }
+
+    <section class="mt-12">
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.account.orders}</h2>
+
+      {orders.length === 0 && <p class="mt-4 text-ink-muted">{t.account.noOrders}</p>}
+
+      {
+        orders.length > 0 && (
+          <table class="mt-4 w-full text-sm">
+            <thead>
+              <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+                <th class="py-2">{t.account.orderNumber}</th>
+                <th class="py-2">{t.account.date}</th>
+                <th class="py-2">{t.account.status}</th>
+                <th class="py-2 text-right">{t.account.total}</th>
+                <th class="py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr class="border-b border-border">
+                  <td class="py-2">#{order._id.toString().slice(-8)}</td>
+                  <td class="py-2 text-ink-muted">{new Date(order.createdAt).toLocaleDateString(lang)}</td>
+                  <td class="py-2">{t.account.statuses[order.status]}</td>
+                  <td class="py-2 text-right">{fmt(order.totalCents)}</td>
+                  <td class="py-2 text-right">
+                    <a href={`/${lang}/order/${order._id.toString()}`} class="underline hover:text-accent">
+                      {t.account.viewOrder}
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </section>
+
+    <section class="mt-12">
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.account.profile}</h2>
+      <form data-profile-form class="mt-4 space-y-4">
+        <label class="block text-sm">
+          {t.account.name}
+          <input
+            type="text"
+            name="name"
+            value={sessionUser.name}
+            autocomplete="name"
+            required
+            class="field mt-1 block w-full px-3 py-2"
+          />
+        </label>
+        <label class="block text-sm">
+          {t.account.email}
+          <input
+            type="email"
+            name="email"
+            value={sessionUser.email}
+            autocomplete="email"
+            required
+            class="field mt-1 block w-full px-3 py-2"
+          />
+        </label>
+        <p data-profile-message hidden class="text-sm"></p>
+        <button type="submit" class="btn btn-ghost">
+          {t.account.saveProfile}
+        </button>
+      </form>
+    </section>
+
+    <section class="mt-12">
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.account.changePassword}</h2>
+      <form data-password-form class="mt-4 space-y-4">
+        <label class="block text-sm">
+          {t.account.currentPassword}
+          <input
+            type="password"
+            name="currentPassword"
+            autocomplete="current-password"
+            required
+            class="field mt-1 block w-full px-3 py-2"
+          />
+        </label>
+        <label class="block text-sm">
+          {t.account.newPassword}
+          <input
+            type="password"
+            name="newPassword"
+            autocomplete="new-password"
+            required
+            minlength={MIN_PASSWORD_LENGTH}
+            class="field mt-1 block w-full px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-ink-muted">{t.account.passwordHint}</span>
+        </label>
+        <p data-password-message hidden class="text-sm"></p>
+        <button type="submit" class="btn btn-ghost">
+          {t.account.changePassword}
+        </button>
+      </form>
+    </section>
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-account-page]');
+    if (!root || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const lang = root.dataset.lang!;
+    const messages: Record<string, string> = JSON.parse(root.dataset.errors!);
+    const successText: { profile: string; password: string } = JSON.parse(root.dataset.success!);
+
+    function show(el: HTMLElement, text: string, ok: boolean) {
+      el.textContent = text;
+      el.className = ok ? 'text-sm text-ink-muted' : 'text-sm text-accent';
+      el.hidden = false;
+    }
+
+    const profileForm = root.querySelector<HTMLFormElement>('[data-profile-form]')!;
+    const profileMessage = root.querySelector<HTMLElement>('[data-profile-message]')!;
+    profileForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const value = (name: string) => (profileForm.elements.namedItem(name) as HTMLInputElement).value;
+      const { error } = await actions.auth.updateProfile({ name: value('name'), email: value('email') });
+      show(profileMessage, error ? (messages[error.message] ?? messages.UNKNOWN) : successText.profile, !error);
+    });
+
+    const passwordForm = root.querySelector<HTMLFormElement>('[data-password-form]')!;
+    const passwordMessage = root.querySelector<HTMLElement>('[data-password-message]')!;
+    passwordForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const value = (name: string) => (passwordForm.elements.namedItem(name) as HTMLInputElement).value;
+      const { error } = await actions.auth.changePassword({
+        currentPassword: value('currentPassword'),
+        newPassword: value('newPassword'),
+      });
+      show(passwordMessage, error ? (messages[error.message] ?? messages.UNKNOWN) : successText.password, !error);
+      if (!error) passwordForm.reset();
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-logout]')?.addEventListener('click', async () => {
+      await actions.auth.logout({});
+      window.location.href = `/${lang}/`;
+    });
+  });
+</script>

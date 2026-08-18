@@ -1,0 +1,81 @@
+---
+import MosaicGrid, { type GridItem } from '../../../components/MosaicGrid.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { formatCompetitionDate, getCompetitionBySlug } from '../../../lib/competitions';
+import { createStorage, getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { getPhotoImageUrls, getPublishedPhotos } from '../../../lib/photos';
+
+const lang = Astro.params.lang as Locale;
+const slug = Astro.params.slug as string;
+const t = getDictionary(lang);
+
+const db = await getDb(getDbConfig());
+// Published only — a draft competition is invisible here as well as in the nav.
+const competition = await getCompetitionBySlug(db, slug);
+
+if (!competition) {
+  Astro.response.status = 404;
+}
+
+let items: GridItem[] = [];
+if (competition) {
+  const storage = createStorage();
+  const photos = await getPublishedPhotos(db, { competitionId: competition._id });
+  items = photos.map((photo) => {
+    const urls = getPhotoImageUrls(photo, storage);
+    return {
+      href: `/${lang}/gallery/${photo.slug}`,
+      slug: photo.slug,
+      title: photo.title[lang],
+      aspectRatio: photo.aspectRatio,
+      lqip: photo.lqip,
+      webpUrl: urls.webp,
+      jpegUrl: urls.jpeg,
+    };
+  });
+}
+
+---
+
+<BaseLayout
+  title={competition ? `${competition.name[lang]} — José Valdiviezo` : `${t.notFound.photoTitle} — José Valdiviezo`}
+  description={competition?.description[lang] || undefined}
+  lang={lang}
+>
+  {
+    !competition && (
+      <div class="mx-auto max-w-lg px-6 py-24 text-center">
+        <h1 class="font-display text-3xl">{t.competitions.empty}</h1>
+        <a href={`/${lang}/competitions`} class="mt-8 inline-block text-sm uppercase tracking-widest text-accent hover:underline">
+          &larr; {t.competitions.backToAll}
+        </a>
+      </div>
+    )
+  }
+
+  {
+    competition && (
+      <>
+        <div class="mx-auto max-w-6xl px-6 pb-8 pt-12 md:px-12">
+          <a href={`/${lang}/competitions`} class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
+            &larr; {t.competitions.backToAll}
+          </a>
+          <h1 class="mt-6 font-display text-3xl">{competition.name[lang]}</h1>
+          <p class="mt-2 text-sm uppercase tracking-widest text-ink-muted">
+            {formatCompetitionDate(competition.date, lang)}
+            {competition.location && ` · ${competition.location}`}
+          </p>
+          {competition.description[lang] && (
+            <p class="mt-4 max-w-prose text-ink-muted leading-relaxed">{competition.description[lang]}</p>
+          )}
+        </div>
+
+        <div class="px-2 pb-20 md:px-6">
+          {items.length > 0 ? <MosaicGrid items={items} /> : <p class="px-4 text-ink-muted">{t.gallery.empty}</p>}
+        </div>
+      </>
+    )
+  }
+</BaseLayout>

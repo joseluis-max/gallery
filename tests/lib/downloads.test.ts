@@ -68,20 +68,24 @@ describe('consumeDownloadToken', () => {
     const db = makeMockDb({
       findOneAndUpdateResult: { orderId, photoId, useCount: 1, maxUses: 5, expiresAt: new Date(Date.now() + 10000) },
       orderFindOneResult: { status: 'paid' },
-      photoFindOneResult: { r2: { originalKey: 'sea-lion.jpg' } },
+      photoFindOneResult: { storage: { originalKey: 'sea-lion.jpg' } },
     });
     const result = await consumeDownloadToken(db, 'raw-token', '1.2.3.4');
     expect(result).toEqual({ ok: true, photoOriginalKey: 'sea-lion.jpg', orderId });
   });
 
-  it('treats a fulfilled order as valid too', async () => {
+  // Inverted deliberately when physical prints were removed: 'fulfilled' used to mean
+  // "shipped" and was accepted alongside 'paid'. It is no longer a status this app
+  // writes, so anything still carrying it is stale data and must NOT open the gate to an
+  // original. This assertion is the regression test for accidentally widening the check.
+  it('rejects an order in any status other than paid, including the retired "fulfilled"', async () => {
     const db = makeMockDb({
       findOneAndUpdateResult: { orderId, photoId },
       orderFindOneResult: { status: 'fulfilled' },
-      photoFindOneResult: { r2: { originalKey: 'sea-lion.jpg' } },
+      photoFindOneResult: { storage: { originalKey: 'sea-lion.jpg' } },
     });
     const result = await consumeDownloadToken(db, 'raw-token', '1.2.3.4');
-    expect(result.ok).toBe(true);
+    expect(result).toEqual({ ok: false, reason: 'ORDER_NOT_PAID' });
   });
 
   it('returns NOT_FOUND when the token hash matches nothing', async () => {

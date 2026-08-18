@@ -1,53 +1,63 @@
 ---
+import { ObjectId } from 'mongodb';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { listAllCompetitions } from '../../../lib/competitions';
+import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { PhotoDoc } from '../../../lib/photos';
-import { createStorageAdapter } from '../../../lib/storage';
 
 const db = await getDb(getDbConfig());
-const storage = createStorageAdapter('r2', getR2Config());
+const storage = createStorage();
 
 const statusFilter = Astro.url.searchParams.get('status');
-const collectionFilter = Astro.url.searchParams.get('collection');
+// 'portfolio' is a real filter value, not an absent one — it selects competitionId: null.
+const competitionFilter = Astro.url.searchParams.get('competition');
 
 const query: Record<string, unknown> = {};
 if (statusFilter) query.status = statusFilter;
-if (collectionFilter) query.collections = collectionFilter;
+if (competitionFilter === 'portfolio') query.competitionId = null;
+else if (competitionFilter) query.competitionId = new ObjectId(competitionFilter);
 
 const photos = await db.collection<PhotoDoc>('photos').find(query).sort({ order: 1, createdAt: -1 }).toArray();
-const allCollections = await db.collection<PhotoDoc>('photos').distinct('collections');
+const allCompetitions = await listAllCompetitions(db);
+const competitionNames = new Map(allCompetitions.map((c) => [c._id.toString(), c.name.en || c.name.es]));
 ---
 
 <AdminLayout title="Photos">
   <div class="flex items-center justify-between">
     <h1 class="font-display text-2xl">Photos</h1>
-    <a href="/admin/upload" class="rounded-full bg-ink px-4 py-1.5 text-sm text-surface">Upload new</a>
+    <a href="/admin/upload" class="btn btn-primary py-1.5">Upload new</a>
   </div>
 
   <div class="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-widest">
-    <a href="/admin/photos" class={`rounded-full border px-3 py-1 ${!statusFilter ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted'}`}>All</a>
-    <a href="/admin/photos?status=draft" class={`rounded-full border px-3 py-1 ${statusFilter === 'draft' ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted'}`}>Draft</a>
-    <a href="/admin/photos?status=published" class={`rounded-full border px-3 py-1 ${statusFilter === 'published' ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted'}`}>Published</a>
-    {allCollections.map((c) => (
-      <a href={`/admin/photos?collection=${encodeURIComponent(c)}`} class={`rounded-full border px-3 py-1 ${collectionFilter === c ? 'border-ink bg-ink text-surface' : 'border-border text-ink-muted'}`}>{c}</a>
+    <a href="/admin/photos" class={`chip ${!statusFilter && !competitionFilter ? 'border-ink bg-ink text-surface' : 'text-ink-muted'}`}>All</a>
+    <a href="/admin/photos?status=draft" class={`chip ${statusFilter === 'draft' ? 'border-ink bg-ink text-surface' : 'text-ink-muted'}`}>Draft</a>
+    <a href="/admin/photos?status=published" class={`chip ${statusFilter === 'published' ? 'border-ink bg-ink text-surface' : 'text-ink-muted'}`}>Published</a>
+    <a href="/admin/photos?competition=portfolio" class={`chip ${competitionFilter === 'portfolio' ? 'border-ink bg-ink text-surface' : 'text-ink-muted'}`}>Portfolio</a>
+    {allCompetitions.map((c) => (
+      <a
+        href={`/admin/photos?competition=${c._id.toString()}`}
+        class={`chip ${competitionFilter === c._id.toString() ? 'border-ink bg-ink text-surface' : 'text-ink-muted'}`}
+      >
+        {c.name.en || c.name.es}
+      </a>
     ))}
   </div>
 
   <table class="mt-6 w-full text-sm" data-photos-table>
     <thead>
-      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
         <th class="py-2"></th>
         <th class="py-2">Title</th>
         <th class="py-2">Status</th>
-        <th class="py-2">Collections</th>
+        <th class="py-2">Competition</th>
         <th class="py-2"></th>
       </tr>
     </thead>
     <tbody data-reorder-body>
       {
         photos.map((photo) => {
-          const jpegUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jpg'));
+          const jpegUrl = storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'));
           return (
             <tr class="border-b border-border" draggable="true" data-photo-row data-photo-id={photo._id.toString()}>
               <td class="py-2 pr-3">
@@ -59,7 +69,9 @@ const allCollections = await db.collection<PhotoDoc>('photos').distinct('collect
                 </a>
               </td>
               <td class="py-2 capitalize">{photo.status}</td>
-              <td class="py-2 text-ink-muted">{photo.collections.join(', ')}</td>
+              <td class="py-2 text-ink-muted">
+                {photo.competitionId ? (competitionNames.get(photo.competitionId.toString()) ?? '—') : 'Portfolio'}
+              </td>
               <td class="py-2 text-right">
                 <button type="button" data-toggle-publish data-photo-id={photo._id.toString()} data-published={String(photo.status === 'published')} class="mr-3 underline">
                   {photo.status === 'published' ? 'Unpublish' : 'Publish'}

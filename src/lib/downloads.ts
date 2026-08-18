@@ -80,13 +80,18 @@ export async function consumeDownloadToken(db: Db, rawToken: string, ip: string)
     return { ok: false, reason: 'EXHAUSTED' };
   }
 
+  // THE paywall check. 'fulfilled' is gone with physical prints, so this narrows to the
+  // single status that means "this person is entitled to the original". Narrowing is
+  // safe; widening this condition is how originals leak. Free-credit claims pass here
+  // because a claim IS a real order in `paid` status — there is deliberately no second,
+  // looser path to an original file.
   const order = await db.collection('orders').findOne({ _id: updated.orderId });
-  if (!order || !['paid', 'fulfilled'].includes(order.status)) {
+  if (!order || order.status !== 'paid') {
     return { ok: false, reason: 'ORDER_NOT_PAID' };
   }
 
   const photo = await db.collection('photos').findOne({ _id: updated.photoId });
   if (!photo) return { ok: false, reason: 'NOT_FOUND' };
 
-  return { ok: true, photoOriginalKey: photo.r2.originalKey, orderId: updated.orderId };
+  return { ok: true, photoOriginalKey: photo.storage.originalKey, orderId: updated.orderId };
 }

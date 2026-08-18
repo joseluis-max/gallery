@@ -1,0 +1,65 @@
+---
+import { formatValue, type ChartDatum, type ValueFormat } from '../../lib/charts';
+
+/**
+ * The shell every admin chart shares: a title, the plot, and a collapsed table twin.
+ *
+ * The table isn't decoration — an SVG chart's values are otherwise only reachable by
+ * hovering, which excludes keyboard and screen-reader users and anyone printing the
+ * page. Every chart in the panel therefore ships its own exact-value table, and the
+ * hover tooltips stay a convenience rather than the only way to read a number.
+ */
+interface Props {
+  title: string;
+  subtitle?: string;
+  data: ChartDatum[];
+  format: ValueFormat;
+  /** Column header for the label column in the table twin. */
+  labelHeading?: string;
+  valueHeading?: string;
+}
+
+const { title, subtitle, data, format, labelHeading = 'Period', valueHeading = 'Value' } = Astro.props;
+---
+
+<figure class="panel p-4">
+  <figcaption>
+    <h3 class="text-sm">{title}</h3>
+    {subtitle && <p class="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
+  </figcaption>
+
+  <div class="mt-3">
+    <slot />
+  </div>
+
+  <details class="mt-3">
+    <summary class="cursor-pointer text-xs uppercase tracking-widest text-ink-muted hover:text-ink">Table view</summary>
+    <table class="mt-2 w-full text-xs [font-variant-numeric:tabular-nums]">
+      <thead>
+        <tr class="border-b border-border text-left text-ink-muted">
+          <th class="py-1 font-normal">{labelHeading}</th>
+          <th class="py-1 text-right font-normal">{valueHeading}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          data.map((datum) => (
+            <tr class="border-b border-border">
+              <td class="py-1">{datum.label}</td>
+              <td class="py-1 text-right">{formatValue(datum.value, format)}</td>
+            </tr>
+          ))
+        }
+        {
+          data.length === 0 && (
+            <tr>
+              <td class="py-1 text-ink-muted" colspan="2">
+                No data yet.
+              </td>
+            </tr>
+          )
+        }
+      </tbody>
+    </table>
+  </details>
+</figure>

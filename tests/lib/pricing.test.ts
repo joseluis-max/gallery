@@ -1,127 +1,75 @@
 import { describe, expect, it } from 'vitest';
-import { computeDigitalPrice, computePrintPrice, PricingError, priceQuoteInputSchema } from '../../src/lib/pricing.ts';
+import { computeCartPricing, computeDigitalPrice, unitPriceForQuantity } from '../../src/lib/pricing.ts';
 import { DEFAULT_SETTINGS } from '../../src/lib/settings.ts';
 
-const settings = DEFAULT_SETTINGS;
+const settings = DEFAULT_SETTINGS; // base 200; tiers at 3 -> 175, 5 -> 150, 10 -> 120
+const lines = (n: number) => Array.from({ length: n }, (_, i) => ({ photoId: `p${i}` }));
 
-// A 3:2 landscape photo (e.g. 6000x4000), long edge capped at ~63cm.
-const photo = { aspectRatio: 1.5, maxPrintCm: 63.5 };
-
-function input(overrides: Partial<Parameters<typeof computePrintPrice>[0]> = {}) {
-  return priceQuoteInputSchema.parse({
-    photoId: 'p1',
-    widthCm: 30,
-    heightCm: 20,
-    paper: 'matte',
-    qty: 1,
-    ...overrides,
+describe('unitPriceForQuantity', () => {
+  it('charges the base price below the first tier', () => {
+    expect(unitPriceForQuantity(1, settings)).toBe(200);
+    expect(unitPriceForQuantity(2, settings)).toBe(200);
   });
-}
 
-describe('priceQuoteInputSchema', () => {
-  it('coerces string form-encoded numbers', () => {
-    const parsed = priceQuoteInputSchema.parse({
-      photoId: 'p1',
-      widthCm: '30',
-      heightCm: '20',
-      paper: 'matte',
-      qty: '2',
-    });
-    expect(parsed.widthCm).toBe(30);
-    expect(parsed.heightCm).toBe(20);
-    expect(parsed.qty).toBe(2);
-    expect(parsed.crop).toBe('fit'); // default applies
+  it('applies a tier from its threshold onward', () => {
+    expect(unitPriceForQuantity(3, settings)).toBe(175);
+    expect(unitPriceForQuantity(4, settings)).toBe(175);
+    expect(unitPriceForQuantity(5, settings)).toBe(150);
+    expect(unitPriceForQuantity(50, settings)).toBe(120);
+  });
+
+  it('takes the cheapest applicable tier regardless of array order', () => {
+    const unsorted = { ...settings, volumeTiers: [{ minQty: 10, unitPriceCents: 120 }, { minQty: 3, unitPriceCents: 175 }] };
+    expect(unitPriceForQuantity(10, unsorted)).toBe(120);
+  });
+
+  it('falls back to the base price when no tiers are configured', () => {
+    expect(unitPriceForQuantity(99, { ...settings, volumeTiers: [] })).toBe(200);
   });
 });
 
-describe('computePrintPrice', () => {
-  it('computes base + area * rate * paperMultiplier', () => {
-    const result = computePrintPrice(input({ widthCm: 30, heightCm: 20, paper: 'matte' }), { settings, photo });
-    const expectedUnit = Math.round(settings.baseCents + 30 * 20 * settings.ratePerCm2Cents * 1);
-    expect(result.unitPriceCents).toBe(expectedUnit);
-    expect(result.totalCents).toBe(expectedUnit * 1);
+describe('computeCartPricing', () => {
+  it('discounts every photo in the cart, not just the ones past the threshold', () => {
+    const result = computeCartPricing(lines(5), settings);
+    expect(result.unitPriceCents).toBe(150);
+    expect(result.totalCents).toBe(750);
+    expect(result.lines.every((line) => line.unitPriceCents === 150)).toBe(true);
   });
 
-  it('multiplies total by qty', () => {
-    const result = computePrintPrice(input({ qty: 3 }), { settings, photo });
-    expect(result.totalCents).toBe(result.unitPriceCents * 3);
+  it('reports savings against the undiscounted price', () => {
+    const result = computeCartPricing(lines(5), settings);
+    expect(result.undiscountedTotalCents).toBe(1000);
+    expect(result.savingsCents).toBe(250);
   });
 
-  it('applies paper multipliers correctly', () => {
-    const matte = computePrintPrice(input({ paper: 'matte' }), { settings, photo });
-    const metallic = computePrintPrice(input({ paper: 'metallic' }), { settings, photo });
-    expect(metallic.unitPriceCents).toBeGreaterThan(matte.unitPriceCents);
-    const expectedMetallic = Math.round(settings.baseCents + 30 * 20 * settings.ratePerCm2Cents * 1.4);
-    expect(metallic.unitPriceCents).toBe(expectedMetallic);
+  it('has no savings and no discount below the first tier', () => {
+    const result = computeCartPricing(lines(2), settings);
+    expect(result.totalCents).toBe(400);
+    expect(result.savingsCents).toBe(0);
   });
 
-  it('rejects an unknown paper stock', () => {
-    expect(() => computePrintPrice(input({ paper: 'canvas' }), { settings, photo })).toThrow(PricingError);
-    try {
-      computePrintPrice(input({ paper: 'canvas' }), { settings, photo });
-    } catch (err) {
-      expect((err as PricingError).code).toBe('UNKNOWN_PAPER_STOCK');
-    }
+  it('points at the next tier and how far away it is', () => {
+    expect(computeCartPricing(lines(2), settings).nextTier).toMatchObject({ minQty: 3, unitPriceCents: 175, photosAway: 1 });
+    expect(computeCartPricing(lines(5), settings).nextTier).toMatchObject({ minQty: 10, photosAway: 5 });
   });
 
-  it('rejects sizes below the configured minimum', () => {
-    expect(() => computePrintPrice(input({ widthCm: 5, heightCm: 3.3 }), { settings, photo })).toThrow(PricingError);
-    try {
-      computePrintPrice(input({ widthCm: 5, heightCm: 3.3 }), { settings, photo });
-    } catch (err) {
-      expect((err as PricingError).code).toBe('SIZE_TOO_SMALL');
-    }
+  it('has no next tier once the deepest one is reached', () => {
+    expect(computeCartPricing(lines(10), settings).nextTier).toBeUndefined();
   });
 
-  it('rejects sizes above the absolute maximum', () => {
-    try {
-      computePrintPrice(input({ widthCm: 300, heightCm: 200 }), { settings, photo });
-      expect.unreachable();
-    } catch (err) {
-      expect((err as PricingError).code).toBe('SIZE_TOO_LARGE');
-    }
+  // An override means "this photograph is different". A volume discount silently undoing
+  // that would make the override unreliable, so it wins — but it still counts toward the
+  // quantity that unlocks the tier for everything else in the cart.
+  it('keeps a per-photo override at its own price while still counting toward the tier', () => {
+    const result = computeCartPricing([...lines(4), { photoId: 'special', overrideCents: 5000 }], settings);
+    expect(result.unitPriceCents).toBe(150);
+    expect(result.lines.filter((l) => !l.isOverride).every((l) => l.unitPriceCents === 150)).toBe(true);
+    expect(result.lines.find((l) => l.isOverride)!.unitPriceCents).toBe(5000);
+    expect(result.totalCents).toBe(4 * 150 + 5000);
   });
 
-  it("rejects sizes exceeding the photo's maxPrintCm even if within the absolute max", () => {
-    // 90x60 (long edge 90) exceeds this photo's 63.5cm cap but is under the store-wide 150cm max.
-    try {
-      computePrintPrice(input({ widthCm: 90, heightCm: 60 }), { settings, photo });
-      expect.unreachable();
-    } catch (err) {
-      expect((err as PricingError).code).toBe('EXCEEDS_MAX_PRINT_CM');
-    }
-  });
-
-  it('accepts a size just inside the aspect-ratio tolerance', () => {
-    // photo aspect 1.5; requested 30x20.1 -> ratio ~1.4925, deviation ~0.5% < 2% tolerance.
-    const result = computePrintPrice(input({ widthCm: 30, heightCm: 20.1 }), { settings, photo });
-    expect(result.warnings).toEqual([]);
-  });
-
-  it('rejects a size just outside the aspect-ratio tolerance when crop is "fit"', () => {
-    // ratio 30/22 ≈ 1.364, deviation from 1.5 is ~9% >> 2% tolerance.
-    try {
-      computePrintPrice(input({ widthCm: 30, heightCm: 22, crop: 'fit' }), { settings, photo });
-      expect.unreachable();
-    } catch (err) {
-      expect((err as PricingError).code).toBe('ASPECT_MISMATCH');
-    }
-  });
-
-  it('allows an aspect-mismatched size when the buyer explicitly chooses crop or border', () => {
-    const cropped = computePrintPrice(input({ widthCm: 30, heightCm: 22, crop: 'crop' }), { settings, photo });
-    expect(cropped.warnings).toContain('aspect-mismatch-cropped');
-    const bordered = computePrintPrice(input({ widthCm: 30, heightCm: 22, crop: 'border' }), { settings, photo });
-    expect(bordered.warnings).toContain('aspect-mismatch-bordered');
-  });
-
-  it('per-photo pricing override takes precedence over store-wide settings', () => {
-    const overriddenPhoto = { ...photo, pricingOverride: { baseCents: 5000, ratePerCm2Cents: 5 } };
-    const result = computePrintPrice(input({ widthCm: 30, heightCm: 20, paper: 'matte' }), {
-      settings,
-      photo: overriddenPhoto,
-    });
-    expect(result.unitPriceCents).toBe(Math.round(5000 + 30 * 20 * 5 * 1));
+  it('prices an empty cart at zero without throwing', () => {
+    expect(computeCartPricing([], settings)).toMatchObject({ totalCents: 0, savingsCents: 0 });
   });
 });
 
@@ -135,5 +83,13 @@ describe('computeDigitalPrice', () => {
   it('uses a per-photo digital price override when present', () => {
     const result = computeDigitalPrice(1, { settings, digitalPriceOverrideCents: 9999 });
     expect(result.unitPriceCents).toBe(9999);
+  });
+
+  it('treats a zero override as a real price, not a missing one', () => {
+    // `?? ` rather than `||` — a photo priced at 0 must not silently fall back to the
+    // store default. Checkout separately refuses a zero *total*, which is where that
+    // case is caught.
+    const result = computeDigitalPrice(1, { settings, digitalPriceOverrideCents: 0 });
+    expect(result.unitPriceCents).toBe(0);
   });
 });

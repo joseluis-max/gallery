@@ -93,12 +93,6 @@ describe('processOriginal', () => {
     expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(20);
   });
 
-  it('computes maxPrintCm from the derivative long edge at 240dpi, converted to cm', async () => {
-    const input = await makeUprightJpeg(4800, 3200); // long edge caps to 2000 after resize
-    const result = await processOriginal(input, watermark);
-    const expected = (2000 / 240) * 2.54;
-    expect(result.maxPrintCm).toBeCloseTo(expected, 3);
-  });
 
   it('extracts Make/Model EXIF when present, and tolerates their absence', async () => {
     const tagged = await sharp(await makeUprightJpeg(800, 600))

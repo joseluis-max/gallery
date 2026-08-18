@@ -11,23 +11,35 @@ interface Props {
 const { slug, title, webpUrl, jpegUrl, aspectRatio, lqip } = Astro.props;
 ---
 
+{/*
+  The inline aspect-ratio does two jobs: it reserves the right box before the image
+  decodes (no layout shift) and it's what the view-transition morph animates against.
+  `max-height` + `width: auto` alongside it means a tall portrait shrinks proportionally
+  instead of being cropped by the column — which is what happened when the detail page
+  became two columns and the image no longer had the full page width to work with.
+*/}
 <button
   type="button"
-  class="group relative block w-full cursor-zoom-in overflow-hidden bg-border"
-  style={`aspect-ratio: ${aspectRatio};`}
+  class="group relative mx-auto block w-full cursor-zoom-in overflow-hidden bg-border"
+  style={`aspect-ratio: ${aspectRatio}; max-height: 78vh; width: auto;`}
   data-lightbox-trigger
   aria-label={`Enlarge: ${title}`}
 >
-  <img src={lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full object-cover scale-105 blur-md" />
+  <img src={lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-105 object-cover blur-md" />
   <picture>
     <source srcset={webpUrl} type="image/webp" />
+    {/*
+      `transition:name` must stay exactly `photo-${slug}` — PhotoCard.astro uses the same
+      string, and the pair is what morphs a grid tile into this hero. A mismatch degrades
+      silently to a crossfade with nothing failing loudly, so don't "tidy" it.
+    */}
     <img
       src={jpegUrl}
       alt={title}
       loading="eager"
       decoding="async"
       transition:name={`photo-${slug}`}
-      class="relative h-full w-full object-cover"
+      class="relative h-full w-full object-contain"
     />
   </picture>
 </button>
@@ -49,6 +61,16 @@ const { slug, title, webpUrl, jpegUrl, aspectRatio, lqip } = Astro.props;
 </div>
 
 <script>
+  // Module scope, deliberately. This bundled module is evaluated once per full page load
+  // and is NOT re-evaluated by ClientRouter navigations, so the flag survives exactly as
+  // long as the document-level listener below does.
+  //
+  // Storing it on `document.body` would not work: ClientRouter replaces the <body>
+  // element wholesale on every navigation (verified), so a flag parked there resets each
+  // time and the guard would silently do nothing — which is precisely the leak this is
+  // here to prevent.
+  let escapeBound = false;
+
   document.addEventListener('astro:page-load', () => {
     const trigger = document.querySelector<HTMLButtonElement>('[data-lightbox-trigger]');
     const overlay = document.querySelector<HTMLElement>('[data-lightbox-overlay]');
@@ -71,8 +93,23 @@ const { slug, title, webpUrl, jpegUrl, aspectRatio, lqip } = Astro.props;
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) close();
     });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') close();
-    });
+
+    // The three listeners above are on elements ClientRouter replaces, so they're
+    // discarded with the old DOM. This one is on `document`, which survives every
+    // navigation — without the guard it stacked up one more Escape handler per page view
+    // for the life of the session.
+    if (!escapeBound) {
+      escapeBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        // Re-queried per press rather than captured at bind time: the overlay this
+        // closure could have closed over belongs to whichever page happened to load first.
+        const current = document.querySelector<HTMLElement>('[data-lightbox-overlay]');
+        if (!current || current.classList.contains('hidden')) return;
+        current.classList.add('hidden');
+        current.classList.remove('flex');
+        document.body.style.overflow = '';
+      });
+    }
   });
 </script>

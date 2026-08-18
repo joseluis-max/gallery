@@ -2,16 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const consumeDownloadTokenMock = vi.fn();
 const getPresignedGetUrlMock = vi.fn();
+const getObjectMock = vi.fn();
+const getStorageDriverMock = vi.fn(() => 'gcs');
 
 vi.mock('../../src/lib/db', () => ({ getDb: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../src/lib/config', () => ({
   getDbConfig: vi.fn(() => ({})),
-  getR2Config: vi.fn(() => ({})),
+  getStorageDriver: getStorageDriverMock,
+  createStorage: vi.fn(() => ({ getPresignedGetUrl: getPresignedGetUrlMock, getObject: getObjectMock })),
 }));
 vi.mock('../../src/lib/downloads', () => ({ consumeDownloadToken: consumeDownloadTokenMock }));
-vi.mock('../../src/lib/storage', () => ({
-  createStorageAdapter: vi.fn(() => ({ getPresignedGetUrl: getPresignedGetUrlMock })),
-}));
 
 const { GET } = await import('../../src/pages/api/download/[token].ts');
 
@@ -27,6 +27,8 @@ describe('GET /api/download/[token]', () => {
   beforeEach(() => {
     consumeDownloadTokenMock.mockReset();
     getPresignedGetUrlMock.mockReset();
+    getObjectMock.mockReset();
+    getStorageDriverMock.mockReturnValue('gcs');
   });
 
   it('404s when no token param is present', async () => {
@@ -48,12 +50,12 @@ describe('GET /api/download/[token]', () => {
 
   it('302-redirects to a presigned URL with an attachment disposition on success', async () => {
     consumeDownloadTokenMock.mockResolvedValue({ ok: true, photoOriginalKey: 'sea-lion.jpg', orderId: 'order-1' });
-    getPresignedGetUrlMock.mockResolvedValue('https://r2.example.com/signed?sig=abc');
+    getPresignedGetUrlMock.mockResolvedValue('https://storage.googleapis.com/bucket/originals/x.jpg?X-Amz-Signature=abc');
 
     const response = await GET(makeContext('good-token'));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('https://r2.example.com/signed?sig=abc');
+    expect(response.headers.get('location')).toBe('https://storage.googleapis.com/bucket/originals/x.jpg?X-Amz-Signature=abc');
     expect(getPresignedGetUrlMock).toHaveBeenCalledWith(
       expect.objectContaining({
         bucket: 'originals',
@@ -62,6 +64,32 @@ describe('GET /api/download/[token]', () => {
         responseContentDisposition: 'attachment; filename="sea-lion.jpg"',
       }),
     );
+  });
+
+  it('streams the bytes itself under the local driver, which has no presigned URL to redirect to', async () => {
+    getStorageDriverMock.mockReturnValue('local');
+    consumeDownloadTokenMock.mockResolvedValue({ ok: true, photoOriginalKey: 'uploads/abc-sea-lion.jpg', orderId: 'order-1' });
+    getObjectMock.mockResolvedValue(Buffer.from('original-bytes'));
+
+    const response = await GET(makeContext('good-token'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="abc-sea-lion.jpg"');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.text()).toBe('original-bytes');
+    // The paywall boundary still holds: no public URL is minted for an original.
+    expect(getPresignedGetUrlMock).not.toHaveBeenCalled();
+    expect(getObjectMock).toHaveBeenCalledWith({ bucket: 'originals', key: 'uploads/abc-sea-lion.jpg' });
+  });
+
+  it('still refuses an invalid token under the local driver, rather than streaming anything', async () => {
+    getStorageDriverMock.mockReturnValue('local');
+    consumeDownloadTokenMock.mockResolvedValue({ ok: false, reason: 'EXPIRED' });
+
+    const response = await GET(makeContext('expired'));
+
+    expect(response.status).toBe(403);
+    expect(getObjectMock).not.toHaveBeenCalled();
   });
 
   it('passes the x-forwarded-for IP through to consumeDownloadToken when present', async () => {

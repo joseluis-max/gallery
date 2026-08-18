@@ -1,13 +1,15 @@
 ---
+import BuyPanel from '../../../components/BuyPanel.astro';
 import Lightbox from '../../../components/Lightbox.astro';
-import SizePicker from '../../../components/SizePicker.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { getCompetitionById } from '../../../lib/competitions';
+import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
+import type { OrderDoc } from '../../../lib/orders';
 import { getPhotoBySlug, getPhotoImageUrls } from '../../../lib/photos';
+import { findActiveUserById } from '../../../lib/users';
 import { getSettings } from '../../../lib/settings';
-import { createStorageAdapter } from '../../../lib/storage';
 
 const lang = Astro.params.lang as Locale;
 const slug = Astro.params.slug as string;
@@ -26,10 +28,35 @@ let urls: { webp: string; jpeg: string } | null = null;
 let settings: Awaited<ReturnType<typeof getSettings>> | null = null;
 let digitalPriceCents = 0;
 let jsonLd: Record<string, unknown> | null = null;
+let competition: Awaited<ReturnType<typeof getCompetitionById>> = null;
+
+// The credit balance is read from the user document, never from the session — the session
+// is a snapshot taken at sign-in and would show a stale count after a claim in another tab.
+let freeDownloadsRemaining: number | undefined;
+let ownedOrderId: string | undefined;
+let alreadyClaimed = false;
 
 if (photo) {
+  const sessionUser = await Astro.session?.get('user');
+  if (sessionUser) {
+    const viewer = await findActiveUserById(db, sessionUser.id);
+    if (viewer) {
+      freeDownloadsRemaining = viewer.freeDownloadsRemaining;
+      // Anything this account already owns — bought or claimed — offers a fresh download
+      // instead of selling the same file twice.
+      const owned = await db
+        .collection<OrderDoc>('orders')
+        .findOne({ userId: viewer._id, status: 'paid', 'items.photoId': photo._id }, { sort: { createdAt: -1 } });
+      if (owned) {
+        ownedOrderId = owned._id.toString();
+        alreadyClaimed = owned.kind === 'free-claim';
+      }
+    }
+  }
+
+  if (photo.competitionId) competition = await getCompetitionById(db, photo.competitionId);
   settings = await getSettings(db);
-  const storage = createStorageAdapter('r2', getR2Config());
+  const storage = createStorage();
   urls = getPhotoImageUrls(photo, storage);
   title = photo.title[lang];
   description = photo.description[lang];
@@ -41,11 +68,16 @@ if (photo) {
     description,
     image: urls.jpeg,
     brand: { '@type': 'Person', name: 'José Valdiviezo' },
+    // A plain Offer, not AggregateOffer: there's exactly one price now that sizes and
+    // paper stocks are gone, and `lowPrice` with no `highPrice` described a range that
+    // never existed. Volume discounts deliberately aren't modelled here — they're a
+    // property of a whole cart, not of this photograph.
     offers: {
-      '@type': 'AggregateOffer',
+      '@type': 'Offer',
       priceCurrency: 'USD',
-      lowPrice: (digitalPriceCents / 100).toFixed(2),
+      price: (digitalPriceCents / 100).toFixed(2),
       availability: 'https://schema.org/InStock',
+      itemCondition: 'https://schema.org/NewCondition',
     },
   };
 }
@@ -73,46 +105,48 @@ if (photo) {
 
   {
     photo && settings && urls && (
-      <div class="mx-auto max-w-5xl px-4 py-8 md:px-8">
+      <div class="mx-auto max-w-6xl px-4 py-8 md:px-8">
         <a href={`/${lang}/gallery`} class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
           &larr; {t.detail.back}
         </a>
 
-        <div class="mt-6">
-          <Lightbox
-            slug={photo.slug}
-            title={title}
-            webpUrl={urls.webp}
-            jpegUrl={urls.jpeg}
-            aspectRatio={photo.aspectRatio}
-            lqip={photo.lqip}
-          />
-        </div>
-
-        <div class="mt-8 grid gap-10 md:grid-cols-[1.6fr_1fr]">
+        {/* Photograph beside its details rather than stacked above them. The right column
+            sticks so the price and download control stay in view next to a tall image
+            instead of scrolling away from it. */}
+        <div class="mt-6 grid gap-10 md:grid-cols-[1.35fr_1fr]">
           <div>
+            <Lightbox
+              slug={photo.slug}
+              title={title}
+              webpUrl={urls.webp}
+              jpegUrl={urls.jpeg}
+              aspectRatio={photo.aspectRatio}
+              lqip={photo.lqip}
+            />
+          </div>
+
+          <div class="md:sticky md:top-8 md:self-start">
             <h1 class="font-display text-2xl md:text-3xl">{title}</h1>
             {description && <p class="mt-4 text-ink-muted leading-relaxed">{description}</p>}
 
-            {photo.collections.length > 0 && (
-              <ul class="mt-6 flex flex-wrap gap-2 text-xs uppercase tracking-widest">
-                {photo.collections.map((collection) => (
-                  <li>
-                    <a
-                      href={`/${lang}/collections/${collection}`}
-                      class="rounded-full bg-ink px-3 py-1 text-surface hover:opacity-80"
-                    >
-                      {collection}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+            {/* Routes on the competition's generated ASCII slug, not its display name —
+                which is also what retires the unencoded-href bug the old free-text
+                collections had, since every real event name has spaces and accents. */}
+            {competition && (
+              <p class="mt-6">
+                <a
+                  href={`/${lang}/competitions/${competition.slug}`}
+                  class="chip border-ink bg-ink uppercase tracking-widest text-surface hover:opacity-80"
+                >
+                  {competition.name[lang]}
+                </a>
+              </p>
             )}
 
             {photo.tags.length > 0 && (
               <ul class="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-widest text-ink-muted">
                 {photo.tags.map((tag) => (
-                  <li class="rounded-full border border-border px-3 py-1">{tag}</li>
+                  <li class="chip">{tag}</li>
                 ))}
               </ul>
             )}
@@ -155,19 +189,19 @@ if (photo) {
                 </>
               )}
             </dl>
-          </div>
 
-          <aside id="buy-panel" class="border-t border-border pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0">
-            <SizePicker
-              photoId={photo._id.toString()}
-              aspectRatio={photo.aspectRatio}
-              maxPrintCm={photo.maxPrintCm}
-              settings={settings}
-              digitalPriceCents={digitalPriceCents}
-              t={t}
-              lang={lang}
-            />
-          </aside>
+            <div class="mt-8 border-t border-border pt-6">
+              <BuyPanel
+                photoId={photo._id.toString()}
+                digitalPriceCents={digitalPriceCents}
+                t={t}
+                lang={lang}
+                freeDownloadsRemaining={freeDownloadsRemaining}
+                alreadyClaimed={alreadyClaimed}
+                ownedOrderId={ownedOrderId}
+              />
+            </div>
+          </div>
         </div>
       </div>
     )

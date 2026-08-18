@@ -1,94 +1,74 @@
-// Pure function of (input, ctx) — no Mongo, no Astro — so it can be unit-tested with
-// zero live services and is guaranteed to compute the exact same number for the live
-// quote UI and the Stripe line item, since both call sites go through this file. The
-// client sends dimensions; it never sends (or is trusted for) a price.
-import { z } from 'zod';
+// Pure functions of (input, settings) — no Mongo, no Astro — so pricing can be
+// unit-tested with zero live services, and so the cart page, the checkout action and the
+// Stripe line items are guaranteed to agree: all three call `computeCartPricing`. The
+// client never sends (or is trusted for) a price.
 import type { SettingsDoc } from './settings';
-
-export const priceQuoteInputSchema = z.object({
-  photoId: z.string().min(1),
-  widthCm: z.coerce.number().positive().max(1000),
-  heightCm: z.coerce.number().positive().max(1000),
-  // Paper stocks are admin-editable at runtime (settings collection) — validated as a
-  // known key against ctx.settings.paperStocks below, not via a static z.enum.
-  paper: z.string().min(1),
-  qty: z.coerce.number().int().positive().max(50),
-  crop: z.enum(['fit', 'crop', 'border']).default('fit'),
-});
-
-export type PriceQuoteInput = z.infer<typeof priceQuoteInputSchema>;
-
-export type PricingErrorCode =
-  | 'SIZE_TOO_SMALL'
-  | 'SIZE_TOO_LARGE'
-  | 'EXCEEDS_MAX_PRINT_CM'
-  | 'ASPECT_MISMATCH'
-  | 'UNKNOWN_PAPER_STOCK';
-
-export class PricingError extends Error {
-  constructor(
-    public code: PricingErrorCode,
-    public details?: Record<string, unknown>,
-  ) {
-    super(code);
-    this.name = 'PricingError';
-  }
-}
-
-export interface PricingPhotoContext {
-  aspectRatio: number;
-  maxPrintCm: number;
-  pricingOverride?: { baseCents?: number; ratePerCm2Cents?: number };
-}
-
-export interface PricingContext {
-  settings: SettingsDoc;
-  photo: PricingPhotoContext;
-}
 
 export interface PriceQuoteResult {
   unitPriceCents: number;
   totalCents: number;
-  /** Non-fatal notices worth surfacing in the UI, e.g. a crop/border choice was applied. */
-  warnings: string[];
 }
 
-export function computePrintPrice(input: PriceQuoteInput, ctx: PricingContext): PriceQuoteResult {
-  const { settings, photo } = ctx;
+/**
+ * The unit price every photo in a cart of `qty` photos is charged at: the deepest tier
+ * whose threshold the cart has reached, or the base price if none has been.
+ *
+ * Tiers are filtered and max-ed rather than assumed sorted, because the admin editor
+ * accepts them in any order and a stored document may predate the sort-on-save.
+ */
+export function unitPriceForQuantity(qty: number, settings: SettingsDoc): number {
+  const applicable = (settings.volumeTiers ?? []).filter((tier) => qty >= tier.minQty);
+  if (applicable.length === 0) return settings.digitalPriceCents;
+  return Math.min(...applicable.map((tier) => tier.unitPriceCents));
+}
 
-  if (input.widthCm < settings.minCm || input.heightCm < settings.minCm) {
-    throw new PricingError('SIZE_TOO_SMALL', { minCm: settings.minCm });
-  }
-  if (input.widthCm > settings.maxCmAbsolute || input.heightCm > settings.maxCmAbsolute) {
-    throw new PricingError('SIZE_TOO_LARGE', { maxCmAbsolute: settings.maxCmAbsolute });
-  }
+export interface CartPricingLine {
+  photoId: string;
+  /** From `photo.pricing.digitalPriceCents`. A specially-priced photograph keeps its own
+   *  price and is never pulled down by a volume tier — an override means "this one is
+   *  different", which a discount silently undoing would defeat. It still counts toward
+   *  the quantity that unlocks tiers for everything else. */
+  overrideCents?: number;
+}
 
-  const longEdge = Math.max(input.widthCm, input.heightCm);
-  if (longEdge > photo.maxPrintCm) {
-    throw new PricingError('EXCEEDS_MAX_PRINT_CM', { maxPrintCm: photo.maxPrintCm });
-  }
+export interface CartPricingResult {
+  /** Per line, in the order given. */
+  lines: { photoId: string; unitPriceCents: number; isOverride: boolean }[];
+  /** The tier price the un-overridden lines were charged at. */
+  unitPriceCents: number;
+  /** What the same cart would have cost with no tier applied — for "you saved X". */
+  undiscountedTotalCents: number;
+  totalCents: number;
+  savingsCents: number;
+  /** The next tier the cart hasn't reached yet, for an "add N more" nudge. */
+  nextTier?: { minQty: number; unitPriceCents: number; photosAway: number };
+}
 
-  const warnings: string[] = [];
-  const requestedRatio = input.widthCm / input.heightCm;
-  const deviation = Math.abs(requestedRatio - photo.aspectRatio) / photo.aspectRatio;
-  if (deviation > settings.sizeTolerancePct) {
-    if (input.crop === 'fit') {
-      throw new PricingError('ASPECT_MISMATCH', { deviation, tolerance: settings.sizeTolerancePct });
-    }
-    warnings.push(input.crop === 'crop' ? 'aspect-mismatch-cropped' : 'aspect-mismatch-bordered');
-  }
+export function computeCartPricing(lines: CartPricingLine[], settings: SettingsDoc): CartPricingResult {
+  const qty = lines.length;
+  const unitPriceCents = unitPriceForQuantity(qty, settings);
 
-  const paperStock = settings.paperStocks[input.paper];
-  if (!paperStock) {
-    throw new PricingError('UNKNOWN_PAPER_STOCK', { paper: input.paper });
-  }
+  const priced = lines.map((line) => ({
+    photoId: line.photoId,
+    unitPriceCents: line.overrideCents ?? unitPriceCents,
+    isOverride: line.overrideCents !== undefined,
+  }));
 
-  const areaCm2 = input.widthCm * input.heightCm;
-  const baseCents = photo.pricingOverride?.baseCents ?? settings.baseCents;
-  const ratePerCm2Cents = photo.pricingOverride?.ratePerCm2Cents ?? settings.ratePerCm2Cents;
-  const unitPriceCents = Math.round(baseCents + areaCm2 * ratePerCm2Cents * paperStock.multiplier);
+  const totalCents = priced.reduce((sum, line) => sum + line.unitPriceCents, 0);
+  const undiscountedTotalCents = lines.reduce((sum, line) => sum + (line.overrideCents ?? settings.digitalPriceCents), 0);
 
-  return { unitPriceCents, totalCents: unitPriceCents * input.qty, warnings };
+  const upcoming = (settings.volumeTiers ?? [])
+    .filter((tier) => tier.minQty > qty && tier.unitPriceCents < unitPriceCents)
+    .sort((a, b) => a.minQty - b.minQty)[0];
+
+  return {
+    lines: priced,
+    unitPriceCents,
+    undiscountedTotalCents,
+    totalCents,
+    savingsCents: Math.max(0, undiscountedTotalCents - totalCents),
+    ...(upcoming ? { nextTier: { ...upcoming, photosAway: upcoming.minQty - qty } } : {}),
+  };
 }
 
 export interface DigitalPriceContext {
@@ -96,14 +76,9 @@ export interface DigitalPriceContext {
   settings: SettingsDoc;
 }
 
+/** Single-photo price, for the detail page's headline figure. Volume tiers only exist in
+ *  the context of a whole cart, so this deliberately ignores them. */
 export function computeDigitalPrice(qty: number, ctx: DigitalPriceContext): PriceQuoteResult {
   const unitPriceCents = ctx.digitalPriceOverrideCents ?? ctx.settings.digitalPriceCents;
-  return { unitPriceCents, totalCents: unitPriceCents * qty, warnings: [] };
-}
-
-/** Flat rate from the first configured shipping zone, only when the cart contains a
- *  physical print — digital-only carts never carry a shipping charge. */
-export function computeShippingCents(settings: SettingsDoc, hasPrintItem: boolean): number {
-  if (!hasPrintItem) return 0;
-  return settings.shippingZones[0]?.flatRateCents ?? 0;
+  return { unitPriceCents, totalCents: unitPriceCents * qty };
 }

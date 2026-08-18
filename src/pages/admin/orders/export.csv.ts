@@ -19,7 +19,7 @@ export const GET: APIRoute = async ({ url }) => {
   const query: Filter<OrderDoc> = status ? { status: status as OrderStatus } : {};
   const orders = await db.collection<OrderDoc>('orders').find(query).sort({ createdAt: -1 }).toArray();
 
-  const header = ['Order ID', 'Date', 'Customer Email', 'Status', 'Items', 'Subtotal', 'Shipping', 'Total'];
+  const header = ['Order ID', 'Date', 'Customer Email', 'Status', 'Items', 'Subtotal', 'Total'];
   const rows = orders.map((order) =>
     [
       order._id.toString(),
@@ -28,7 +28,6 @@ export const GET: APIRoute = async ({ url }) => {
       order.status,
       String(order.items.length),
       (order.subtotalCents / 100).toFixed(2),
-      (order.shippingCents / 100).toFixed(2),
       (order.totalCents / 100).toFixed(2),
     ].map(csvEscape),
   );

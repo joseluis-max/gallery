@@ -4,26 +4,17 @@ import { ObjectId } from 'mongodb';
 import { z } from 'astro/zod';
 import { ActionError, defineAction } from 'astro:actions';
 import { admin } from './admin';
-import { addCartItem, removeCartItem, updateCartItemQty } from '../lib/cart';
-import { getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
+import { auth } from './auth';
+import { downloads } from './downloads';
+import { addCartItem, hasCartItem, removeCartItem } from '../lib/cart';
+import { buildCartView } from '../lib/cartView';
+import { createStorage, getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
+import { getDictionary } from '../lib/i18n';
 import { getDb } from '../lib/db';
 import { attachStripeSession, createPendingOrder, type OrderItem } from '../lib/orders';
-import {
-  computeDigitalPrice,
-  computePrintPrice,
-  computeShippingCents,
-  PricingError,
-  priceQuoteInputSchema,
-} from '../lib/pricing';
+import { computeCartPricing } from '../lib/pricing';
 import { getSettings } from '../lib/settings';
 import { createStripeClient } from '../lib/stripe';
-
-function pricingErrorToActionError(err: unknown): never {
-  if (err instanceof PricingError) {
-    throw new ActionError({ code: 'BAD_REQUEST', message: err.code });
-  }
-  throw err;
-}
 
 function parsePhotoId(raw: string): InstanceType<typeof ObjectId> {
   try {
@@ -35,86 +26,22 @@ function parsePhotoId(raw: string): InstanceType<typeof ObjectId> {
 
 export const server = {
   admin,
-
-  quotePrice: defineAction({
-    accept: 'json',
-    input: z.object({
-      photoId: z.string().min(1),
-      widthCm: z.coerce.number(),
-      heightCm: z.coerce.number(),
-      paper: z.string().min(1),
-      qty: z.coerce.number().default(1),
-      crop: z.enum(['fit', 'crop', 'border']).default('fit'),
-    }),
-    handler: async (rawInput) => {
-      const db = await getDb(getDbConfig());
-      const photoObjectId = parsePhotoId(rawInput.photoId);
-
-      const [photo, settings] = await Promise.all([
-        db.collection('photos').findOne({ _id: photoObjectId, status: 'published' }),
-        getSettings(db),
-      ]);
-      if (!photo) {
-        throw new ActionError({ code: 'NOT_FOUND', message: 'PHOTO_NOT_FOUND' });
-      }
-
-      const input = priceQuoteInputSchema.parse(rawInput);
-      try {
-        return computePrintPrice(input, {
-          settings,
-          photo: { aspectRatio: photo.aspectRatio, maxPrintCm: photo.maxPrintCm, pricingOverride: photo.pricing },
-        });
-      } catch (err) {
-        pricingErrorToActionError(err);
-      }
-    },
-  }),
+  auth,
+  downloads,
 
   addToCart: defineAction({
     accept: 'json',
-    input: z.object({
-      photoId: z.string().min(1),
-      type: z.enum(['print', 'digital']),
-      widthCm: z.coerce.number().optional(),
-      heightCm: z.coerce.number().optional(),
-      paper: z.string().optional(),
-      crop: z.enum(['fit', 'crop', 'border']).default('fit'),
-      qty: z.coerce.number().int().positive().max(50).default(1),
-    }),
+    input: z.object({ photoId: z.string().min(1) }),
     handler: async (input, context) => {
       const db = await getDb(getDbConfig());
-      const photoObjectId = parsePhotoId(input.photoId);
-      const [photo, settings] = await Promise.all([
-        db.collection('photos').findOne({ _id: photoObjectId, status: 'published' }),
-        getSettings(db),
-      ]);
+      const photo = await db.collection('photos').findOne({ _id: parsePhotoId(input.photoId), status: 'published' });
       if (!photo) throw new ActionError({ code: 'NOT_FOUND', message: 'PHOTO_NOT_FOUND' });
 
-      if (input.type === 'print') {
-        if (input.widthCm === undefined || input.heightCm === undefined || !input.paper) {
-          throw new ActionError({ code: 'BAD_REQUEST', message: 'INVALID_PRINT_ITEM' });
-        }
-        // Re-validates the exact same way quotePrice does — a cart line that couldn't
-        // have priced successfully is never allowed in.
-        try {
-          computePrintPrice(
-            { photoId: input.photoId, widthCm: input.widthCm, heightCm: input.heightCm, paper: input.paper, qty: input.qty, crop: input.crop },
-            { settings, photo: { aspectRatio: photo.aspectRatio, maxPrintCm: photo.maxPrintCm, pricingOverride: photo.pricing } },
-          );
-        } catch (err) {
-          pricingErrorToActionError(err);
-        }
-      }
-
       const cart = (await context.session?.get('cart')) ?? [];
-      const next = addCartItem(cart, {
-        photoId: input.photoId,
-        type: input.type,
-        qty: input.qty,
-        ...(input.type === 'print'
-          ? { widthCm: input.widthCm, heightCm: input.heightCm, paper: input.paper, crop: input.crop }
-          : {}),
-      });
+      // Adding the same photo twice is a no-op rather than a second line: one purchase
+      // mints one download token for that photo, so a second line would charge again for
+      // a file the buyer already has.
+      const next = hasCartItem(cart, input.photoId) ? cart : addCartItem(cart, { photoId: input.photoId });
       context.session?.set('cart', next);
       return { count: next.length };
     },
@@ -122,23 +49,18 @@ export const server = {
 
   removeFromCart: defineAction({
     accept: 'json',
-    input: z.object({ lineId: z.string().min(1) }),
+    input: z.object({ lineId: z.string().min(1), lang: z.enum(['es', 'en']) }),
     handler: async (input, context) => {
       const cart = (await context.session?.get('cart')) ?? [];
       const next = removeCartItem(cart, input.lineId);
       context.session?.set('cart', next);
-      return { count: next.length };
-    },
-  }),
 
-  updateCartItemQty: defineAction({
-    accept: 'json',
-    input: z.object({ lineId: z.string().min(1), qty: z.coerce.number().int().positive().max(50) }),
-    handler: async (input, context) => {
-      const cart = (await context.session?.get('cart')) ?? [];
-      const next = updateCartItemQty(cart, input.lineId, input.qty);
-      context.session?.set('cart', next);
-      return { count: next.length };
+      // Returns the whole recomputed view, not just a count: volume tiers price the cart
+      // as a whole, so removing one line can change what every remaining line costs. The
+      // page re-renders from this instead of guessing.
+      const db = await getDb(getDbConfig());
+      const view = await buildCartView(db, createStorage(), next, input.lang, getDictionary(input.lang).cart.digitalFile);
+      return { count: next.length, view };
     },
   }),
 
@@ -154,72 +76,50 @@ export const server = {
       const db = await getDb(getDbConfig());
       const settings = await getSettings(db);
 
-      const orderItems: OrderItem[] = [];
-      let hasPrintItem = false;
-
-      // Every line is re-validated and re-priced here, from the server's own database
-      // state — the session cart is only ever a set of (photoId, size, paper, qty)
-      // references, never a price, so nothing the client sent can affect what gets
-      // charged.
+      // Every line is re-priced here from the server's own database state — the session
+      // cart is only ever a set of photo references, never a price, so nothing the client
+      // sent can affect what gets charged. Volume tiers depend on the whole cart, so the
+      // photos are resolved first and priced together.
+      const photos = [];
       for (const cartItem of cart) {
         const photo = await db.collection('photos').findOne({ _id: parsePhotoId(cartItem.photoId), status: 'published' });
         if (!photo) throw new ActionError({ code: 'BAD_REQUEST', message: 'PHOTO_UNAVAILABLE' });
-
-        if (cartItem.type === 'print') {
-          hasPrintItem = true;
-          if (cartItem.widthCm === undefined || cartItem.heightCm === undefined || !cartItem.paper) {
-            throw new ActionError({ code: 'BAD_REQUEST', message: 'INVALID_PRINT_ITEM' });
-          }
-          let quote;
-          try {
-            quote = computePrintPrice(
-              {
-                photoId: cartItem.photoId,
-                widthCm: cartItem.widthCm,
-                heightCm: cartItem.heightCm,
-                paper: cartItem.paper,
-                qty: cartItem.qty,
-                crop: cartItem.crop ?? 'fit',
-              },
-              { settings, photo: { aspectRatio: photo.aspectRatio, maxPrintCm: photo.maxPrintCm, pricingOverride: photo.pricing } },
-            );
-          } catch (err) {
-            pricingErrorToActionError(err);
-          }
-          orderItems.push({
-            type: 'print',
-            photoId: photo._id,
-            photoSlug: photo.slug,
-            photoTitle: photo.title.en,
-            size: { widthCm: cartItem.widthCm, heightCm: cartItem.heightCm },
-            paper: cartItem.paper,
-            crop: cartItem.crop ?? 'fit',
-            qty: cartItem.qty,
-            unitPriceCents: quote.unitPriceCents,
-            totalCents: quote.totalCents,
-          });
-        } else {
-          const quote = computeDigitalPrice(cartItem.qty, {
-            settings,
-            digitalPriceOverrideCents: photo.pricing?.digitalPriceCents,
-          });
-          orderItems.push({
-            type: 'digital',
-            photoId: photo._id,
-            photoSlug: photo.slug,
-            photoTitle: photo.title.en,
-            qty: cartItem.qty,
-            unitPriceCents: quote.unitPriceCents,
-            totalCents: quote.totalCents,
-          });
-        }
+        photos.push(photo);
       }
 
-      const subtotalCents = orderItems.reduce((sum, item) => sum + item.totalCents, 0);
-      const shippingCents = computeShippingCents(settings, hasPrintItem);
-      const totalCents = subtotalCents + shippingCents;
+      const pricing = computeCartPricing(
+        photos.map((photo) => ({ photoId: photo._id.toString(), overrideCents: photo.pricing?.digitalPriceCents })),
+        settings,
+      );
 
-      const order = await createPendingOrder(db, { items: orderItems, subtotalCents, shippingCents, totalCents });
+      const orderItems: OrderItem[] = photos.map((photo, i) => ({
+        photoId: photo._id,
+        photoSlug: photo.slug,
+        photoTitle: photo.title.en,
+        unitPriceCents: pricing.lines[i].unitPriceCents,
+        totalCents: pricing.lines[i].unitPriceCents,
+      }));
+
+      const subtotalCents = pricing.totalCents;
+      const totalCents = pricing.totalCents;
+
+      // Stripe rejects a zero-total Checkout Session outright. Free photos are claimed
+      // through the free-credit flow, which never touches the cart, so a $0 total here
+      // means a misconfigured price rather than a legitimate free order — fail loudly
+      // instead of handing Stripe something it will refuse.
+      if (totalCents <= 0) {
+        throw new ActionError({ code: 'BAD_REQUEST', message: 'INVALID_TOTAL' });
+      }
+
+      // Checkout stays open to guests — an account is a convenience (order history,
+      // saved details), never a gate in front of a purchase.
+      const sessionUser = await context.session?.get('user');
+      const order = await createPendingOrder(db, {
+        items: orderItems,
+        subtotalCents,
+        totalCents,
+        ...(sessionUser ? { user: { id: new ObjectId(sessionUser.id), email: sessionUser.email, name: sessionUser.name } } : {}),
+      });
 
       const stripe = createStripeClient(getStripeConfig().secretKey);
       const siteUrl = getPublicSiteUrl();
@@ -227,37 +127,21 @@ export const server = {
       const lineItems = orderItems.map((item) => ({
         price_data: {
           currency: 'usd',
-          product_data: {
-            name:
-              item.type === 'print'
-                ? `${item.photoTitle} — Print ${item.size!.widthCm}×${item.size!.heightCm}cm (${item.paper})`
-                : `${item.photoTitle} — Digital download`,
-          },
+          product_data: { name: `${item.photoTitle} — Digital download` },
           unit_amount: item.unitPriceCents,
         },
-        quantity: item.qty,
+        quantity: 1,
       }));
 
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         line_items: lineItems,
         metadata: { orderId: order._id.toString() },
+        // Prefills (and locks) the email field for a signed-in buyer; Stripe still
+        // collects it itself for guests.
+        ...(sessionUser ? { customer_email: sessionUser.email } : {}),
         success_url: `${siteUrl}/${input.lang}/order/${order._id.toString()}`,
         cancel_url: `${siteUrl}/${input.lang}/cart`,
-        ...(hasPrintItem
-          ? {
-              shipping_address_collection: { allowed_countries: ['EC', 'US', 'CA'] as const },
-              shipping_options: [
-                {
-                  shipping_rate_data: {
-                    type: 'fixed_amount' as const,
-                    fixed_amount: { amount: shippingCents, currency: 'usd' },
-                    display_name: settings.shippingZones[0]?.label ?? 'Shipping',
-                  },
-                },
-              ],
-            }
-          : {}),
       });
 
       await attachStripeSession(db, order._id, session.id!);

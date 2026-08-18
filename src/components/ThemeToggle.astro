@@ -1,8 +1,13 @@
+{/*
+  Targeted by attribute rather than id, because the header renders one of these in the
+  desktop nav and another inside the mobile menu — two elements sharing an id would be
+  invalid HTML and only the first would ever get wired up.
+*/}
 <button
-  id="theme-toggle"
+  data-theme-toggle
   type="button"
   aria-label="Toggle color theme"
-  class="rounded-full border border-border px-3 py-1.5 text-xs uppercase tracking-widest text-ink-muted transition-colors hover:text-ink"
+  class="chip py-1.5 uppercase tracking-widest text-ink-muted transition-colors hover:text-ink"
 >
   <span data-theme-label>Theme</span>
 </button>
@@ -12,22 +17,30 @@
   // swap, so this one listener covers both cases without a separate
   // DOMContentLoaded + astro:after-swap pairing.
   document.addEventListener('astro:page-load', () => {
-    const button = document.getElementById('theme-toggle');
-    const label = button?.querySelector('[data-theme-label]');
-    if (!button || !label) return;
+    const buttons = document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]');
+    if (buttons.length === 0) return;
 
-    const sync = () => {
+    const syncAll = () => {
       const current = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-      label.textContent = current === 'dark' ? 'Dark' : 'Light';
-      button.setAttribute('aria-pressed', String(current === 'dark'));
+      for (const button of buttons) {
+        const label = button.querySelector('[data-theme-label]');
+        if (label) label.textContent = current === 'dark' ? 'Dark' : 'Light';
+        button.setAttribute('aria-pressed', String(current === 'dark'));
+      }
     };
-    sync();
+    syncAll();
 
-    button.addEventListener('click', () => {
-      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-      document.documentElement.dataset.theme = next;
-      localStorage.setItem('theme', next);
-      sync();
-    });
+    for (const button of buttons) {
+      if (button.dataset.bound === 'true') continue;
+      button.dataset.bound = 'true';
+      button.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem('theme', next);
+        // Every instance, not just the clicked one — the desktop and mobile toggles must
+        // not disagree about what the current theme is.
+        syncAll();
+      });
+    }
   });
 </script>

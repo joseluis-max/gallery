@@ -21,16 +21,11 @@ function makeMockDb(config: {
 
 const sampleItems: OrderItem[] = [
   {
-    type: 'print',
     photoId: new ObjectId(),
     photoSlug: 'sea-lions-dock',
     photoTitle: 'Sea Lions',
-    size: { widthCm: 30, heightCm: 20 },
-    paper: 'matte',
-    crop: 'fit',
-    qty: 1,
-    unitPriceCents: 5000,
-    totalCents: 5000,
+    unitPriceCents: 2000,
+    totalCents: 2000,
   },
 ];
 
@@ -41,9 +36,8 @@ describe('createPendingOrder', () => {
 
     const order = await createPendingOrder(db, {
       items: sampleItems,
-      subtotalCents: 5000,
-      shippingCents: 500,
-      totalCents: 5500,
+      subtotalCents: 2000,
+      totalCents: 2000,
     });
 
     expect(order._id).toBe(insertedId);
@@ -51,11 +45,23 @@ describe('createPendingOrder', () => {
     expect(order.customer).toEqual({ email: '' });
     expect(order.history).toHaveLength(1);
     expect(order.history[0].status).toBe('pending');
-    expect(order.totalCents).toBe(5500);
+    expect(order.totalCents).toBe(2000);
 
     const insertedDoc = ordersCollection.insertOne.mock.calls[0][0];
     expect(insertedDoc.currency).toBe('usd');
     expect(insertedDoc.items).toBe(sampleItems);
+  });
+
+  // Free-credit claims are also real `paid` orders, so every revenue aggregation filters
+  // on `kind`. A purchase that forgot to set it would be counted correctly by luck today
+  // and incorrectly the moment the filter flips to an equality check.
+  it('marks the order as a purchase, not a free claim', async () => {
+    const { db, ordersCollection } = makeMockDb({ insertOneResult: { insertedId: new ObjectId() } });
+
+    const order = await createPendingOrder(db, { items: sampleItems, subtotalCents: 2000, totalCents: 2000 });
+
+    expect(order.kind).toBe('purchase');
+    expect(ordersCollection.insertOne.mock.calls[0][0].kind).toBe('purchase');
   });
 });
 
@@ -91,34 +97,25 @@ describe('markOrderPaid', () => {
     expect(result).toBeNull();
   });
 
-  it('omits customer/shippingAddress from the update when not provided', async () => {
+  it('omits customer from the update when not provided', async () => {
     const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId } });
 
     await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1' });
 
     const [, update] = ordersCollection.findOneAndUpdate.mock.calls[0];
     expect(update.$set).not.toHaveProperty('customer');
-    expect(update.$set).not.toHaveProperty('shippingAddress');
     expect(update.$set.status).toBe('paid');
     expect(update.$set.stripePaymentIntentId).toBe('pi_1');
   });
 
-  it('includes customer/shippingAddress in the update when provided', async () => {
+  it('includes customer in the update when provided', async () => {
     const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId } });
     const customer = { email: 'buyer@example.com', name: 'Buyer' };
-    const shippingAddress = {
-      name: 'Buyer',
-      line1: '123 Main St',
-      city: 'Cuenca',
-      postalCode: '010101',
-      country: 'EC',
-    };
 
-    await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1', customer, shippingAddress });
+    await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1', customer });
 
     const [, update] = ordersCollection.findOneAndUpdate.mock.calls[0];
     expect(update.$set.customer).toEqual(customer);
-    expect(update.$set.shippingAddress).toEqual(shippingAddress);
   });
 
   it('pushes a "paid" history entry', async () => {

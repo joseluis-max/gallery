@@ -16,7 +16,20 @@ declare global {
 export function getDb(config: DbConfig): Promise<Db> {
   if (!globalThis.__mongoClientPromise) {
     const client = new MongoClient(config.uri, { maxPoolSize: 10 });
-    globalThis.__mongoClientPromise = client.connect();
+    // Caching the promise is the point — but caching a *rejected* one is a trap. A
+    // process that starts during a database outage (or before a firewall rule lands)
+    // would otherwise replay that first failure for its entire life: every later request
+    // gets the identical cached error and never retries, so the instance is permanently
+    // broken even after the database comes back. Dropping the cache on failure means the
+    // next request opens a fresh connection.
+    //
+    // This is not hypothetical: it is exactly what happened on the first Cloud Run
+    // deploy, where the container booted while Atlas was still refusing its IP and then
+    // served the same MongoServerSelectionError forever.
+    globalThis.__mongoClientPromise = client.connect().catch((err) => {
+      globalThis.__mongoClientPromise = undefined;
+      throw err;
+    });
   }
   return globalThis.__mongoClientPromise.then((client) => client.db(config.dbName));
 }

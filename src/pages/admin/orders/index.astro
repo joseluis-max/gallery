@@ -34,19 +34,19 @@ const orders = await db.collection<OrderDoc>('orders').find(query).sort({ create
   </div>
 
   <form class="mt-4 flex flex-wrap items-center gap-3 text-sm">
-    <input type="search" name="q" value={search ?? ''} placeholder="Search by email or order id" class="border border-border bg-transparent px-2 py-1.5" />
-    <select name="status" class="border border-border bg-transparent px-2 py-1.5">
+    <input type="search" name="q" value={search ?? ''} placeholder="Search by email or order id" class="field" />
+    <select name="status" class="field">
       <option value="">All statuses</option>
       {(['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'] as const).map((s) => (
         <option value={s} selected={statusFilter === s}>{s}</option>
       ))}
     </select>
-    <button type="submit" class="rounded-full border border-ink px-4 py-1.5">Filter</button>
+    <button type="submit" class="btn btn-ghost py-1.5">Filter</button>
   </form>
 
   <table class="mt-6 w-full text-sm">
     <thead>
-      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
         <th class="py-2">Date</th>
         <th class="py-2">Customer</th>
         <th class="py-2">Items</th>

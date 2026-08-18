@@ -1,156 +1,95 @@
 ---
-import { ObjectId } from 'mongodb';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getDbConfig, getR2Config } from '../../lib/config';
+import { buildCartView } from '../../lib/cartView';
+import { createStorage, getDbConfig } from '../../lib/config';
 import { getDb } from '../../lib/db';
 import { getDictionary, type Locale } from '../../lib/i18n';
-import { getPhotoImageUrls, type PhotoDoc } from '../../lib/photos';
-import { computeDigitalPrice, computePrintPrice } from '../../lib/pricing';
-import { getSettings } from '../../lib/settings';
-import { createStorageAdapter } from '../../lib/storage';
 
 const lang = Astro.params.lang as Locale;
 const t = getDictionary(lang);
 
 const cart = (await Astro.session?.get('cart')) ?? [];
 const db = await getDb(getDbConfig());
-const settings = await getSettings(db);
-const storage = createStorageAdapter('r2', getR2Config());
 
-interface CartLine {
-  lineId: string;
-  title: string;
-  webpUrl: string;
-  jpegUrl: string;
-  detail: string;
-  qty: number;
-  priceCents: number;
-}
+// Same builder the remove-line action uses, so the first render and every subsequent
+// update agree about prices by construction rather than by keeping two code paths in sync.
+const view = await buildCartView(db, createStorage(), cart, lang, t.cart.digitalFile);
 
-const lines: CartLine[] = [];
-let unavailableCount = 0;
-
-for (const item of cart) {
-  let photo: PhotoDoc | null = null;
-  try {
-    photo = await db.collection<PhotoDoc>('photos').findOne({ _id: new ObjectId(item.photoId), status: 'published' });
-  } catch {
-    photo = null;
-  }
-  if (!photo) {
-    unavailableCount++;
-    continue;
-  }
-
-  const urls = getPhotoImageUrls(photo, storage);
-  let priceCents = 0;
-
-  if (item.type === 'print' && item.widthCm && item.heightCm && item.paper) {
-    try {
-      const quote = computePrintPrice(
-        { photoId: item.photoId, widthCm: item.widthCm, heightCm: item.heightCm, paper: item.paper, qty: item.qty, crop: item.crop ?? 'fit' },
-        { settings, photo: { aspectRatio: photo.aspectRatio, maxPrintCm: photo.maxPrintCm, pricingOverride: photo.pricing } },
-      );
-      priceCents = quote.totalCents;
-    } catch {
-      unavailableCount++;
-      continue;
-    }
-  } else {
-    const quote = computeDigitalPrice(item.qty, { settings, digitalPriceOverrideCents: photo.pricing?.digitalPriceCents });
-    priceCents = quote.totalCents;
-  }
-
-  lines.push({
-    lineId: item.lineId,
-    title: photo.title[lang],
-    webpUrl: urls.webp,
-    jpegUrl: urls.jpeg,
-    detail:
-      item.type === 'print'
-        ? `${item.widthCm}×${item.heightCm}cm — ${item.paper}`
-        : lang === 'es'
-          ? 'Archivo digital'
-          : 'Digital download',
-    qty: item.qty,
-    priceCents,
-  });
-}
-
-const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 ---
 
 <BaseLayout title={`${t.cart.title} — José Valdiviezo`} lang={lang}>
-  <div class="mx-auto max-w-2xl px-6 py-16" data-cart-page data-lang={lang}>
+  <div
+    class="mx-auto max-w-2xl px-6 py-16"
+    data-cart-page
+    data-lang={lang}
+    data-copy={JSON.stringify({
+      empty: t.cart.empty,
+      total: t.cart.total,
+      volumeDiscount: t.cart.volumeDiscount,
+      nextTier: t.cart.nextTier,
+      remove: t.cart.remove,
+    })}
+  >
     <h1 class="font-display text-2xl">{t.cart.title}</h1>
 
     {
-      unavailableCount > 0 && (
-        <p class="mt-4 border border-border p-3 text-sm text-accent">
-          {lang === 'es'
-            ? `${unavailableCount} artículo(s) ya no están disponibles y se omitieron.`
-            : `${unavailableCount} item(s) are no longer available and were left out.`}
-        </p>
+      view.unavailableCount > 0 && (
+        <p class="panel mt-4 p-3 text-sm text-accent">{t.cart.unavailable.replace('{count}', String(view.unavailableCount))}</p>
       )
     }
 
-    {lines.length === 0 && <p class="mt-8 text-ink-muted">{t.cart.empty}</p>}
+    <p data-cart-empty hidden={view.lines.length > 0} class="mt-8 text-ink-muted">{t.cart.empty}</p>
 
-    {
-      lines.length > 0 && (
-        <ul class="mt-8 divide-y divide-border border-y border-border">
-          {lines.map((line) => (
-            <li class="flex items-center gap-4 py-4" data-cart-line data-line-id={line.lineId}>
-              <picture class="h-20 w-20 shrink-0 overflow-hidden bg-border">
-                <source srcset={line.webpUrl} type="image/webp" />
-                <img src={line.jpegUrl} alt={line.title} class="h-full w-full object-cover" />
-              </picture>
-              <div class="flex-1">
-                <p>{line.title}</p>
-                <p class="text-sm text-ink-muted">{line.detail}</p>
-                <label class="mt-1 block text-sm">
-                  {t.pricing.qty}
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={line.qty}
-                    data-qty-input
-                    data-line-id={line.lineId}
-                    class="ml-2 w-16 border border-border bg-transparent px-1"
-                  />
-                </label>
-              </div>
-              <p>${(line.priceCents / 100).toFixed(2)}</p>
-              <button type="button" data-remove data-line-id={line.lineId} class="text-ink-muted hover:text-accent" aria-label="Remove">
-                &times;
-              </button>
-            </li>
-          ))}
-        </ul>
-      )
-    }
+    <ul data-cart-lines hidden={view.lines.length === 0} class="mt-8 divide-y divide-border border-y border-border">
+      {
+        view.lines.map((line) => (
+          <li class="flex items-center gap-4 py-4" data-cart-line data-line-id={line.lineId}>
+            <picture class="frame h-20 w-20 shrink-0 bg-border">
+              <source srcset={line.webpUrl} type="image/webp" />
+              <img src={line.jpegUrl} alt={line.title} class="h-full w-full object-cover" />
+            </picture>
+            {/* No quantity control: a digital file has no quantity. Buying the same
+                photograph twice delivers the same single download token, so the cart
+                dedupes on add instead of counting. */}
+            <div class="flex-1">
+              <p>{line.title}</p>
+              <p class="text-sm text-ink-muted">{line.detail}</p>
+            </div>
+            <p data-line-price>{money(line.priceCents)}</p>
+            <button type="button" data-remove class="text-ink-muted hover:text-accent" aria-label={t.cart.remove}>
+              &times;
+            </button>
+          </li>
+        ))
+      }
+    </ul>
 
-    {
-      lines.length > 0 && (
-        <div class="mt-6 flex items-center justify-between">
-          <span class="font-display text-xl">{lang === 'es' ? 'Total' : 'Total'}</span>
-          <span class="font-display text-xl">${(totalCents / 100).toFixed(2)}</span>
-        </div>
-      )
-    }
+    <div data-cart-summary hidden={view.lines.length === 0} class="mt-6 space-y-2">
+      <div data-discount-row hidden={view.savingsCents === 0} class="flex items-center justify-between text-sm text-ink-muted">
+        <span data-discount-label>{t.cart.volumeDiscount.replace('{price}', money(view.unitPriceCents))}</span>
+        <span data-savings>−{money(view.savingsCents)}</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="font-display text-xl">{t.cart.total}</span>
+        <span data-cart-total class="font-display text-xl">{money(view.totalCents)}</span>
+      </div>
+      <p data-next-tier hidden={!view.nextTier} class="panel p-3 text-sm text-ink-muted">
+        {
+          view.nextTier
+            ? t.cart.nextTier
+                .replace('{count}', String(view.nextTier.photosAway))
+                .replace('{price}', money(view.nextTier.unitPriceCents))
+            : ''
+        }
+      </p>
+    </div>
 
-    {
-      lines.length > 0 && (
-        <button
-          type="button"
-          data-checkout
-          class="mt-8 w-full rounded-full bg-ink px-5 py-3 text-sm uppercase tracking-widest text-surface disabled:opacity-40"
-        >
-          {lang === 'es' ? 'Pagar' : 'Checkout'}
-        </button>
-      )
-    }
+    <button type="button" data-checkout hidden={view.lines.length === 0} class="btn btn-primary mt-8 w-full py-3">
+      {t.cart.checkout}
+    </button>
+
+    <p data-cart-error hidden class="mt-4 text-sm text-accent"></p>
   </div>
 </BaseLayout>
 
@@ -162,30 +101,97 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
     if (!root || root.dataset.bound === 'true') return;
     root.dataset.bound = 'true';
 
-    root.querySelectorAll<HTMLButtonElement>('[data-remove]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        await actions.removeFromCart({ lineId: button.dataset.lineId! });
-        window.location.reload();
-      });
+    const lang = root.dataset.lang as 'es' | 'en';
+    const copy = JSON.parse(root.dataset.copy!) as Record<string, string>;
+
+    const listEl = root.querySelector<HTMLElement>('[data-cart-lines]')!;
+    const emptyEl = root.querySelector<HTMLElement>('[data-cart-empty]')!;
+    const summaryEl = root.querySelector<HTMLElement>('[data-cart-summary]')!;
+    const checkoutBtn = root.querySelector<HTMLButtonElement>('[data-checkout]')!;
+    const errorEl = root.querySelector<HTMLElement>('[data-cart-error]')!;
+
+    const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+    function showError(message: string) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+
+    /** Re-renders from the server's recomputed view. Prices can change on *every*
+     *  remaining line when one is removed, because volume tiers apply to the whole cart —
+     *  so nothing here is derived client-side. */
+    function render(view: {
+      lines: { lineId: string; priceCents: number }[];
+      totalCents: number;
+      unitPriceCents: number;
+      savingsCents: number;
+      nextTier?: { unitPriceCents: number; photosAway: number };
+    }) {
+      const keep = new Set(view.lines.map((line) => line.lineId));
+      for (const li of root!.querySelectorAll<HTMLElement>('[data-cart-line]')) {
+        if (!keep.has(li.dataset.lineId!)) li.remove();
+      }
+      for (const line of view.lines) {
+        const li = root!.querySelector<HTMLElement>(`[data-cart-line][data-line-id="${line.lineId}"]`);
+        const price = li?.querySelector<HTMLElement>('[data-line-price]');
+        if (price) price.textContent = money(line.priceCents);
+      }
+
+      const isEmpty = view.lines.length === 0;
+      listEl.hidden = isEmpty;
+      summaryEl.hidden = isEmpty;
+      checkoutBtn.hidden = isEmpty;
+      emptyEl.hidden = !isEmpty;
+
+      root!.querySelector<HTMLElement>('[data-cart-total]')!.textContent = money(view.totalCents);
+
+      const discountRow = root!.querySelector<HTMLElement>('[data-discount-row]')!;
+      discountRow.hidden = view.savingsCents === 0;
+      if (view.savingsCents > 0) {
+        root!.querySelector<HTMLElement>('[data-discount-label]')!.textContent = copy.volumeDiscount.replace(
+          '{price}',
+          money(view.unitPriceCents),
+        );
+        root!.querySelector<HTMLElement>('[data-savings]')!.textContent = `−${money(view.savingsCents)}`;
+      }
+
+      const tierEl = root!.querySelector<HTMLElement>('[data-next-tier]')!;
+      tierEl.hidden = !view.nextTier;
+      if (view.nextTier) {
+        tierEl.textContent = copy.nextTier
+          .replace('{count}', String(view.nextTier.photosAway))
+          .replace('{price}', money(view.nextTier.unitPriceCents));
+      }
+    }
+
+    // Delegated, so it keeps working for whatever rows survive a re-render.
+    listEl.addEventListener('click', async (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-remove]');
+      if (!button) return;
+      const lineId = button.closest<HTMLElement>('[data-cart-line]')?.dataset.lineId;
+      if (!lineId) return;
+
+      errorEl.hidden = true;
+      button.disabled = true;
+
+      const { data, error } = await actions.removeFromCart({ lineId, lang });
+      if (error || !data) {
+        button.disabled = false;
+        return showError(error?.message ?? 'REMOVE_FAILED');
+      }
+      render(data.view);
     });
 
-    root.querySelectorAll<HTMLInputElement>('[data-qty-input]').forEach((input) => {
-      input.addEventListener('change', async () => {
-        const qty = Math.max(1, Math.min(50, Number(input.value) || 1));
-        await actions.updateCartItemQty({ lineId: input.dataset.lineId!, qty });
-        window.location.reload();
-      });
-    });
+    checkoutBtn.addEventListener('click', async () => {
+      errorEl.hidden = true;
+      checkoutBtn.disabled = true;
 
-    const checkoutButton = root.querySelector<HTMLButtonElement>('[data-checkout]');
-    checkoutButton?.addEventListener('click', async () => {
-      checkoutButton.disabled = true;
-      const lang = root.dataset.lang as 'es' | 'en';
       const { data, error } = await actions.checkout({ lang });
       if (error || !data?.url) {
-        alert(error?.message ?? 'Checkout failed');
-        checkoutButton.disabled = false;
-        return;
+        checkoutBtn.disabled = false;
+        // Inline rather than alert(): an alert blocks the page and looks like a browser
+        // fault rather than something this page is telling you.
+        return showError(error?.message ?? 'CHECKOUT_FAILED');
       }
       window.location.href = data.url;
     });

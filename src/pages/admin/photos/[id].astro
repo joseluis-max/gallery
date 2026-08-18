@@ -1,10 +1,10 @@
 ---
 import { ObjectId } from 'mongodb';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getDbConfig, getR2Config } from '../../../lib/config';
+import { listAllCompetitions } from '../../../lib/competitions';
+import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { PhotoDoc } from '../../../lib/photos';
-import { createStorageAdapter } from '../../../lib/storage';
 
 const idParam = Astro.params.id as string;
 let photoId: InstanceType<typeof ObjectId>;
@@ -20,8 +20,10 @@ if (!photo) {
   return new Response('Not found', { status: 404 });
 }
 
-const storage = createStorageAdapter('r2', getR2Config());
-const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jpg'));
+const storage = createStorage();
+const previewUrl = storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'));
+// Drafts included: a photograph is usually assigned to its event before either goes live.
+const allCompetitions = await listAllCompetitions(db);
 ---
 
 <AdminLayout title={photo.title.en || photo.slug}>
@@ -29,7 +31,7 @@ const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jp
 
   <div class="mt-4 grid gap-8 md:grid-cols-[1fr_1.4fr]">
     <div>
-      <img src={previewUrl} alt={photo.title.en} class="w-full border border-border" />
+      <img src={previewUrl} alt={photo.title.en} class="frame w-full" />
       <p class="mt-2 text-xs text-ink-muted">
         This is the public, watermarked derivative — exactly what visitors see. Check the mark isn't sitting on the
         subject before publishing.
@@ -37,7 +39,6 @@ const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jp
       <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-ink-muted">
         <dt>Slug</dt><dd>{photo.slug}</dd>
         <dt>Dimensions</dt><dd>{photo.width}×{photo.height}px</dd>
-        <dt>Max print size</dt><dd>{photo.maxPrintCm.toFixed(0)}cm long edge</dd>
         <dt>Camera</dt><dd>{photo.capture.camera ?? '—'}</dd>
         <dt>Lens</dt><dd>{photo.capture.lens ?? '—'}</dd>
         <dt>Status</dt><dd class="capitalize">{photo.status}</dd>
@@ -48,57 +49,61 @@ const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jp
       <div class="grid grid-cols-2 gap-4">
         <label class="block text-sm">
           Title (ES)
-          <input name="title_es" value={photo.title.es} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          <input name="title_es" value={photo.title.es} class="mt-1 block w-full field" />
         </label>
         <label class="block text-sm">
           Title (EN)
-          <input name="title_en" value={photo.title.en} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          <input name="title_en" value={photo.title.en} class="mt-1 block w-full field" />
         </label>
       </div>
       <div class="grid grid-cols-2 gap-4">
         <label class="block text-sm">
           Description (ES)
-          <textarea name="description_es" rows="3" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">{photo.description.es}</textarea>
+          <textarea name="description_es" rows="3" class="mt-1 block w-full field">{photo.description.es}</textarea>
         </label>
         <label class="block text-sm">
           Description (EN)
-          <textarea name="description_en" rows="3" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">{photo.description.en}</textarea>
+          <textarea name="description_en" rows="3" class="mt-1 block w-full field">{photo.description.en}</textarea>
         </label>
       </div>
       <label class="block text-sm">
         Tags (comma-separated)
-        <input name="tags" value={photo.tags.join(', ')} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        <input name="tags" value={photo.tags.join(', ')} class="mt-1 block w-full field" />
       </label>
       <label class="block text-sm">
-        Collections (comma-separated)
-        <input name="collections" value={photo.collections.join(', ')} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        Competition
+        <select name="competitionId" class="field mt-1 block w-full">
+          <option value="" selected={!photo.competitionId}>— Portfolio (no competition) —</option>
+          {
+            allCompetitions.map((competition) => (
+              <option value={competition._id.toString()} selected={photo.competitionId?.toString() === competition._id.toString()}>
+                {competition.name.en || competition.name.es}
+                {competition.status === 'draft' ? ' (draft)' : ''}
+              </option>
+            ))
+          }
+        </select>
       </label>
       <label class="flex items-center gap-2 text-sm">
         <input type="checkbox" name="featured" checked={photo.featured} />
         Featured on homepage
       </label>
 
-      <fieldset class="border border-border p-3">
-        <legend class="px-1 text-xs uppercase tracking-widest text-ink-muted">Price override (blank = store default)</legend>
-        <div class="grid grid-cols-3 gap-3">
-          <label class="block text-sm">
-            Base (cents)
-            <input type="number" name="baseCents" value={photo.pricing?.baseCents ?? ''} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
-          </label>
-          <label class="block text-sm">
-            Rate/cm² (cents)
-            <input type="number" step="0.01" name="ratePerCm2Cents" value={photo.pricing?.ratePerCm2Cents ?? ''} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
-          </label>
-          <label class="block text-sm">
-            Digital (cents)
-            <input type="number" name="digitalPriceCents" value={photo.pricing?.digitalPriceCents ?? ''} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
-          </label>
-        </div>
+      <fieldset class="panel p-3">
+        <legend class="px-1 text-xs uppercase tracking-widest text-ink-muted">Price override</legend>
+        <label class="block max-w-xs text-sm">
+          Price (cents)
+          <input type="number" min="0" name="digitalPriceCents" value={photo.pricing?.digitalPriceCents ?? ''} class="field mt-1 block w-full" />
+          <span class="mt-1 block text-xs text-ink-muted">
+            Blank uses the <a href="/admin/pricing" class="underline">store price</a>. A photograph priced here keeps that
+            price and is never discounted by a volume tier.
+          </span>
+        </label>
       </fieldset>
 
       <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="rounded-full bg-ink px-5 py-2 text-sm uppercase tracking-widest text-surface">Save</button>
-        <button type="button" data-toggle-publish data-published={String(photo.status === 'published')} class="rounded-full border border-ink px-5 py-2 text-sm uppercase tracking-widest">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" data-toggle-publish data-published={String(photo.status === 'published')} class="btn btn-ghost">
           {photo.status === 'published' ? 'Unpublish' : 'Publish'}
         </button>
         <span data-save-status class="text-sm text-ink-muted"></span>
@@ -132,13 +137,9 @@ const previewUrl = storage.publicUrl(photo.r2.publicKey.replace(/\.webp$/i, '.jp
       title: { es: field('title_es'), en: field('title_en') },
       description: { es: field('description_es'), en: field('description_en') },
       tags: field('tags').split(',').map((t) => t.trim()).filter(Boolean),
-      collections: field('collections').split(',').map((c) => c.trim()).filter(Boolean),
+      competitionId: field('competitionId') || null,
       featured: (form.elements.namedItem('featured') as HTMLInputElement).checked,
-      pricingOverride: {
-        baseCents: numberOrUndefined('baseCents'),
-        ratePerCm2Cents: numberOrUndefined('ratePerCm2Cents'),
-        digitalPriceCents: numberOrUndefined('digitalPriceCents'),
-      },
+      pricingOverride: { digitalPriceCents: numberOrUndefined('digitalPriceCents') },
     });
 
     statusEl.textContent = error ? `Error: ${error.message}` : 'Saved.';

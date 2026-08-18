@@ -1,0 +1,152 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getCustomerStats } from '../../../lib/analytics';
+import { formatCents } from '../../../lib/charts';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { listUsers, MIN_PASSWORD_LENGTH, type UserRole } from '../../../lib/users';
+
+const db = await getDb(getDbConfig());
+
+const search = Astro.url.searchParams.get('q')?.trim() ?? '';
+const roleParam = Astro.url.searchParams.get('role');
+const role: UserRole | undefined = roleParam === 'admin' || roleParam === 'customer' ? roleParam : undefined;
+
+const users = await listUsers(db, { search: search || undefined, role });
+// One aggregation for the whole page rather than a lookup per row.
+const stats = await getCustomerStats(
+  db,
+  users.map((user) => user._id),
+);
+---
+
+<AdminLayout title="Customers">
+  <div class="flex flex-wrap items-baseline justify-between gap-3">
+    <h1 class="font-display text-2xl">Customers</h1>
+    <span class="text-sm text-ink-muted">{users.length} account(s)</span>
+  </div>
+
+  <form class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+    <input
+      type="search"
+      name="q"
+      value={search}
+      placeholder="Search by name or email"
+      class="field"
+    />
+    <select name="role" class="field">
+      <option value="">All roles</option>
+      <option value="customer" selected={role === 'customer'}>Customers</option>
+      <option value="admin" selected={role === 'admin'}>Admins</option>
+    </select>
+    <button type="submit" class="btn btn-ghost py-1.5">Filter</button>
+  </form>
+
+  <table class="mt-6 w-full text-sm">
+    <thead>
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+        <th class="py-2">Name</th>
+        <th class="py-2">Email</th>
+        <th class="py-2">Role</th>
+        <th class="py-2">Joined</th>
+        <th class="py-2 text-right">Orders</th>
+        <th class="py-2 text-right">Spend</th>
+      </tr>
+    </thead>
+    <tbody class="[font-variant-numeric:tabular-nums]">
+      {
+        users.map((user) => {
+          const stat = stats.get(user._id.toString());
+          return (
+            <tr class="border-b border-border">
+              <td class="py-2">
+                <a href={`/admin/customers/${user._id.toString()}`} class="hover:underline">
+                  {user.name}
+                </a>
+                {user.disabled && <span class="ml-2 text-xs uppercase tracking-widest text-accent">disabled</span>}
+              </td>
+              <td class="py-2 text-ink-muted">{user.email}</td>
+              <td class="py-2 capitalize">{user.role}</td>
+              <td class="py-2 text-ink-muted">{new Date(user.createdAt).toLocaleDateString()}</td>
+              <td class="py-2 text-right">{stat?.orders ?? 0}</td>
+              <td class="py-2 text-right">{formatCents(stat?.revenueCents ?? 0)}</td>
+            </tr>
+          );
+        })
+      }
+      {
+        users.length === 0 && (
+          <tr>
+            <td colspan="6" class="py-4 text-ink-muted">
+              No accounts match this filter.
+            </td>
+          </tr>
+        )
+      }
+    </tbody>
+  </table>
+
+  <div class="mt-12 max-w-md panel p-4" data-create-user>
+    <h2 class="text-sm uppercase tracking-widest text-ink-muted">Add an account</h2>
+    <p class="mt-2 text-xs text-ink-muted">
+      Creates the account directly — no invitation email is sent, so pass the password on yourself. Admin accounts get the
+      full panel.
+    </p>
+    <form class="mt-4 space-y-3">
+      <label class="block text-sm">
+        Name
+        <input name="name" required class="mt-1 block w-full field" />
+      </label>
+      <label class="block text-sm">
+        Email
+        <input type="email" name="email" required class="mt-1 block w-full field" />
+      </label>
+      <label class="block text-sm">
+        Password
+        <input
+          type="password"
+          name="password"
+          required
+          minlength={MIN_PASSWORD_LENGTH}
+          class="mt-1 block w-full field"
+        />
+      </label>
+      <label class="block text-sm">
+        Role
+        <select name="role" class="mt-1 block w-full field">
+          <option value="customer">Customer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary">Create</button>
+      <span data-create-status class="ml-2 text-sm text-ink-muted"></span>
+    </form>
+  </div>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const wrapper = document.querySelector<HTMLElement>('[data-create-user]')!;
+  const form = wrapper.querySelector('form')!;
+  const statusEl = wrapper.querySelector<HTMLElement>('[data-create-status]')!;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value;
+
+    statusEl.textContent = 'Saving…';
+    const { error } = await actions.admin.createUser({
+      name: value('name'),
+      email: value('email'),
+      password: value('password'),
+      role: value('role') as 'admin' | 'customer',
+    });
+
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      return;
+    }
+    window.location.reload();
+  });
+</script>

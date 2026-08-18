@@ -1,5 +1,19 @@
 import { defineMiddleware } from 'astro:middleware';
+import type { APIContext } from 'astro';
 import { middleware as createI18nMiddleware } from 'astro:i18n';
+import { getDbConfig } from './lib/config';
+import { getDb } from './lib/db';
+import { findActiveUserById, isAdmin } from './lib/users';
+
+/** Drops the stale session on the way out, so a revoked admin isn't left holding a
+ *  cookie that keeps claiming otherwise. */
+async function isStillAdmin(context: APIContext, userId: string): Promise<boolean> {
+  const db = await getDb(getDbConfig());
+  const current = await findActiveUserById(db, userId);
+  if (current?.role === 'admin') return true;
+  context.session?.delete('user');
+  return false;
+}
 
 const LOCALES = ['es', 'en'] as const;
 type Locale = (typeof LOCALES)[number];
@@ -49,8 +63,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // equally unreachable without a valid session; only the shape of the rejection
     // differs.
     if (pathname !== ADMIN_HOME_ROUTE) {
-      const authed = await context.session?.get('adminAuthed');
-      if (!authed) {
+      const user = await context.session?.get('user');
+      // A signed-in *customer* is as unauthorized here as an anonymous visitor — the
+      // public account area and the admin panel share one session, so this is a role
+      // check, not a "logged in at all" check. And the role is re-read from the
+      // database rather than trusted from the cookie, so a demoted or disabled admin
+      // loses the panel on their next request (see findActiveUserById).
+      if (!isAdmin(user) || !(await isStillAdmin(context, user!.id))) {
         return context.rewrite(ADMIN_HOME_ROUTE);
       }
     }

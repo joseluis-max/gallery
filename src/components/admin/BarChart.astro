@@ -1,0 +1,57 @@
+---
+import ChartFrame from './ChartFrame.astro';
+import { barPath, emptyMaxFor, formatValue, layoutBars, type ChartDatum, type ValueFormat } from '../../lib/charts';
+
+/** Horizontal bars for nominal categories — best sellers, orders by status, paper mix.
+ *  Every bar is the same hue: darkening by size would double-encode the length the bar
+ *  already shows, and these categories have no natural order to ramp along. */
+interface Props {
+  title: string;
+  subtitle?: string;
+  data: ChartDatum[];
+  format: ValueFormat;
+  labelHeading?: string;
+  valueHeading?: string;
+}
+
+const { title, subtitle, data, format, labelHeading = 'Category', valueHeading = 'Total' } = Astro.props;
+
+const WIDTH = 720;
+// Room for the category name on the left and its value at the bar tip on the right.
+const PADDING = { top: 6, right: 96, bottom: 6, left: 168 };
+const ROW_HEIGHT = 30;
+
+const layout = layoutBars(data, { width: WIDTH, padding: PADDING, rowHeight: ROW_HEIGHT, emptyMax: emptyMaxFor(format) });
+
+function truncate(text: string, max = 26): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+---
+
+<ChartFrame title={title} subtitle={subtitle} data={data} format={format} labelHeading={labelHeading} valueHeading={valueHeading}>
+  {data.length === 0 && <p class="py-4 text-sm text-ink-muted">No data yet.</p>}
+
+  {
+    data.length > 0 && (
+      <svg viewBox={`0 0 ${WIDTH} ${layout.height}`} class="h-auto w-full" role="img" aria-label={title}>
+        {layout.bars.map((bar) => (
+          <g>
+            <text x={layout.plot.x - 12} y={bar.centerY + 4} text-anchor="end" font-size="12" fill="var(--color-ink-muted)">
+              {truncate(bar.label)}
+              <title>{bar.label}</title>
+            </text>
+            {bar.width > 0 && <path d={barPath(bar.x, bar.y, bar.width, bar.height)} fill="var(--color-data)" />}
+            <rect x={layout.plot.x} y={bar.y} width={layout.plot.width} height={bar.height} fill="transparent">
+              <title>{`${bar.label}: ${formatValue(bar.value, format)}`}</title>
+            </rect>
+            {/* Value at the tip, in ink rather than the series color — text never wears
+                the data hue. */}
+            <text x={bar.x + bar.width + 10} y={bar.centerY + 4} font-size="12" fill="var(--color-ink)">
+              {formatValue(bar.value, format)}
+            </text>
+          </g>
+        ))}
+      </svg>
+    )
+  }
+</ChartFrame>

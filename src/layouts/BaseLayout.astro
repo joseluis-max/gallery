@@ -1,6 +1,10 @@
 ---
 import { ClientRouter } from 'astro:transitions';
 import ThemeToggle from '../components/ThemeToggle.astro';
+import { listPublishedCompetitions } from '../lib/competitions';
+import { getDbConfig } from '../lib/config';
+import { getDb } from '../lib/db';
+import { getDictionary } from '../lib/i18n';
 import '../styles/global.css';
 
 interface Props {
@@ -14,6 +18,23 @@ interface Props {
 
 const { title, description, lang, ogImage } = Astro.props;
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin).toString();
+
+const t = getDictionary(lang);
+// The header link is the only difference an anonymous visitor sees: "Sign in" points at
+// the same /account route, which redirects them to the sign-in form.
+const sessionUser = await Astro.session?.get('user');
+
+const cartCount = ((await Astro.session?.get('cart')) ?? []).length;
+
+// This runs on EVERY page, 404.astro included. A database blip must degrade the dropdown
+// to a plain link rather than 500 the error page that would have to report the problem.
+let navCompetitions: { slug: string; name: { es: string; en: string } }[] = [];
+try {
+  const db = await getDb(getDbConfig());
+  navCompetitions = await listPublishedCompetitions(db, 8);
+} catch {
+  navCompetitions = [];
+}
 
 const LOCALES = ['es', 'en'] as const;
 
@@ -87,10 +108,69 @@ const alternates = LOCALES.map((locale) => ({
     </script>
   </head>
   <body class="min-h-screen bg-surface text-ink font-body antialiased">
+    {/*
+      Both the competitions dropdown and the mobile menu are <details>/<summary>, not
+      JavaScript. That's keyboard- and screen-reader-correct for free, and — the reason
+      that matters here — there's no `astro:page-load` listener to re-bind on every
+      ClientRouter navigation. ClientRouter swaps <body>, so the header re-renders fresh
+      and both revert to closed on navigation with no close-on-navigate code at all.
+    */}
     <slot name="header">
-      <header class="flex items-center justify-between px-6 py-6 md:px-12">
+      <header class="flex items-center justify-between gap-4 px-6 py-6 md:px-12">
         <a href={`/${lang}/`} class="font-display text-lg tracking-wide">José Valdiviezo</a>
-        <ThemeToggle />
+
+        {/* Desktop */}
+        <nav class="hidden items-center gap-5 text-sm text-ink-muted md:flex" aria-label="Primary">
+          <details class="relative" data-nav-dropdown>
+            <summary class="cursor-pointer list-none hover:text-ink">{t.nav.competitions} ▾</summary>
+            <div class="panel absolute right-0 z-40 mt-2 w-64 bg-surface p-2 shadow-lg">
+              {navCompetitions.length === 0 && <p class="px-3 py-2 text-xs text-ink-muted">{t.competitions.empty}</p>}
+              {navCompetitions.map((competition) => (
+                <a href={`/${lang}/competitions/${competition.slug}`} class="block rounded-md px-3 py-2 hover:bg-border hover:text-ink">
+                  {competition.name[lang]}
+                </a>
+              ))}
+              <a href={`/${lang}/competitions`} class="mt-1 block border-t border-border px-3 pb-1 pt-2 text-xs uppercase tracking-widest hover:text-ink">
+                {t.nav.viewAll} &rarr;
+              </a>
+            </div>
+          </details>
+
+          <a href={`/${lang}/portfolio`} class="hover:text-ink">{t.nav.portfolio}</a>
+          <a href={`/${lang}/about`} class="hover:text-ink">{t.nav.about}</a>
+          <a href={`/${lang}/cart`} class="hover:text-ink">
+            {t.nav.cart}{cartCount > 0 && <span data-cart-count> ({cartCount})</span>}
+          </a>
+          <a href={`/${lang}/account`} class="hover:text-ink">{sessionUser ? t.nav.account : t.nav.signIn}</a>
+          <ThemeToggle />
+        </nav>
+
+        {/* Mobile: five links plus a theme toggle don't fit 375px, so they collapse. */}
+        <div class="flex items-center gap-4 text-sm text-ink-muted md:hidden">
+          <a href={`/${lang}/cart`} class="hover:text-ink">
+            {t.nav.cart}{cartCount > 0 && <span data-cart-count> ({cartCount})</span>}
+          </a>
+          <details data-mobile-menu>
+            <summary class="cursor-pointer list-none px-1 text-lg" aria-label={t.nav.menu}>☰</summary>
+            <nav class="panel absolute inset-x-4 z-40 mt-3 bg-surface p-2 shadow-lg" aria-label="Primary">
+              <a href={`/${lang}/competitions`} class="block rounded-md px-3 py-2 font-medium text-ink hover:bg-border">
+                {t.nav.competitions}
+              </a>
+              {navCompetitions.map((competition) => (
+                <a href={`/${lang}/competitions/${competition.slug}`} class="block rounded-md py-1.5 pl-6 pr-3 text-sm hover:bg-border hover:text-ink">
+                  {competition.name[lang]}
+                </a>
+              ))}
+              <a href={`/${lang}/portfolio`} class="mt-1 block rounded-md px-3 py-2 hover:bg-border hover:text-ink">{t.nav.portfolio}</a>
+              <a href={`/${lang}/gallery`} class="block rounded-md px-3 py-2 hover:bg-border hover:text-ink">{t.nav.allPhotographs}</a>
+              <a href={`/${lang}/about`} class="block rounded-md px-3 py-2 hover:bg-border hover:text-ink">{t.nav.about}</a>
+              <a href={`/${lang}/account`} class="block rounded-md px-3 py-2 hover:bg-border hover:text-ink">
+                {sessionUser ? t.nav.account : t.nav.signIn}
+              </a>
+              <div class="border-t border-border px-3 pb-1 pt-3"><ThemeToggle /></div>
+            </nav>
+          </details>
+        </div>
       </header>
     </slot>
 

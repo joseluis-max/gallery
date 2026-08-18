@@ -32,14 +32,10 @@ export interface ProcessedImage {
   /** ~20px long-edge WebP, inlined as a base64 data URI for zero-request blur-up. */
   lqip: string;
   exif: ExifData;
-  /** Long edge in px, converted through 240dpi to a usable print size in cm. */
-  maxPrintCm: number;
 }
 
 const DERIVATIVE_LONG_EDGE = 2000;
 const LQIP_LONG_EDGE = 20;
-const PRINT_DPI = 240;
-const CM_PER_INCH = 2.54;
 
 /**
  * Shared by both the CLI ingest script and the admin browser-upload handler — this must
@@ -77,11 +73,6 @@ export async function processOriginal(inputBuffer: Buffer, watermark: WatermarkC
   const lqipBuffer = await sharp(preWatermark).resize(LQIP_LONG_EDGE).webp({ quality: 40 }).toBuffer();
   const lqip = `data:image/webp;base64,${lqipBuffer.toString('base64')}`;
 
-  const longEdge = Math.max(width, height);
-  // 240dpi is pixels-per-inch; convert to cm — a bare `longEdge / 240` would silently
-  // yield inches, understating max print size by ~2.54x.
-  const maxPrintCm = (longEdge / PRINT_DPI) * CM_PER_INCH;
-
   return {
     derivativeWebp,
     derivativeJpeg,
@@ -90,7 +81,6 @@ export async function processOriginal(inputBuffer: Buffer, watermark: WatermarkC
     aspectRatio: width / height,
     lqip,
     exif,
-    maxPrintCm,
   };
 }
 

@@ -21,18 +21,18 @@ const actionTypes = await db.collection('auditLog').distinct('action');
   <p class="mt-2 text-sm text-ink-muted">Append-only history of every admin mutation and system event.</p>
 
   <form class="mt-4 flex flex-wrap items-center gap-3 text-sm">
-    <select name="action" class="border border-border bg-transparent px-2 py-1.5">
+    <select name="action" class="field">
       <option value="">All actions</option>
       {actionTypes.map((a) => (
         <option value={a} selected={actionFilter === a}>{a}</option>
       ))}
     </select>
-    <button type="submit" class="rounded-full border border-ink px-4 py-1.5">Filter</button>
+    <button type="submit" class="btn btn-ghost py-1.5">Filter</button>
   </form>
 
   <table class="mt-6 w-full text-sm">
     <thead>
-      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
         <th class="py-2">When</th>
         <th class="py-2">Actor</th>
         <th class="py-2">Action</th>

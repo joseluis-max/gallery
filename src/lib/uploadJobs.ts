@@ -11,6 +11,10 @@ export interface UploadJobDoc {
   error?: string;
   photoId?: ObjectId;
   photoSlug?: string;
+  /** Chosen in the upload UI before the files are sent, and applied to the photograph
+   *  this job creates — so a batch lands in its competition instead of having to be
+   *  assigned one by one afterwards. Absent means portfolio. */
+  competitionId?: ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }

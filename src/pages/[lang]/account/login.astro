@@ -1,0 +1,98 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { safeRedirectTarget } from '../../../lib/redirects';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+// `?next=` survives the sign-in round trip so a visitor bounced off /account (or any
+// other guarded page) lands back where they were headed. Filtered through
+// safeRedirectTarget so a crafted `?next=https://evil.example` can't turn this form
+// into an open redirect.
+const next = safeRedirectTarget(Astro.url.searchParams.get('next'), `/${lang}/account`);
+
+const sessionUser = await Astro.session?.get('user');
+if (sessionUser) {
+  return Astro.redirect(sessionUser.role === 'admin' ? '/admin' : next);
+}
+---
+
+<BaseLayout title={`${t.account.signInTitle} — José Valdiviezo`} lang={lang}>
+  <div class="mx-auto max-w-sm px-6 py-16" data-auth-page data-next={next} data-errors={JSON.stringify(t.account.errors)}>
+    <h1 class="font-display text-2xl">{t.account.signInTitle}</h1>
+
+    <form data-login-form class="mt-8 space-y-4">
+      <label class="block text-sm">
+        {t.account.email}
+        <input
+          type="email"
+          name="email"
+          autocomplete="email"
+          required
+          class="field mt-1 block w-full px-3 py-2"
+        />
+      </label>
+      <label class="block text-sm">
+        {t.account.password}
+        <input
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          required
+          class="field mt-1 block w-full px-3 py-2"
+        />
+      </label>
+      <p data-auth-error hidden class="text-sm text-accent"></p>
+      <button
+        type="submit"
+        class="btn btn-primary w-full py-3"
+      >
+        {t.account.signIn}
+      </button>
+    </form>
+
+    <p class="mt-6 text-sm text-ink-muted">
+      {t.account.noAccount}{' '}
+      <a href={`/${lang}/account/register?next=${encodeURIComponent(next)}`} class="underline hover:text-ink">
+        {t.account.createOne}
+      </a>
+    </p>
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-auth-page]');
+    const form = root?.querySelector<HTMLFormElement>('[data-login-form]');
+    if (!root || !form || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const errorEl = root.querySelector<HTMLElement>('[data-auth-error]')!;
+    const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const messages: Record<string, string> = JSON.parse(root.dataset.errors!);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      submit.disabled = true;
+
+      const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+      const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+      const { data, error } = await actions.auth.login({ email, password });
+
+      if (error || !data) {
+        errorEl.textContent = messages[error?.message ?? ''] ?? messages.UNKNOWN;
+        errorEl.hidden = false;
+        submit.disabled = false;
+        return;
+      }
+
+      // Full page load, not a client-side navigation: every page reads the session
+      // server-side, so the new signed-in state has to come from the server.
+      window.location.href = data.user.role === 'admin' ? '/admin' : root.dataset.next!;
+    });
+  });
+</script>

@@ -1,17 +1,42 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { listAllCompetitions } from '../../../lib/competitions';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+const competitions = await listAllCompetitions(db);
+// Preselected when arriving from a competition's own page, so "upload into this
+// competition" actually does.
+const preselected = Astro.url.searchParams.get('competition') ?? '';
 ---
 
 <AdminLayout title="Upload">
   <h1 class="font-display text-2xl">Upload</h1>
   <p class="mt-2 text-sm text-ink-muted">
-    Files upload directly from your browser to R2 — they never pass through the app server. Each one is then
+    Files upload directly from your browser to the storage bucket — they never pass through the app server. Each one is then
     processed (rotate, watermark, derivatives) and lands here as a draft.
   </p>
 
+  <label class="mt-6 block max-w-sm text-sm">
+    Add to competition
+    <select data-competition-select class="field mt-1 block w-full">
+      <option value="" selected={!preselected}>— Portfolio (no competition) —</option>
+      {
+        competitions.map((competition) => (
+          <option value={competition._id.toString()} selected={preselected === competition._id.toString()}>
+            {competition.name.en || competition.name.es}
+            {competition.status === 'draft' ? ' (draft)' : ''}
+          </option>
+        ))
+      }
+    </select>
+    <span class="mt-1 block text-xs text-ink-muted">Applies to every file in this batch. Change it before dropping files.</span>
+  </label>
+
   <div
     data-dropzone
-    class="mt-6 flex min-h-40 flex-col items-center justify-center border-2 border-dashed border-border p-10 text-center text-sm text-ink-muted"
+    class="mt-6 flex min-h-40 flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-10 text-center text-sm text-ink-muted"
   >
     <p>Drag JPEG/PNG/TIFF files here, or</p>
     <label class="mt-2 cursor-pointer underline">
@@ -22,7 +47,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 
   <table class="mt-8 w-full text-sm">
     <thead>
-      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
         <th class="py-2">File</th>
         <th class="py-2">Status</th>
         <th class="py-2">Progress</th>
@@ -100,10 +125,15 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
     localUploads.set(key, local);
     render();
 
+    // Read per file rather than captured once, so changing the select mid-batch applies
+    // to whatever is dropped next instead of silently using a stale value.
+    const competitionId = document.querySelector<HTMLSelectElement>('[data-competition-select]')?.value || undefined;
+
     const { data, error: requestError } = await actions.admin.requestUploadUrl({
       filename: file.name,
       contentType: file.type,
       bytes: file.size,
+      competitionId,
     });
     if (requestError || !data) {
       local.status = 'failed';
@@ -116,7 +146,12 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
     local.status = 'uploading';
     render();
 
-    await new Promise<void>((resolve) => {
+    // The PUT's outcome is *checked*. Resolving regardless of status (as this used to)
+    // meant a rejected upload — a CORS block, an expired signature, a 403 — fell through
+    // to completeUpload, which then failed with the storage layer's downstream complaint
+    // ("The specified key does not exist"), sending you looking in entirely the wrong
+    // place. Whatever goes wrong here is reported here.
+    const uploadResult = await new Promise<{ ok: true } | { ok: false; message: string }>((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', data.uploadUrl);
       xhr.setRequestHeader('Content-Type', file.type);
@@ -126,10 +161,32 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
           render();
         }
       });
-      xhr.addEventListener('load', () => resolve());
-      xhr.addEventListener('error', () => resolve());
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true });
+          return;
+        }
+        // Storage errors come back as an XML body whose <Message> is the useful part.
+        const detail = /<Message>([^<]+)<\/Message>/.exec(xhr.responseText ?? '')?.[1];
+        resolve({ ok: false, message: `storage rejected the upload (HTTP ${xhr.status})${detail ? `: ${detail}` : ''}` });
+      });
+      // A blocked CORS preflight and a dropped connection are indistinguishable to
+      // XMLHttpRequest — both surface as `error` with status 0 — so the message names
+      // both rather than guessing.
+      xhr.addEventListener('error', () => {
+        resolve({ ok: false, message: 'could not reach storage — blocked by CORS, or the network failed. Check the bucket CORS origins.' });
+      });
+      xhr.addEventListener('abort', () => resolve({ ok: false, message: 'upload aborted' }));
+      xhr.addEventListener('timeout', () => resolve({ ok: false, message: 'upload timed out' }));
       xhr.send(file);
     });
+
+    if (!uploadResult.ok) {
+      local.status = 'failed';
+      local.error = uploadResult.message;
+      render();
+      return;
+    }
 
     local.status = 'processing';
     render();

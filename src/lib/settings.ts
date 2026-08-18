@@ -1,34 +1,24 @@
 import type { Db } from 'mongodb';
 
-export interface PaperStock {
-  label: { es: string; en: string };
-  multiplier: number;
-}
-
-export interface SizePreset {
-  label: string;
-  widthCm: number;
-  heightCm: number;
-}
-
-export interface ShippingZone {
-  key: string;
-  label: string;
-  flatRateCents: number;
+/**
+ * A quantity threshold at which every photo in the cart gets a lower unit price.
+ *
+ * The discount is **retroactive across the whole cart**, not marginal: at `minQty: 5`,
+ * all five photos cost `unitPriceCents`, not just the fifth. That's the version a
+ * customer can predict without doing arithmetic, and it's what "buy 5, they're $1.50
+ * each" means to everyone who reads it.
+ */
+export interface VolumeTier {
+  minQty: number;
+  unitPriceCents: number;
 }
 
 export interface SettingsDoc {
   _id: string;
-  baseCents: number;
-  ratePerCm2Cents: number;
-  /** Aspect-ratio deviation allowed before a print is rejected unless crop/border is chosen. */
-  sizeTolerancePct: number;
-  minCm: number;
-  maxCmAbsolute: number;
+  /** The price of a single photo, before any volume tier applies. */
   digitalPriceCents: number;
-  paperStocks: Record<string, PaperStock>;
-  sizePresets: SizePreset[];
-  shippingZones: ShippingZone[];
+  /** Sorted ascending by `minQty` on write; readers should not assume order. */
+  volumeTiers: VolumeTier[];
   updatedAt: Date;
 }
 
@@ -36,34 +26,33 @@ const SETTINGS_ID = 'singleton';
 
 export const DEFAULT_SETTINGS: SettingsDoc = {
   _id: SETTINGS_ID,
-  baseCents: 1500,
-  ratePerCm2Cents: 0.9,
-  sizeTolerancePct: 0.02,
-  minCm: 10,
-  maxCmAbsolute: 150,
-  digitalPriceCents: 2000,
-  paperStocks: {
-    matte: { label: { es: 'Mate', en: 'Matte' }, multiplier: 1 },
-    lustre: { label: { es: 'Luster', en: 'Lustre' }, multiplier: 1.15 },
-    metallic: { label: { es: 'Metálico', en: 'Metallic' }, multiplier: 1.4 },
-  },
-  sizePresets: [
-    { label: '20x30', widthCm: 20, heightCm: 30 },
-    { label: '30x45', widthCm: 30, heightCm: 45 },
-    { label: '40x60', widthCm: 40, heightCm: 60 },
-    { label: '50x75', widthCm: 50, heightCm: 75 },
+  digitalPriceCents: 200,
+  volumeTiers: [
+    { minQty: 3, unitPriceCents: 175 },
+    { minQty: 5, unitPriceCents: 150 },
+    { minQty: 10, unitPriceCents: 120 },
   ],
-  shippingZones: [{ key: 'ecuador', label: 'Ecuador', flatRateCents: 500 }],
   updatedAt: new Date(0),
 };
 
 export async function getSettings(db: Db): Promise<SettingsDoc> {
   const doc = await db.collection<SettingsDoc>('settings').findOne({ _id: SETTINGS_ID });
-  return doc ?? DEFAULT_SETTINGS;
+  if (!doc) return DEFAULT_SETTINGS;
+  // A document written before volume tiers existed has no `volumeTiers` array. Falling
+  // back keeps pricing working instead of throwing on `.filter` of undefined.
+  return { ...doc, volumeTiers: doc.volumeTiers ?? [] };
 }
 
+/** `replaceOne`, not `$set` — so the first save after the print removal also clears the
+ *  now-unused paper stocks, size presets and shipping zones out of any stored document,
+ *  rather than leaving dead keys behind forever. */
 export async function saveSettings(db: Db, next: Omit<SettingsDoc, '_id' | 'updatedAt'>): Promise<SettingsDoc> {
-  const updated: SettingsDoc = { ...next, _id: SETTINGS_ID, updatedAt: new Date() };
+  const updated: SettingsDoc = {
+    ...next,
+    volumeTiers: [...next.volumeTiers].sort((a, b) => a.minQty - b.minQty),
+    _id: SETTINGS_ID,
+    updatedAt: new Date(),
+  };
   await db.collection<SettingsDoc>('settings').replaceOne({ _id: SETTINGS_ID }, updated, { upsert: true });
   return updated;
 }

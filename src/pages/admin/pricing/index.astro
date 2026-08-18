@@ -1,0 +1,175 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { unitPriceForQuantity } from '../../../lib/pricing';
+import { getSettings } from '../../../lib/settings';
+
+const db = await getDb(getDbConfig());
+const settings = await getSettings(db);
+
+// A worked example beats a description of the rule. These are the quantities most likely
+// to straddle a tier boundary, so the table shows the admin exactly what a customer pays.
+const PREVIEW_QUANTITIES = [1, 2, 3, 5, 10, 20];
+const preview = PREVIEW_QUANTITIES.map((qty) => {
+  const unit = unitPriceForQuantity(qty, settings);
+  return { qty, unit, total: unit * qty, saved: settings.digitalPriceCents * qty - unit * qty };
+});
+
+const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+---
+
+<AdminLayout title="Pricing">
+  <h1 class="font-display text-2xl">Pricing</h1>
+  <p class="mt-2 max-w-2xl text-sm text-ink-muted">
+    What a customer pays for a digital download. Volume tiers apply to the <strong>whole cart</strong> — reach a tier
+    and every photograph in the cart drops to that price, not just the ones past the threshold. Every save is recorded
+    with a before/after diff in <a href="/admin/activity" class="underline">Activity</a>.
+  </p>
+
+  <form data-pricing-form class="mt-8 max-w-2xl space-y-8">
+    <section>
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">Base price</h2>
+      <label class="mt-3 block max-w-xs text-sm">
+        Price per photograph (cents)
+        <input type="number" min="0" step="1" name="digitalPriceCents" value={settings.digitalPriceCents} class="field mt-1 block w-full" />
+        <span class="mt-1 block text-xs text-ink-muted">
+          200 = $2.00. Individual photographs can override this from their own edit page; an overridden photograph keeps
+          its price and is never pulled down by a volume tier.
+        </span>
+      </label>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">Volume tiers</h2>
+        <button type="button" data-add-tier class="chip hover:border-ink">Add tier</button>
+      </div>
+
+      <table class="mt-3 w-full text-sm">
+        <thead>
+          <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+            <th class="py-2">From this many photos</th>
+            <th class="py-2">Price each (cents)</th>
+            <th class="py-2 w-10"></th>
+          </tr>
+        </thead>
+        <tbody data-tier-rows>
+          {
+            settings.volumeTiers.map((tier) => (
+              <tr data-tier-row class="border-b border-border">
+                <td class="py-2 pr-3">
+                  <input type="number" min="2" step="1" data-tier-min value={tier.minQty} class="field w-full" />
+                </td>
+                <td class="py-2 pr-3">
+                  <input type="number" min="0" step="1" data-tier-price value={tier.unitPriceCents} class="field w-full" />
+                </td>
+                <td class="py-2 text-right">
+                  <button type="button" data-remove-tier class="text-ink-muted hover:text-accent" aria-label="Remove tier">
+                    &times;
+                  </button>
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+      <p data-no-tiers hidden={settings.volumeTiers.length > 0} class="mt-3 text-sm text-ink-muted">
+        No volume tiers — every photograph costs the base price.
+      </p>
+    </section>
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="btn btn-primary py-2">Save</button>
+      <span data-save-status class="text-sm text-ink-muted"></span>
+    </div>
+  </form>
+
+  <section class="mt-12 max-w-2xl">
+    <h2 class="text-sm uppercase tracking-widest text-ink-muted">What customers pay</h2>
+    <p class="mt-1 text-xs text-ink-muted">Based on the saved settings above — save to refresh.</p>
+    <table class="mt-3 w-full text-sm">
+      <thead>
+        <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+          <th class="py-2">Photos</th>
+          <th class="py-2">Each</th>
+          <th class="py-2">Total</th>
+          <th class="py-2">They save</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          preview.map((row) => (
+            <tr class="border-b border-border">
+              <td class="py-2">{row.qty}</td>
+              <td class="py-2">{fmt(row.unit)}</td>
+              <td class="py-2">{fmt(row.total)}</td>
+              <td class="py-2 text-ink-muted">{row.saved > 0 ? fmt(row.saved) : '—'}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </section>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const form = document.querySelector<HTMLFormElement>('[data-pricing-form]')!;
+  const statusEl = document.querySelector<HTMLElement>('[data-save-status]')!;
+  const rows = document.querySelector<HTMLTableSectionElement>('[data-tier-rows]')!;
+  const emptyNote = document.querySelector<HTMLElement>('[data-no-tiers]')!;
+
+  function syncEmptyNote() {
+    emptyNote.hidden = rows.querySelectorAll('[data-tier-row]').length > 0;
+  }
+
+  function addRow(minQty = '', unitPriceCents = '') {
+    const tr = document.createElement('tr');
+    tr.dataset.tierRow = '';
+    tr.className = 'border-b border-border';
+    tr.innerHTML = `
+      <td class="py-2 pr-3"><input type="number" min="2" step="1" data-tier-min value="${minQty}" class="field w-full" /></td>
+      <td class="py-2 pr-3"><input type="number" min="0" step="1" data-tier-price value="${unitPriceCents}" class="field w-full" /></td>
+      <td class="py-2 text-right"><button type="button" data-remove-tier class="text-ink-muted hover:text-accent" aria-label="Remove tier">&times;</button></td>`;
+    rows.appendChild(tr);
+    syncEmptyNote();
+  }
+
+  document.querySelector('[data-add-tier]')!.addEventListener('click', () => addRow());
+
+  // Delegated, so it covers rows added after page load too.
+  rows.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest('[data-remove-tier]');
+    if (!button) return;
+    button.closest('[data-tier-row]')!.remove();
+    syncEmptyNote();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    statusEl.textContent = 'Saving…';
+
+    const volumeTiers = [...rows.querySelectorAll<HTMLElement>('[data-tier-row]')]
+      .map((row) => ({
+        minQty: Number(row.querySelector<HTMLInputElement>('[data-tier-min]')!.value),
+        unitPriceCents: Number(row.querySelector<HTMLInputElement>('[data-tier-price]')!.value),
+      }))
+      // A half-filled row the admin left behind is dropped rather than saved as a tier
+      // that triggers at 0 photos and prices everything at zero.
+      .filter((tier) => Number.isFinite(tier.minQty) && tier.minQty >= 2 && Number.isFinite(tier.unitPriceCents));
+
+    const digitalPriceCents = Number((form.elements.namedItem('digitalPriceCents') as HTMLInputElement).value);
+
+    const dearer = volumeTiers.find((tier) => tier.unitPriceCents >= digitalPriceCents);
+    if (dearer) {
+      statusEl.textContent = `Tier at ${dearer.minQty}+ isn't cheaper than the base price — it would never apply.`;
+      return;
+    }
+
+    const { error } = await actions.admin.saveSettings({ digitalPriceCents, volumeTiers });
+    statusEl.textContent = error ? `Error: ${error.message}` : 'Saved.';
+    if (!error) window.location.reload();
+  });
+</script>
