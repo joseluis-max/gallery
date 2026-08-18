@@ -31,14 +31,14 @@ const stripeDashboardUrl = order.stripePaymentIntentId
 
   <div class="mt-4 flex items-center justify-between">
     <h1 class="font-display text-2xl">Order #{order._id.toString().slice(-8)}</h1>
-    <span class="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-widest capitalize">{order.status}</span>
+    <span class="chip uppercase tracking-widest capitalize">{order.status}</span>
   </div>
 
   <div class="mt-6 grid gap-8 md:grid-cols-[1.4fr_1fr]">
     <div>
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+          <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
             <th class="py-2">Photo</th>
             <th class="py-2">Spec</th>
             <th class="py-2">Total</th>

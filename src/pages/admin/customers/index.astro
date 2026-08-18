@@ -32,19 +32,19 @@ const stats = await getCustomerStats(
       name="q"
       value={search}
       placeholder="Search by name or email"
-      class="border border-border bg-transparent px-2 py-1.5"
+      class="field"
     />
-    <select name="role" class="border border-border bg-transparent px-2 py-1.5">
+    <select name="role" class="field">
       <option value="">All roles</option>
       <option value="customer" selected={role === 'customer'}>Customers</option>
       <option value="admin" selected={role === 'admin'}>Admins</option>
     </select>
-    <button type="submit" class="rounded-full border border-ink px-4 py-1.5">Filter</button>
+    <button type="submit" class="btn btn-ghost py-1.5">Filter</button>
   </form>
 
   <table class="mt-6 w-full text-sm">
     <thead>
-      <tr class="border-b border-border text-left text-xs uppercase tracking-widest text-ink-muted">
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
         <th class="py-2">Name</th>
         <th class="py-2">Email</th>
         <th class="py-2">Role</th>
@@ -86,7 +86,7 @@ const stats = await getCustomerStats(
     </tbody>
   </table>
 
-  <div class="mt-12 max-w-md border border-border p-4" data-create-user>
+  <div class="mt-12 max-w-md panel p-4" data-create-user>
     <h2 class="text-sm uppercase tracking-widest text-ink-muted">Add an account</h2>
     <p class="mt-2 text-xs text-ink-muted">
       Creates the account directly — no invitation email is sent, so pass the password on yourself. Admin accounts get the
@@ -95,11 +95,11 @@ const stats = await getCustomerStats(
     <form class="mt-4 space-y-3">
       <label class="block text-sm">
         Name
-        <input name="name" required class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        <input name="name" required class="mt-1 block w-full field" />
       </label>
       <label class="block text-sm">
         Email
-        <input type="email" name="email" required class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        <input type="email" name="email" required class="mt-1 block w-full field" />
       </label>
       <label class="block text-sm">
         Password
@@ -108,17 +108,17 @@ const stats = await getCustomerStats(
           name="password"
           required
           minlength={MIN_PASSWORD_LENGTH}
-          class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5"
+          class="mt-1 block w-full field"
         />
       </label>
       <label class="block text-sm">
         Role
-        <select name="role" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">
+        <select name="role" class="mt-1 block w-full field">
           <option value="customer">Customer</option>
           <option value="admin">Admin</option>
         </select>
       </label>
-      <button type="submit" class="rounded-full bg-ink px-4 py-1.5 text-sm uppercase tracking-widest text-surface">Create</button>
+      <button type="submit" class="btn btn-primary">Create</button>
       <span data-create-status class="ml-2 text-sm text-ink-muted"></span>
     </form>
   </div>

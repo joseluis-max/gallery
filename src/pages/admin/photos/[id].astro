@@ -31,7 +31,7 @@ const allCompetitions = await listAllCompetitions(db);
 
   <div class="mt-4 grid gap-8 md:grid-cols-[1fr_1.4fr]">
     <div>
-      <img src={previewUrl} alt={photo.title.en} class="w-full border border-border" />
+      <img src={previewUrl} alt={photo.title.en} class="frame w-full" />
       <p class="mt-2 text-xs text-ink-muted">
         This is the public, watermarked derivative — exactly what visitors see. Check the mark isn't sitting on the
         subject before publishing.
@@ -49,26 +49,26 @@ const allCompetitions = await listAllCompetitions(db);
       <div class="grid grid-cols-2 gap-4">
         <label class="block text-sm">
           Title (ES)
-          <input name="title_es" value={photo.title.es} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          <input name="title_es" value={photo.title.es} class="mt-1 block w-full field" />
         </label>
         <label class="block text-sm">
           Title (EN)
-          <input name="title_en" value={photo.title.en} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+          <input name="title_en" value={photo.title.en} class="mt-1 block w-full field" />
         </label>
       </div>
       <div class="grid grid-cols-2 gap-4">
         <label class="block text-sm">
           Description (ES)
-          <textarea name="description_es" rows="3" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">{photo.description.es}</textarea>
+          <textarea name="description_es" rows="3" class="mt-1 block w-full field">{photo.description.es}</textarea>
         </label>
         <label class="block text-sm">
           Description (EN)
-          <textarea name="description_en" rows="3" class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5">{photo.description.en}</textarea>
+          <textarea name="description_en" rows="3" class="mt-1 block w-full field">{photo.description.en}</textarea>
         </label>
       </div>
       <label class="block text-sm">
         Tags (comma-separated)
-        <input name="tags" value={photo.tags.join(', ')} class="mt-1 block w-full border border-border bg-transparent px-2 py-1.5" />
+        <input name="tags" value={photo.tags.join(', ')} class="mt-1 block w-full field" />
       </label>
       <label class="block text-sm">
         Competition
@@ -102,8 +102,8 @@ const allCompetitions = await listAllCompetitions(db);
       </fieldset>
 
       <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="rounded-full bg-ink px-5 py-2 text-sm uppercase tracking-widest text-surface">Save</button>
-        <button type="button" data-toggle-publish data-published={String(photo.status === 'published')} class="rounded-full border border-ink px-5 py-2 text-sm uppercase tracking-widest">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" data-toggle-publish data-published={String(photo.status === 'published')} class="btn btn-ghost">
           {photo.status === 'published' ? 'Unpublish' : 'Publish'}
         </button>
         <span data-save-status class="text-sm text-ink-muted"></span>

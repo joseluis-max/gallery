@@ -25,7 +25,7 @@ const deltaClass = direction === 'up' ? 'text-data' : direction === 'down' ? 'te
 const arrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '';
 ---
 
-<Tag class={`block border border-border p-4 ${href ? 'hover:border-ink' : ''}`} href={href}>
+<Tag class={`panel block p-4 ${href ? 'hover:border-ink' : ''}`} href={href}>
   <p class="text-xs uppercase tracking-widest text-ink-muted">{label}</p>
   <p class="mt-1 font-body text-2xl font-semibold">{value}</p>
   {

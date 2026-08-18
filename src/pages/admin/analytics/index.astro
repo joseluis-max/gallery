@@ -47,10 +47,10 @@ const rangeOrders = daily.orders.reduce((sum, point) => sum + point.value, 0);
     <h1 class="font-display text-2xl">Analytics</h1>
     <form class="flex items-center gap-2 text-sm">
       <label for="range" class="text-ink-muted">Range</label>
-      <select id="range" name="range" class="border border-border bg-transparent px-2 py-1.5" onchange="this.form.submit()">
+      <select id="range" name="range" class="field" onchange="this.form.submit()">
         {RANGES.map((option) => <option value={option.key} selected={option.key === range.key}>{option.label}</option>)}
       </select>
-      <noscript><button type="submit" class="rounded-full border border-ink px-4 py-1.5">Apply</button></noscript>
+      <noscript><button type="submit" class="btn btn-ghost py-1.5">Apply</button></noscript>
     </form>
   </div>
 
