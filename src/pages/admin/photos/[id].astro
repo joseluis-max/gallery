@@ -1,6 +1,7 @@
 ---
 import { ObjectId } from 'mongodb';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import Icon from '../../../components/admin/Icon.astro';
 import { listAllCompetitions } from '../../../lib/competitions';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
@@ -102,8 +103,12 @@ const allCompetitions = await listAllCompetitions(db);
       </fieldset>
 
       <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="submit" class="btn btn-primary">
+          <Icon name="check" />
+          Save
+        </button>
         <button type="button" data-toggle-publish data-published={String(photo.status === 'published')} class="btn btn-ghost">
+          <Icon name={photo.status === 'published' ? 'eye-off' : 'eye'} />
           {photo.status === 'published' ? 'Unpublish' : 'Publish'}
         </button>
         <span data-save-status class="text-sm text-ink-muted"></span>

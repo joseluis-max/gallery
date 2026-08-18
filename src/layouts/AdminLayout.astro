@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import ThemeScript from '../components/ThemeScript.astro';
 
 interface Props {
   title: string;
@@ -31,13 +32,7 @@ const sessionUser = await Astro.session?.get('user');
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>{title} — Admin</title>
-    <script is:inline>
-      (function () {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.dataset.theme = theme;
-      })();
-    </script>
+    <ThemeScript />
   </head>
   <body class="min-h-screen bg-surface text-ink font-body antialiased">
     <div class="grid min-h-screen grid-cols-[220px_1fr]">

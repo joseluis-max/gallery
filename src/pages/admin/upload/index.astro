@@ -15,7 +15,8 @@ const preselected = Astro.url.searchParams.get('competition') ?? '';
   <h1 class="font-display text-2xl">Upload</h1>
   <p class="mt-2 text-sm text-ink-muted">
     Files upload directly from your browser to the storage bucket — they never pass through the app server. Each one is then
-    processed (rotate, watermark, derivatives) and lands here as a draft.
+    processed (rotate, watermark, derivatives) and lands here as a draft. Files go up one at a time, in the order you added
+    them, so a full shoot takes a while — leave the tab open.
   </p>
 
   <label class="mt-6 block max-w-sm text-sm">
@@ -45,6 +46,8 @@ const preselected = Astro.url.searchParams.get('competition') ?? '';
     </label>
   </div>
 
+  <p class="mt-4 text-sm text-ink-muted" data-batch-summary hidden></p>
+
   <table class="mt-8 w-full text-sm">
     <thead>
       <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
@@ -64,149 +67,350 @@ const preselected = Astro.url.searchParams.get('competition') ?? '';
 
 <script>
   import { actions } from 'astro:actions';
+  import { createSequentialQueue } from '../../../lib/uploadQueue';
 
-  interface LocalUpload {
+  /** Attempts per file before it is reported as failed. Covers a stalled socket or a 5xx. */
+  const MAX_ATTEMPTS = 3;
+  /** No progress event for this long means the transfer is wedged rather than slow —
+   *  abort and retry instead of leaving the row on "uploading" forever. */
+  const STALL_TIMEOUT_MS = 90_000;
+
+  type Phase = 'queued' | 'requesting' | 'uploading' | 'processing' | 'ready' | 'failed';
+
+  interface Job {
+    file: File;
+    competitionId?: string;
     jobId?: string;
-    filename: string;
-    status: string;
+    phase: Phase;
     progressPct: number;
     error?: string;
+    /** Where it broke, so Retry knows whether the bytes still have to go up: a job that
+     *  failed while *processing* already has its original in the bucket. */
+    failedAt?: 'upload' | 'processing';
+    attempt: number;
+    /** Place in line while queued, so a long batch reads as a plan rather than a stalled
+     *  table. Meaningless once the job starts. */
+    queuePosition?: number;
+    row?: HTMLTableRowElement;
+    cells?: { status: HTMLTableCellElement; progress: HTMLTableCellElement; action: HTMLTableCellElement };
   }
 
   const dropzone = document.querySelector<HTMLElement>('[data-dropzone]')!;
   const fileInput = document.querySelector<HTMLInputElement>('[data-file-input]')!;
-  const jobsBody = document.querySelector<HTMLElement>('[data-jobs-body]')!;
-  const localUploads = new Map<string, LocalUpload>();
+  const jobsBody = document.querySelector<HTMLTableSectionElement>('[data-jobs-body]')!;
+  const batchSummary = document.querySelector<HTMLElement>('[data-batch-summary]')!;
+  const competitionSelect = document.querySelector<HTMLSelectElement>('[data-competition-select]');
 
-  function render() {
-    const rows = Array.from(localUploads.values());
-    if (rows.length === 0) {
-      jobsBody.innerHTML = '<tr><td colspan="4" class="py-4 text-ink-muted">No uploads yet.</td></tr>';
-      return;
+  const jobs: Job[] = [];
+
+  /**
+   * Uploads run strictly one at a time, in the order the files were added.
+   *
+   * This used to be unbounded — `handleFiles` called `uploadFile` per dropped file and
+   * each one opened its XHR immediately. Dropping a shoot (80 files, ~1.1GB) put all of
+   * it on the wire at once: the uplink saturated, transfers stalled, and the connections
+   * multiplexing them eventually reset. XMLHttpRequest reports that as `error` with
+   * status 0 — indistinguishable from a blocked CORS preflight, so the whole batch
+   * failed with a message blaming the bucket's CORS rules. The bucket was never the
+   * problem; the same files uploaded fine on a second, smaller attempt.
+   *
+   * Sequential is the strongest form of the fix. One transfer gets the entire uplink, so
+   * it finishes as fast as the connection allows and spends the least possible time in
+   * the window where a stall can happen; and because `completeUpload` is awaited before
+   * the next file starts, the server never runs two sharp pipelines at once — which is
+   * what left jobs stranded on `processing` when a big batch exhausted memory.
+   *
+   * The cost is that the uplink sits idle while the server processes each original. That
+   * is a deliberate trade: a batch that takes longer but lands completely beats a faster
+   * one that needs a retry pass.
+   *
+   * The runner itself is `lib/uploadQueue.ts` rather than a loop written here, so the
+   * ordering and non-overlap guarantees are covered by `tests/lib/uploadQueue.test.ts`
+   * instead of resting on this file being read carefully.
+   */
+  const queue = createSequentialQueue<Job>(async (job) => {
+    job.queuePosition = undefined;
+    // The file has just left the queue — renumber everything still behind it.
+    renderQueue();
+    try {
+      await runJob(job);
+    } catch (err) {
+      // runJob reports its own expected failures; this is the backstop for anything
+      // unforeseen, so one bad file cannot take the rest of the batch with it.
+      job.phase = 'failed';
+      job.error = err instanceof Error ? err.message : String(err);
+      job.failedAt ??= 'upload';
+      renderRow(job);
     }
-    jobsBody.innerHTML = rows
-      .map(
-        (row) => `
-        <tr class="border-b border-border" data-row="${row.jobId ?? row.filename}">
-          <td class="py-2">${row.filename}</td>
-          <td class="py-2">${row.status}${row.error ? ` — ${row.error}` : ''}</td>
-          <td class="py-2">${row.status === 'uploading' ? `${row.progressPct}%` : ''}</td>
-          <td class="py-2">${row.status === 'failed' && row.jobId ? `<button type="button" data-retry="${row.jobId}" class="underline">Retry</button>` : ''}</td>
-        </tr>`,
-      )
-      .join('');
+    renderSummary();
+  });
 
-    jobsBody.querySelectorAll<HTMLButtonElement>('[data-retry]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const jobId = button.dataset.retry!;
-        const local = [...localUploads.values()].find((u) => u.jobId === jobId);
-        if (local) {
-          local.status = 'processing';
-          local.error = undefined;
-          render();
-        }
-        const { error } = await actions.admin.retryUploadJob({ jobId });
-        if (local) {
-          if (error) {
-            local.status = 'failed';
-            local.error = error.message;
-          } else {
-            local.status = 'ready';
-          }
-          render();
-        }
-      });
-    });
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function statusText(job: Job): string {
+    if (job.phase === 'queued') return job.queuePosition ? `queued · #${job.queuePosition} in line` : 'queued';
+    if (job.phase === 'uploading' && job.attempt > 1) return `uploading (attempt ${job.attempt})`;
+    if (job.phase === 'failed' && job.error) return `failed — ${job.error}`;
+    return job.phase;
   }
 
-  async function uploadFile(file: File) {
-    const key = file.name + ':' + file.size;
-    const local: LocalUpload = { filename: file.name, status: 'requesting', progressPct: 0 };
-    localUploads.set(key, local);
-    render();
-
-    // Read per file rather than captured once, so changing the select mid-batch applies
-    // to whatever is dropped next instead of silently using a stale value.
-    const competitionId = document.querySelector<HTMLSelectElement>('[data-competition-select]')?.value || undefined;
-
-    const { data, error: requestError } = await actions.admin.requestUploadUrl({
-      filename: file.name,
-      contentType: file.type,
-      bytes: file.size,
-      competitionId,
-    });
-    if (requestError || !data) {
-      local.status = 'failed';
-      local.error = requestError?.message ?? 'Could not get upload URL';
-      render();
-      return;
+  /**
+   * Rows are created once and their cells updated in place. Rebuilding the table's
+   * innerHTML on every progress event (as this did) re-created every row many times a
+   * second and discarded the Retry buttons' listeners along with it — which got slower
+   * exactly as a batch got bigger.
+   */
+  function renderRow(job: Job) {
+    if (!job.row) {
+      const row = jobsBody.insertRow();
+      row.className = 'border-b border-border';
+      const name = row.insertCell();
+      name.className = 'py-2';
+      // textContent, not interpolation into innerHTML: a filename is untrusted input.
+      name.textContent = job.file.name;
+      const status = row.insertCell();
+      status.className = 'py-2';
+      const progress = row.insertCell();
+      progress.className = 'py-2 tabular-nums';
+      const action = row.insertCell();
+      action.className = 'py-2';
+      job.row = row;
+      job.cells = { status, progress, action };
     }
 
-    local.jobId = data.jobId;
-    local.status = 'uploading';
-    render();
+    const { status, progress, action } = job.cells!;
+    status.textContent = statusText(job);
+    progress.textContent = job.phase === 'uploading' ? `${job.progressPct}%` : '';
 
-    // The PUT's outcome is *checked*. Resolving regardless of status (as this used to)
-    // meant a rejected upload — a CORS block, an expired signature, a 403 — fell through
-    // to completeUpload, which then failed with the storage layer's downstream complaint
-    // ("The specified key does not exist"), sending you looking in entirely the wrong
-    // place. Whatever goes wrong here is reported here.
-    const uploadResult = await new Promise<{ ok: true } | { ok: false; message: string }>((resolve) => {
+    if (job.phase === 'failed' && !action.firstChild) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'underline';
+      button.textContent = 'Retry';
+      button.addEventListener('click', () => enqueue(job));
+      action.append(button);
+    } else if (job.phase !== 'failed') {
+      action.replaceChildren();
+    }
+  }
+
+  function renderSummary() {
+    if (jobs.length === 0) {
+      batchSummary.hidden = true;
+      return;
+    }
+    const done = jobs.filter((job) => job.phase === 'ready').length;
+    const failed = jobs.filter((job) => job.phase === 'failed').length;
+    const current = jobs.find((job) => job.phase === 'requesting' || job.phase === 'uploading' || job.phase === 'processing');
+
+    const parts = [`${done} of ${jobs.length} done`];
+    if (failed > 0) parts.push(`${failed} failed`);
+    if (current) parts.push(`now on ${current.file.name}`);
+    if (queue.pending.length > 0) parts.push(`${queue.pending.length} waiting`);
+
+    batchSummary.hidden = false;
+    batchSummary.textContent = `${parts.join(' · ')}.`;
+  }
+
+  /** Re-numbers the waiting files and repaints their rows. Called whenever the queue
+   *  changes — on a drop, and each time the worker takes the next file. */
+  function renderQueue() {
+    queue.pending.forEach((job, index) => {
+      job.queuePosition = index + 1;
+      renderRow(job);
+    });
+    renderSummary();
+  }
+
+  function enqueue(job: Job) {
+    job.phase = 'queued';
+    job.error = undefined;
+    job.progressPct = 0;
+    job.attempt = 0;
+    renderRow(job);
+    // Starts the worker if it is idle; if a batch is already running, this file simply
+    // joins the back of that same batch.
+    queue.push(job);
+  }
+
+  type PutResult = { ok: true } | { ok: false; message: string; transient: boolean };
+
+  /** One PUT attempt. Resolves — never rejects — with enough detail for the caller to
+   *  decide whether trying again could plausibly help. */
+  function putBytes(job: Job, uploadUrl: string): Promise<PutResult> {
+    return new Promise<PutResult>((resolve) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', data.uploadUrl);
-      xhr.setRequestHeader('Content-Type', file.type);
+      let stallTimer = 0;
+      let settled = false;
+
+      const finish = (result: PutResult) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(stallTimer);
+        resolve(result);
+      };
+
+      const armStallTimer = () => {
+        window.clearTimeout(stallTimer);
+        stallTimer = window.setTimeout(() => {
+          // abort() fires the abort handler too, but `settled` keeps this — the accurate
+          // description — as the reported outcome.
+          finish({ ok: false, message: `stalled with no data moving for ${STALL_TIMEOUT_MS / 1000}s`, transient: true });
+          xhr.abort();
+        }, STALL_TIMEOUT_MS);
+      };
+
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', job.file.type);
+
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
-          local.progressPct = Math.round((event.loaded / event.total) * 100);
-          render();
+          job.progressPct = Math.round((event.loaded / event.total) * 100);
+          renderRow(job);
         }
+        armStallTimer();
       });
+
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ ok: true });
+          finish({ ok: true });
           return;
         }
         // Storage errors come back as an XML body whose <Message> is the useful part.
         const detail = /<Message>([^<]+)<\/Message>/.exec(xhr.responseText ?? '')?.[1];
-        resolve({ ok: false, message: `storage rejected the upload (HTTP ${xhr.status})${detail ? `: ${detail}` : ''}` });
+        finish({
+          ok: false,
+          message: `storage rejected the upload (HTTP ${xhr.status})${detail ? `: ${detail}` : ''}`,
+          // 5xx and 429 are storage having a moment. A 4xx is a considered answer that
+          // will not change on its own — except 403, which after a long wait in the
+          // queue is usually an expired signature, and the retry re-signs first.
+          transient: xhr.status >= 500 || xhr.status === 429 || xhr.status === 403,
+        });
       });
-      // A blocked CORS preflight and a dropped connection are indistinguishable to
-      // XMLHttpRequest — both surface as `error` with status 0 — so the message names
-      // both rather than guessing.
-      xhr.addEventListener('error', () => {
-        resolve({ ok: false, message: 'could not reach storage — blocked by CORS, or the network failed. Check the bucket CORS origins.' });
-      });
-      xhr.addEventListener('abort', () => resolve({ ok: false, message: 'upload aborted' }));
-      xhr.addEventListener('timeout', () => resolve({ ok: false, message: 'upload timed out' }));
-      xhr.send(file);
-    });
 
-    if (!uploadResult.ok) {
-      local.status = 'failed';
-      local.error = uploadResult.message;
-      render();
+      // A blocked CORS preflight, a reset socket and a dead network are
+      // indistinguishable here — all three surface as `error` with status 0. Since a
+      // saturated uplink is by far the likeliest cause in a large batch, and a genuine
+      // CORS misconfiguration fails *every* file on its very first attempt rather than
+      // some of them mid-batch, this no longer leads with the bucket. The retry loop
+      // resolves the common case without the operator reading anything at all.
+      xhr.addEventListener('error', () => {
+        finish({ ok: false, message: 'connection to storage dropped', transient: true });
+      });
+      xhr.addEventListener('abort', () => {
+        finish({ ok: false, message: 'upload aborted', transient: false });
+      });
+      xhr.addEventListener('timeout', () => {
+        finish({ ok: false, message: 'upload timed out', transient: true });
+      });
+
+      armStallTimer();
+      xhr.send(job.file);
+    });
+  }
+
+  async function runJob(job: Job) {
+    // A job whose bytes are already in the bucket and that failed while being processed
+    // only needs the server to try again — re-sending 20MB would achieve nothing.
+    if (job.failedAt === 'processing' && job.jobId) {
+      job.phase = 'processing';
+      renderRow(job);
+      const { error } = await actions.admin.retryUploadJob({ jobId: job.jobId });
+      job.phase = error ? 'failed' : 'ready';
+      job.error = error?.message;
+      job.failedAt = error ? 'processing' : undefined;
+      renderRow(job);
       return;
     }
 
-    local.status = 'processing';
-    render();
+    for (job.attempt = 1; job.attempt <= MAX_ATTEMPTS; job.attempt += 1) {
+      job.phase = 'requesting';
+      renderRow(job);
 
-    const { error: completeError } = await actions.admin.completeUpload({ jobId: data.jobId });
-    if (completeError) {
-      local.status = 'failed';
-      local.error = completeError.message;
-    } else {
-      local.status = 'ready';
+      // The first attempt creates the job; later ones re-sign the one that already
+      // exists. That keeps a retried file to a single row instead of leaving an
+      // abandoned `awaiting-upload` record per attempt, and replaces a signature that
+      // expired while the file sat in the queue rather than re-using it.
+      const urlResult = job.jobId
+        ? await actions.admin.refreshUploadUrl({ jobId: job.jobId, contentType: job.file.type })
+        : await actions.admin.requestUploadUrl({
+            filename: job.file.name,
+            contentType: job.file.type,
+            bytes: job.file.size,
+            competitionId: job.competitionId,
+          });
+
+      if (urlResult.error || !urlResult.data) {
+        job.phase = 'failed';
+        job.error = urlResult.error?.message ?? 'could not get an upload URL';
+        job.failedAt = 'upload';
+        renderRow(job);
+        return;
+      }
+
+      job.jobId = urlResult.data.jobId;
+      job.phase = 'uploading';
+      job.progressPct = 0;
+      renderRow(job);
+
+      const result = await putBytes(job, urlResult.data.uploadUrl);
+      if (result.ok) break;
+
+      if (!result.transient || job.attempt === MAX_ATTEMPTS) {
+        job.phase = 'failed';
+        job.error = result.transient ? `${result.message} — gave up after ${MAX_ATTEMPTS} attempts` : result.message;
+        job.failedAt = 'upload';
+        renderRow(job);
+        return;
+      }
+
+      // Back off before trying again, so a batch that just congested the uplink does not
+      // immediately re-congest it.
+      await sleep(1000 * 2 ** (job.attempt - 1));
     }
-    render();
+
+    job.phase = 'processing';
+    renderRow(job);
+
+    const { error: completeError } = await actions.admin.completeUpload({ jobId: job.jobId! });
+    if (completeError) {
+      job.phase = 'failed';
+      job.error = completeError.message;
+      job.failedAt = 'processing';
+    } else {
+      job.phase = 'ready';
+      job.failedAt = undefined;
+    }
+    renderRow(job);
   }
 
   function handleFiles(files: FileList | null) {
-    if (!files) return;
-    for (const file of Array.from(files)) uploadFile(file);
+    if (!files || files.length === 0) return;
+    // Clears the "No uploads yet." placeholder the first time only.
+    if (jobs.length === 0) jobsBody.replaceChildren();
+
+    // Read per batch rather than captured once, so changing the select between drops
+    // applies to whatever is dropped next instead of silently using a stale value.
+    const competitionId = competitionSelect?.value || undefined;
+
+    for (const file of Array.from(files)) {
+      const job: Job = { file, competitionId, phase: 'queued', progressPct: 0, attempt: 0 };
+      jobs.push(job);
+      enqueue(job);
+    }
+
+    // Numbers the whole batch once it is all in, rather than per file: the first
+    // `enqueue` already started the worker, so positions assigned during the loop would
+    // be stale for everything added after it.
+    renderQueue();
   }
 
-  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+  fileInput.addEventListener('change', () => {
+    handleFiles(fileInput.files);
+    // Lets the same file be chosen again after a failure without having to pick a
+    // different one in between.
+    fileInput.value = '';
+  });
 
   dropzone.addEventListener('dragover', (event) => {
     event.preventDefault();
@@ -217,5 +421,11 @@ const preselected = Astro.url.searchParams.get('competition') ?? '';
     event.preventDefault();
     dropzone.classList.remove('border-accent');
     handleFiles(event.dataTransfer?.files ?? null);
+  });
+
+  // A batch takes minutes now that it is paced; leaving mid-flight silently discards
+  // everything that has not gone up yet.
+  window.addEventListener('beforeunload', (event) => {
+    if (jobs.some((job) => job.phase !== 'ready' && job.phase !== 'failed')) event.preventDefault();
   });
 </script>

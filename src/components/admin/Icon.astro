@@ -1,0 +1,65 @@
+---
+/**
+ * Inline SVG icons for the admin panel.
+ *
+ * Inline and hand-drawn rather than an icon package: the panel needs about ten glyphs,
+ * and a dependency (or a sprite sheet fetched at runtime) would cost more than the paths
+ * below. `currentColor` on both stroke and fill means an icon inherits whatever the
+ * button around it already does — including the `.btn-primary` inversion — so there is no
+ * second place where admin colours are decided.
+ *
+ * Every glyph is drawn on the same 24×24 grid with the same 1.75 stroke weight, which is
+ * what keeps them looking like one set.
+ *
+ * Icons are decorative here: each is `aria-hidden`, and the button that holds one is
+ * responsible for its own accessible name (visible text, or `aria-label` when icon-only).
+ */
+export type IconName =
+  | 'upload'
+  | 'eye'
+  | 'eye-off'
+  | 'trash'
+  | 'plus'
+  | 'check'
+  | 'check-square'
+  | 'x'
+  | 'arrow-left'
+  | 'image';
+
+interface Props {
+  name: IconName;
+  /** Sizing/spacing utilities. Defaults to a size that sits on the text baseline of a `.btn`. */
+  class?: string;
+}
+
+const { name, class: className = 'h-4 w-4' } = Astro.props;
+
+/** `d` attributes only — every icon is stroked, none are filled, so there is no per-icon
+ *  rendering special-casing. */
+const PATHS: Record<IconName, string[]> = {
+  upload: ['M12 15V3', 'M8 7l4-4 4 4', 'M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3'],
+  eye: ['M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z', 'M12 14.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z'],
+  'eye-off': ['M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z', 'M12 14.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z', 'M3.5 3.5l17 17'],
+  trash: ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12', 'M9 7V4.5A1.5 1.5 0 0110.5 3h3A1.5 1.5 0 0115 4.5V7'],
+  plus: ['M12 5v14', 'M5 12h14'],
+  check: ['M20 6L9 17l-5-5'],
+  'check-square': ['M9 11.5l2.5 2.5L21 4.5', 'M20.5 12v7a2 2 0 01-2 2h-13a2 2 0 01-2-2v-13a2 2 0 012-2H16'],
+  x: ['M18 6L6 18', 'M6 6l12 12'],
+  'arrow-left': ['M19 12H5', 'M12 19l-7-7 7-7'],
+  image: ['M3 5h18v14H3z', 'M3 16l5-5 4 4 3-3 6 6'],
+};
+---
+
+<svg
+  class={className}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  focusable="false"
+>
+  {PATHS[name].map((d) => <path d={d} />)}
+</svg>

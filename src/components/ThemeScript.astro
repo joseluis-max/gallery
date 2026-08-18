@@ -1,0 +1,45 @@
+---
+/**
+ * Applies the stored theme to <html> before first paint, and re-applies it after every
+ * ClientRouter navigation.
+ *
+ * Shared by BaseLayout and AdminLayout rather than duplicated: the two had identical
+ * copies of the bootstrap, and only one of them would ever have been fixed.
+ *
+ * Why the `astro:after-swap` listener is load-bearing — two ClientRouter behaviours
+ * combine to wipe the theme on every client-side navigation:
+ *
+ *   1. `swapRootAttributes()` removes every attribute from the live <html> and re-applies
+ *      the incoming document's. The server renders `data-theme=""`, so the attribute
+ *      comes back empty on each navigation.
+ *   2. `deselectScripts()` keys inline scripts by their text content and marks ones it
+ *      has already run, so this script executes on the first load only — nothing puts
+ *      the attribute back.
+ *
+ * Since dark is expressed *solely* as `[data-theme="dark"]` (there is no
+ * `prefers-color-scheme` rule in the stylesheet), an empty attribute means light. The
+ * visible symptom was a dark-mode reader being thrown back to light on every page they
+ * opened.
+ *
+ * `astro:after-swap` fires inside the view-transition update callback — after the DOM is
+ * swapped but before the browser paints — so re-applying there corrects the attribute
+ * with no flash. The listener is on `document`, which survives swaps (only <body> is
+ * replaced), so registering it once here is enough.
+ *
+ * `is:inline` and NOT `type="module"`: a module script is deferred, which would put the
+ * first application after first paint and reintroduce the flash on full page loads.
+ */
+---
+
+<script is:inline>
+  (function () {
+    var apply = function () {
+      var stored = localStorage.getItem('theme');
+      var theme = stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = theme;
+    };
+
+    apply();
+    document.addEventListener('astro:after-swap', apply);
+  })();
+</script>

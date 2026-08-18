@@ -1,6 +1,7 @@
 ---
 import { ClientRouter } from 'astro:transitions';
 import ThemeToggle from '../components/ThemeToggle.astro';
+import ThemeScript from '../components/ThemeScript.astro';
 import { listPublishedCompetitions } from '../lib/competitions';
 import { getDbConfig } from '../lib/config';
 import { getDb } from '../lib/db';
@@ -75,18 +76,7 @@ const alternates = LOCALES.map((locale) => ({
     {description && <meta name="twitter:description" content={description} />}
     {ogImage && <meta name="twitter:image" content={ogImage} />}
 
-    <!--
-      Must run before first paint, as a plain inline script (not type="module", which
-      is deferred) — otherwise dark-mode visitors see a flash of the light theme on
-      every load/navigation.
-    -->
-    <script is:inline>
-      (function () {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.dataset.theme = theme;
-      })();
-    </script>
+    <ThemeScript />
 
     <ClientRouter />
 

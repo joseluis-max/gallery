@@ -128,7 +128,13 @@
     line-height: 1rem;
   }
 
+  /* inline-flex + gap so a `<Icon />` can sit beside the label without every call site
+     repeating the same three utilities. Text-only buttons are unaffected. */
   .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     border-radius: 9999px;
     padding: 0.5rem 1.25rem;
     font-size: 0.875rem;
@@ -144,6 +150,39 @@
     border: 1px solid var(--color-ink);
   }
   .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /*
+   * Icon-only action: table row actions, thumbnail overlays. There is no text to read,
+   * so every use MUST carry an `aria-label` (and a `title`, since the label is also the
+   * only hint a sighted user gets on hover).
+   *
+   * Sized to a 32px hit target — smaller than the 44px touch guideline, which is the
+   * right trade for a dense desktop-only table that would otherwise need twice the row
+   * height. The public site, which is where phones actually are, uses none of this.
+   */
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-md);
+    color: var(--color-ink-muted);
+  }
+  .btn-icon:hover:not(:disabled) {
+    background-color: var(--color-border);
+    color: var(--color-ink);
+  }
+  /* Destructive actions announce themselves on hover rather than sitting permanently red,
+     so a row of icons doesn't read as a row of warnings. */
+  .btn-icon-danger:hover:not(:disabled) {
+    background-color: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+  .btn-icon:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }

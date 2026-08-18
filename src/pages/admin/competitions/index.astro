@@ -1,5 +1,6 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import Icon from '../../../components/admin/Icon.astro';
 import { getCompetitionPhotoCounts, listAllCompetitions } from '../../../lib/competitions';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
@@ -11,7 +12,10 @@ const [competitions, counts] = await Promise.all([listAllCompetitions(db), getCo
 <AdminLayout title="Competitions">
   <div class="flex items-center justify-between">
     <h1 class="font-display text-2xl">Competitions</h1>
-    <button type="button" data-open-new class="btn btn-primary py-1.5">New competition</button>
+    <button type="button" data-open-new class="btn btn-primary py-1.5">
+      <Icon name="plus" />
+      New competition
+    </button>
   </div>
   <p class="mt-2 max-w-2xl text-sm text-ink-muted">
     Sporting events you've photographed. Photographs not assigned to one appear in the
@@ -51,8 +55,14 @@ const [competitions, counts] = await Promise.all([listAllCompetitions(db), getCo
       </label>
     </div>
     <div class="flex items-center gap-3">
-      <button type="submit" class="btn btn-primary py-1.5">Create</button>
-      <button type="button" data-cancel-new class="text-sm text-ink-muted underline">Cancel</button>
+      <button type="submit" class="btn btn-primary py-1.5">
+        <Icon name="check" />
+        Create
+      </button>
+      <button type="button" data-cancel-new class="inline-flex items-center gap-1.5 text-sm text-ink-muted underline">
+        <Icon name="x" class="h-3.5 w-3.5" />
+        Cancel
+      </button>
       <span data-new-status class="text-sm text-ink-muted"></span>
     </div>
   </form>
@@ -89,13 +99,38 @@ const [competitions, counts] = await Promise.all([listAllCompetitions(db), getCo
                 </a>
               </td>
               <td class="py-2 capitalize">{competition.status}</td>
-              <td class="py-2 text-right">
-                <button type="button" data-toggle-publish data-published={String(competition.status === 'published')} class="text-xs uppercase tracking-widest underline">
-                  {competition.status === 'published' ? 'Unpublish' : 'Publish'}
-                </button>
-                <button type="button" data-delete class="ml-3 text-xs uppercase tracking-widest text-ink-muted underline hover:text-accent">
-                  Delete
-                </button>
+              <td class="py-2">
+                <div class="flex items-center justify-end gap-1">
+                  {/* Manages this competition's own photographs, which is a different
+                      switch from the competition's published status beside it. */}
+                  <a
+                    href={`/admin/competitions/${competition._id.toString()}`}
+                    class="btn-icon"
+                    title="Manage photographs"
+                    aria-label={`Manage photographs in ${competition.name.en || competition.name.es}`}
+                  >
+                    <Icon name="image" />
+                  </a>
+                  <button
+                    type="button"
+                    data-toggle-publish
+                    data-published={String(competition.status === 'published')}
+                    class="btn-icon"
+                    title={competition.status === 'published' ? 'Unpublish competition' : 'Publish competition'}
+                    aria-label={`${competition.status === 'published' ? 'Unpublish' : 'Publish'} ${competition.name.en || competition.name.es}`}
+                  >
+                    <Icon name={competition.status === 'published' ? 'eye-off' : 'eye'} />
+                  </button>
+                  <button
+                    type="button"
+                    data-delete
+                    class="btn-icon btn-icon-danger"
+                    title="Delete competition"
+                    aria-label={`Delete ${competition.name.en || competition.name.es}`}
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -145,7 +180,10 @@ const [competitions, counts] = await Promise.all([listAllCompetitions(db), getCo
 
   // Delegated from the table so both row actions share one listener.
   document.querySelector('tbody')?.addEventListener('click', async (event) => {
-    const target = event.target as HTMLElement;
+    // `closest`, not `matches`: the buttons hold an <svg>, so the click target is a
+    // <path> inside the button rather than the button itself.
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-toggle-publish], [data-delete]');
+    if (!target) return;
     const row = target.closest<HTMLElement>('[data-competition-row]');
     if (!row) return;
     const competitionId = row.dataset.competitionId!;

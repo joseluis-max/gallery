@@ -74,6 +74,19 @@ async function assertNotLastAdmin(
 
 const ALLOWED_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/tiff']);
 const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 24MP A7III originals run ~25MB; leaves headroom
+/** Lifetime of a presigned PUT. Generous because it has to cover the *whole* transfer of
+ *  a ~25MB original on a domestic uplink, not just the moment the URL is used; the
+ *  upload page also re-signs (`refreshUploadUrl`) rather than letting a queued file
+ *  outlive its signature. */
+const UPLOAD_URL_TTL_SECONDS = 3600;
+/** How long a job may sit on `processing` before it's assumed abandoned rather than
+ *  in-flight. Comfortably longer than the sharp pipeline takes on the largest original
+ *  the size cap allows, so this never steals a job from a worker that's still running. */
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+/** Ids accepted by one bulk publish call. The panel chunks a larger selection rather than
+ *  sending it all at once, so this caps request size without capping what an admin can
+ *  select. */
+const BULK_PUBLISH_LIMIT = 500;
 
 
 /** Shared by completeUpload and retryUploadJob so there is exactly one place that pulls
@@ -174,9 +187,47 @@ export const admin = {
         updatedAt: now,
       });
 
-      const uploadUrl = await storage.getPresignedPutUrl({ key: originalKey, contentType: input.contentType, expiresInSeconds: 900 });
+      const uploadUrl = await storage.getPresignedPutUrl({ key: originalKey, contentType: input.contentType, expiresInSeconds: UPLOAD_URL_TTL_SECONDS });
 
       return { jobId: insertedId.toString(), uploadUrl, key: originalKey };
+    },
+  }),
+
+  /**
+   * A second presigned PUT for a job whose first one didn't land — the client's retry
+   * path. It re-signs the job's *existing* `originalKey` rather than minting a new job,
+   * so retrying a file leaves one row that eventually succeeds instead of a trail of
+   * abandoned `awaiting-upload` records (a batch that failed and was re-dropped used to
+   * leave one orphan per attempt).
+   *
+   * Signatures expire in UPLOAD_URL_TTL_SECONDS, so a queued file that waits out its
+   * window behind other uploads gets a fresh one here rather than a 403.
+   */
+  refreshUploadUrl: defineAdminAction({
+    accept: 'json',
+    input: z.object({ jobId: z.string().min(1), contentType: z.string().min(1) }),
+    handler: async (input) => {
+      if (!ALLOWED_UPLOAD_TYPES.has(input.contentType)) {
+        throw new ActionError({ code: 'BAD_REQUEST', message: 'UNSUPPORTED_FILE_TYPE' });
+      }
+
+      const db = await getDb(getDbConfig());
+      const storage = createStorage();
+
+      const job = await getUploadJob(db, new ObjectId(input.jobId));
+      if (!job) throw new ActionError({ code: 'NOT_FOUND', message: 'UPLOAD_JOB_NOT_FOUND' });
+      // Only a job still waiting for its bytes may be re-signed. A job that reached
+      // `failed` did so during *processing*, which means its original uploaded fine and
+      // is already in the bucket — that one retries through `retryUploadJob`, not by
+      // sending the bytes again. Re-signing anything further along would hand out a URL
+      // that overwrites the original of a live photograph.
+      if (job.status !== 'awaiting-upload') {
+        throw new ActionError({ code: 'CONFLICT', message: 'UPLOAD_JOB_ALREADY_PROCESSED' });
+      }
+
+      const uploadUrl = await storage.getPresignedPutUrl({ key: job.originalKey, contentType: input.contentType, expiresInSeconds: UPLOAD_URL_TTL_SECONDS });
+
+      return { jobId: job._id.toString(), uploadUrl, key: job.originalKey };
     },
   }),
 
@@ -212,7 +263,16 @@ export const admin = {
 
       const job = await getUploadJob(db, new ObjectId(input.jobId));
       if (!job) throw new ActionError({ code: 'NOT_FOUND', message: 'UPLOAD_JOB_NOT_FOUND' });
-      if (job.status !== 'failed') {
+      // `processing` is set at the *start* of the sharp pipeline and replaced by
+      // `ready`/`failed` at the end, so a process that dies mid-pipeline — a container
+      // restart, a dev-server reload, an OOM under a big batch — leaves the job on
+      // `processing` with nothing left to move it. Requiring `failed` here stranded
+      // those permanently. A `processing` job that hasn't been touched in
+      // STALE_PROCESSING_MS has no live worker behind it and is safe to pick up; one
+      // still being worked on is left alone, so this can't run two pipelines over the
+      // same original at once.
+      const stale = job.status === 'processing' && Date.now() - job.updatedAt.getTime() > STALE_PROCESSING_MS;
+      if (job.status !== 'failed' && !stale) {
         throw new ActionError({ code: 'CONFLICT', message: 'UPLOAD_JOB_NOT_FAILED' });
       }
 
@@ -307,6 +367,47 @@ export const admin = {
       });
 
       return { ok: true };
+    },
+  }),
+
+  /**
+   * Publishes or unpublishes many photographs in one call — the panel's select-some /
+   * publish-all controls.
+   *
+   * Deliberately one `updateMany` and **one** audit entry rather than a loop over
+   * `setPhotoPublished`: publishing a 90-frame competition would otherwise bury every
+   * other event in `/admin/activity` under 90 near-identical rows. The full id list still
+   * goes into the entry's `after`, so the record stays complete; only the *summary* is
+   * condensed.
+   *
+   * The `status: { $ne: status }` guard is what makes `changed` meaningful — re-running a
+   * publish over a mostly-published selection reports the handful it actually moved
+   * instead of claiming all of them.
+   */
+  setPhotosPublished: defineAdminAction({
+    accept: 'json',
+    input: z.object({
+      photoIds: z.array(z.string().min(1)).min(1).max(BULK_PUBLISH_LIMIT),
+      published: z.boolean(),
+    }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const ids = input.photoIds.map((id) => new ObjectId(id));
+      const status = input.published ? 'published' : 'draft';
+
+      const result = await db
+        .collection<PhotoDoc>('photos')
+        .updateMany({ _id: { $in: ids }, status: { $ne: status } }, { $set: { status, updatedAt: new Date() } });
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: input.published ? 'photo.publish.bulk' : 'photo.unpublish.bulk',
+        targetType: 'photos',
+        targetId: `${result.modifiedCount} of ${ids.length}`,
+        after: { status, photoIds: input.photoIds },
+      });
+
+      return { selected: ids.length, changed: result.modifiedCount };
     },
   }),
 

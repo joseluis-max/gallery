@@ -1,6 +1,7 @@
 ---
 import { ObjectId } from 'mongodb';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import Icon from '../../../components/admin/Icon.astro';
 import { getCompetitionById, toDateInputValue } from '../../../lib/competitions';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
@@ -25,10 +26,14 @@ const storage = createStorage();
 const photos = await db.collection<PhotoDoc>('photos').find({ competitionId }).sort({ order: 1, createdAt: -1 }).toArray();
 
 const dateValue = toDateInputValue(competition.date);
+const draftCount = photos.filter((photo) => photo.status === 'draft').length;
 ---
 
 <AdminLayout title={competition.name.en || competition.name.es}>
-  <a href="/admin/competitions" class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">&larr; Competitions</a>
+  <a href="/admin/competitions" class="inline-flex items-center gap-1.5 text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
+    <Icon name="arrow-left" class="h-3.5 w-3.5" />
+    Competitions
+  </a>
 
   <div class="mt-4 flex items-baseline justify-between">
     <h1 class="font-display text-2xl">{competition.name.en || competition.name.es}</h1>
@@ -92,8 +97,12 @@ const dateValue = toDateInputValue(competition.date);
     </label>
 
     <div class="flex items-center gap-3 pt-2">
-      <button type="submit" class="btn btn-primary py-2">Save</button>
+      <button type="submit" class="btn btn-primary py-2">
+        <Icon name="check" />
+        Save
+      </button>
       <button type="button" data-toggle-publish data-published={String(competition.status === 'published')} class="btn btn-ghost py-2">
+        <Icon name={competition.status === 'published' ? 'eye-off' : 'eye'} />
         {competition.status === 'published' ? 'Unpublish' : 'Publish'}
       </button>
       <span data-save-status class="text-sm text-ink-muted"></span>
@@ -102,29 +111,88 @@ const dateValue = toDateInputValue(competition.date);
 
   <section class="mt-12">
     <div class="flex items-center justify-between">
-      <h2 class="text-sm uppercase tracking-widest text-ink-muted">Photographs ({photos.length})</h2>
-      <a href={`/admin/upload?competition=${competition._id.toString()}`} class="text-sm underline">Upload into this competition →</a>
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">
+        Photographs ({photos.length}{draftCount > 0 ? `, ${draftCount} draft` : ''})
+      </h2>
+      <a href={`/admin/upload?competition=${competition._id.toString()}`} class="text-sm underline">
+        Upload into this competition →
+      </a>
     </div>
 
     {photos.length === 0 && <p class="mt-4 text-sm text-ink-muted">No photographs assigned yet.</p>}
 
     {
       photos.length > 0 && (
-        <div class="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
-          {photos.map((photo) => (
-            <a href={`/admin/photos/${photo._id.toString()}`} class="frame block">
-              <img
-                src={storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'))}
-                alt={photo.title.en || photo.slug}
-                class="aspect-[3/2] w-full object-cover"
-              />
-              <span class="mt-1 block truncate text-xs text-ink-muted">
-                {photo.status === 'draft' ? '● ' : ''}
-                {photo.title.en || photo.slug}
-              </span>
-            </a>
-          ))}
-        </div>
+        <>
+          <div class="panel mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 p-3" data-bulk-bar>
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" data-select-all class="h-4 w-4 accent-[var(--color-ink)]" />
+              Select all
+            </label>
+            <span class="text-sm text-ink-muted" data-selection-count>None selected</span>
+
+            <div class="ms-auto flex flex-wrap items-center gap-2">
+              <button type="button" data-bulk-publish class="btn btn-ghost py-1.5" disabled>
+                <Icon name="eye" />
+                Publish selected
+              </button>
+              <button type="button" data-bulk-unpublish class="btn btn-ghost py-1.5" disabled>
+                <Icon name="eye-off" />
+                Unpublish selected
+              </button>
+              <button type="button" data-publish-all class="btn btn-primary py-1.5" disabled={draftCount === 0}>
+                <Icon name="check-square" />
+                {draftCount === 0 ? 'All published' : `Publish all ${draftCount} draft${draftCount === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+
+          <p data-bulk-status class="mt-3 text-sm text-ink-muted" hidden />
+
+          {/*
+            Publishing the photographs does NOT publish the competition itself, and vice
+            versa — the two statuses are independent, so the note below says so rather than
+            letting someone publish 90 frames and wonder why the public page is still empty.
+          */}
+          {competition.status !== 'published' && (
+            <p class="mt-3 text-sm text-ink-muted">
+              This competition is still a draft, so publishing its photographs won't make them visible yet — publish the
+              competition above too.
+            </p>
+          )}
+
+          <div class="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
+            {photos.map((photo) => {
+              const title = photo.title.en || photo.slug;
+              return (
+                <div class="relative" data-photo-card data-photo-id={photo._id.toString()} data-status={photo.status}>
+                  {/* Sits above the link rather than inside it: a checkbox nested in an
+                      <a> toggles *and* navigates. */}
+                  <label class="absolute left-1.5 top-1.5 z-10 flex cursor-pointer items-center rounded bg-surface/90 p-1">
+                    <input
+                      type="checkbox"
+                      data-photo-check
+                      value={photo._id.toString()}
+                      aria-label={`Select ${title}`}
+                      class="h-4 w-4 accent-[var(--color-ink)]"
+                    />
+                  </label>
+                  <a href={`/admin/photos/${photo._id.toString()}`} class="frame block">
+                    <img
+                      src={storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'))}
+                      alt={title}
+                      class="aspect-[3/2] w-full object-cover"
+                    />
+                    <span class="mt-1 block truncate text-xs text-ink-muted">
+                      {photo.status === 'draft' ? '● ' : ''}
+                      {title}
+                    </span>
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )
     }
   </section>
@@ -132,6 +200,7 @@ const dateValue = toDateInputValue(competition.date);
 
 <script>
   import { actions } from 'astro:actions';
+  import { setPhotosPublishedInChunks } from '../../../lib/bulkPublish';
 
   const form = document.querySelector<HTMLFormElement>('[data-edit-form]')!;
   const statusEl = document.querySelector<HTMLElement>('[data-save-status]')!;
@@ -170,4 +239,73 @@ const dateValue = toDateInputValue(competition.date);
     }
     window.location.reload();
   });
+
+  // --- Bulk publish for this competition's photographs -----------------------------
+  // Independent of the competition's own published status above: these two are separate
+  // switches, and the page says so rather than implying one implies the other.
+
+  const selectAll = document.querySelector<HTMLInputElement>('[data-select-all]');
+  const selectionCount = document.querySelector<HTMLElement>('[data-selection-count]');
+  const bulkPublish = document.querySelector<HTMLButtonElement>('[data-bulk-publish]');
+  const bulkUnpublish = document.querySelector<HTMLButtonElement>('[data-bulk-unpublish]');
+  const publishAll = document.querySelector<HTMLButtonElement>('[data-publish-all]');
+  const bulkStatus = document.querySelector<HTMLElement>('[data-bulk-status]');
+  const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('[data-photo-check]'));
+  const allDraftsPublished = publishAll?.disabled ?? true;
+
+  function selectedIds(): string[] {
+    return checkboxes.filter((box) => box.checked).map((box) => box.value);
+  }
+
+  function syncSelectionUi() {
+    const count = selectedIds().length;
+    if (selectionCount) selectionCount.textContent = count === 0 ? 'None selected' : `${count} selected`;
+    if (bulkPublish) bulkPublish.disabled = count === 0;
+    if (bulkUnpublish) bulkUnpublish.disabled = count === 0;
+    if (selectAll) {
+      selectAll.checked = count > 0 && count === checkboxes.length;
+      selectAll.indeterminate = count > 0 && count < checkboxes.length;
+    }
+  }
+
+  async function applyBulk(ids: string[], published: boolean) {
+    if (ids.length === 0 || !bulkStatus) return;
+    for (const button of [bulkPublish, bulkUnpublish, publishAll]) if (button) button.disabled = true;
+    bulkStatus.hidden = false;
+    bulkStatus.classList.remove('text-accent');
+    bulkStatus.textContent = `${published ? 'Publishing' : 'Unpublishing'} ${ids.length}…`;
+
+    const result = await setPhotosPublishedInChunks(ids, (batch) =>
+      actions.admin.setPhotosPublished({ photoIds: batch, published }),
+    );
+
+    if (result.error) {
+      bulkStatus.classList.add('text-accent');
+      bulkStatus.textContent = `Error: ${result.error}`;
+      if (publishAll) publishAll.disabled = allDraftsPublished;
+      syncSelectionUi();
+      return;
+    }
+    window.location.reload();
+  }
+
+  selectAll?.addEventListener('change', () => {
+    for (const box of checkboxes) box.checked = selectAll.checked;
+    syncSelectionUi();
+  });
+  for (const box of checkboxes) box.addEventListener('change', syncSelectionUi);
+
+  bulkPublish?.addEventListener('click', () => applyBulk(selectedIds(), true));
+  bulkUnpublish?.addEventListener('click', () => applyBulk(selectedIds(), false));
+
+  publishAll?.addEventListener('click', () => {
+    const ids = Array.from(document.querySelectorAll<HTMLElement>('[data-photo-card][data-status="draft"]')).map(
+      (card) => card.dataset.photoId!,
+    );
+    if (ids.length === 0) return;
+    if (!confirm(`Publish all ${ids.length} draft photograph(s) in this competition?`)) return;
+    applyBulk(ids, true);
+  });
+
+  syncSelectionUi();
 </script>

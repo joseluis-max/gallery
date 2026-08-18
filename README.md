@@ -227,8 +227,10 @@ Setup (already applied to `valdiviezo-gallery`):
      --role=roles/storage.objectAdmin
    gcloud storage hmac create valdiviezo-storage@<project>.iam.gserviceaccount.com
    ```
-3. **CORS**, so the browser's direct `PUT` is allowed. Add the production origin here
-   before going live — only `localhost:4321` is configured today:
+3. **CORS**, so the browser's direct `PUT` is allowed. The rule currently lists both Cloud
+   Run URLs plus `localhost`/`127.0.0.1` on ports 4321–4323 (Astro walks up the ports when
+   4321 is taken, and `localhost` and `127.0.0.1` are *different* origins to CORS, so both
+   spellings have to be there). Add a custom domain here when one is attached:
    ```bash
    cat > cors.json <<'JSON'
    [{ "origin": ["http://localhost:4321", "https://your-domain.example"],
@@ -236,6 +238,16 @@ Setup (already applied to `valdiviezo-gallery`):
       "responseHeader": ["Content-Type", "Content-Length"], "maxAgeSeconds": 3600 }]
    JSON
    gcloud storage buckets update gs://valdiviezo-gallery --cors-file=cors.json
+   ```
+   Read the live rule with `gcloud storage buckets describe gs://valdiviezo-gallery
+   --format="json(cors_config)"` before believing an upload error that blames CORS — the
+   upload page cannot actually distinguish a blocked preflight from a dropped connection
+   (both are `status 0` to `XMLHttpRequest`), and a saturated uplink is the more common
+   cause. A real CORS problem fails *every* file immediately; a network one fails a
+   scattered subset of a large batch. Confirm either way with one request:
+   ```bash
+   curl -i -X OPTIONS "https://storage.googleapis.com/valdiviezo-gallery/originals/x" \
+     -H "Origin: http://localhost:4321" -H "Access-Control-Request-Method: PUT"
    ```
 4. Set `STORAGE_DRIVER=gcs` plus the `GCS_*` variables (see `.env.example`), then
    **verify the boundary before uploading anything**:
@@ -348,6 +360,32 @@ no client-side plotting code, nothing to hydrate:
   called identically by `scripts/ingest.ts` (CLI) and the admin upload flow
   (`src/actions/admin.ts`'s `completeUpload`/`retryUploadJob`) — there is no second,
   divergent implementation of the watermark/rotate/derivative logic.
+- **Batch uploads are sequential, and retry themselves.** `/admin/upload` sends one file
+  at a time, in the order they were added, and each is finished completely — `PUT` *and*
+  server-side processing — before the next starts. It previously opened one
+  `XMLHttpRequest` per dropped file the instant the drop landed, which is fine for a
+  handful and fails badly for a shoot: 80 originals (~1.1GB) all on the wire at once
+  saturated the uplink until transfers stalled and their connections reset.
+  `XMLHttpRequest` surfaces a reset socket as `error` with **status 0 — byte-for-byte
+  identical to a blocked CORS preflight**, so the page confidently blamed the bucket for a
+  problem the bucket had nothing to do with. Running one at a time also keeps the server
+  from ever having two sharp pipelines in flight, which is what stranded jobs on
+  `processing` when a large batch exhausted memory. A retry loop (three attempts,
+  exponential backoff, plus a 90-second no-progress stall detector) absorbs the rest, and
+  retries re-sign the *existing* job via `refreshUploadUrl` rather than minting a new one
+  — so a file that takes three tries leaves one `uploadJobs` row instead of three, and a
+  signature that expired while queued is replaced rather than re-used. The trade is real:
+  the uplink idles while the server processes each original, making a batch slower in the
+  best case in exchange for landing completely. The lesson generalizes: **status 0 tells
+  you nothing about why**, so never let an error message pick one cause out of several
+  indistinguishable ones.
+- **The queue runner lives in `lib/`, not in the page.** `lib/uploadQueue.ts`'s
+  `createSequentialQueue()` holds the one-at-a-time guarantee, so ordering, non-overlap,
+  re-entrancy (a second drop mid-batch joins the running batch rather than starting a
+  parallel one) and "a rejected task doesn't halt the rest" are covered by
+  `tests/lib/uploadQueue.test.ts` — the original bug was invisible in a small manual test
+  and only appeared at 80 files, which is exactly the shape of thing a unit test should
+  be holding rather than a person.
 - **One storage seam, three backends.** Nothing outside `src/lib/config.ts`'s
   `createStorage()` (and its CLI twin in `scripts/config.ts`) names a storage driver;
   every page, action, and route asks for a `StorageAdapter` and gets whichever one
@@ -508,9 +546,9 @@ Once real Stripe values are in `.env`:
       original as an attachment, and a **replayed webhook mints no second token**.
 - [ ] Confirm an expired/over-used download token 403s, and that hitting the order
       success URL without ever paying leaves the order `pending`.
-- [ ] Admin: upload a real ~25MB A7III frame through `/admin/upload` from an actual
-      browser (the flow is verified, but not yet at full-resolution file sizes, and the
-      bucket CORS rule currently lists only `localhost:4321`). Confirm a failed job stays
+- [ ] Admin: upload a full shoot (80+ full-resolution A7III frames, ~1GB) through
+      `/admin/upload` from an actual browser, and confirm the queue paces itself, that a
+      dropped connection retries on its own, and that a job that still fails stays
       retryable.
 - [ ] Edit a price in `/admin/settings`, confirm the before/after diff appears in
       `/admin/activity`.
