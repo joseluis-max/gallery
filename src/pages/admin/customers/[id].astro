@@ -22,7 +22,9 @@ if (!user) {
 }
 
 const orders = await listOrdersForUser(db, userId);
-const paidOrders = orders.filter((order) => order.status === 'paid' || order.status === 'fulfilled');
+// Free-credit claims are real `paid` orders too, so they're excluded here — lifetime
+// value should reflect what someone actually spent.
+const paidOrders = orders.filter((order) => order.status === 'paid' && order.kind !== 'free-claim');
 const lifetimeCents = paidOrders.reduce((sum, order) => sum + order.totalCents, 0);
 
 const viewer = await Astro.session?.get('user');

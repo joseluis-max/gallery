@@ -8,8 +8,10 @@ export function removeCartItem(cart: CartItem[], lineId: string): CartItem[] {
   return cart.filter((item) => item.lineId !== lineId);
 }
 
-export function updateCartItemQty(cart: CartItem[], lineId: string, qty: number): CartItem[] {
-  return cart.map((item) => (item.lineId === lineId ? { ...item, qty } : item));
+/** A digital file has no quantity, so the cart dedupes on add instead of counting: buying
+ *  the same photo twice would deliver the same single download token anyway. */
+export function hasCartItem(cart: CartItem[], photoId: string): boolean {
+  return cart.some((item) => item.photoId === photoId);
 }
 
 export function clearCart(): CartItem[] {

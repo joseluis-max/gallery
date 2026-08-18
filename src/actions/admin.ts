@@ -6,7 +6,6 @@ import { defineAdminAction, requireAdmin } from './adminGuard';
 import { writeAuditLog } from '../lib/audit';
 import { createStorage, getDbConfig } from '../lib/config';
 import { getDb } from '../lib/db';
-import { ManualFulfillmentProvider } from '../lib/fulfillment';
 import { processOriginal } from '../lib/images';
 import type { PhotoDoc } from '../lib/photos';
 import { serializeForAction } from '../lib/serialize';
@@ -74,7 +73,6 @@ async function assertNotLastAdmin(
 const ALLOWED_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/tiff']);
 const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 24MP A7III originals run ~25MB; leaves headroom
 
-const fulfillmentProvider = new ManualFulfillmentProvider();
 
 /** Shared by completeUpload and retryUploadJob so there is exactly one place that pulls
  *  an original back from storage and runs it through the sharp pipeline — the same
@@ -339,44 +337,9 @@ export const admin = {
     },
   }),
 
-  markOrderShipped: defineAdminAction({
-    accept: 'json',
-    input: z.object({ orderId: z.string().min(1), carrier: z.string().min(1), tracking: z.string().min(1), notes: z.string().optional() }),
-    handler: async (input, context) => {
-      const db = await getDb(getDbConfig());
-      const orderId = new ObjectId(input.orderId);
-      const order = await fulfillmentProvider.markShipped(db, orderId, {
-        carrier: input.carrier,
-        tracking: input.tracking,
-        notes: input.notes,
-      });
-      if (!order) throw new ActionError({ code: 'NOT_FOUND', message: 'ORDER_NOT_FOUND' });
-
-      await writeAuditLog(db, {
-        actor: await actorEmail(context),
-        action: 'order.fulfill',
-        targetType: 'order',
-        targetId: input.orderId,
-        after: { carrier: input.carrier, tracking: input.tracking },
-      });
-
-      return { ok: true };
-    },
-  }),
-
   saveSettings: defineAdminAction({
     accept: 'json',
-    input: z.object({
-      baseCents: z.coerce.number(),
-      ratePerCm2Cents: z.coerce.number(),
-      sizeTolerancePct: z.coerce.number(),
-      minCm: z.coerce.number(),
-      maxCmAbsolute: z.coerce.number(),
-      digitalPriceCents: z.coerce.number(),
-      paperStocks: z.record(z.string(), z.object({ label: z.object({ es: z.string(), en: z.string() }), multiplier: z.coerce.number() })),
-      sizePresets: z.array(z.object({ label: z.string(), widthCm: z.coerce.number(), heightCm: z.coerce.number() })),
-      shippingZones: z.array(z.object({ key: z.string(), label: z.string(), flatRateCents: z.coerce.number() })),
-    }),
+    input: z.object({ digitalPriceCents: z.coerce.number().int().nonnegative() }),
     handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const { getSettings, saveSettings: persistSettings } = await import('../lib/settings');

@@ -32,7 +32,6 @@ export const en: Dictionary = {
       shutter: 'Shutter',
       location: 'Location',
     },
-    buyPrint: 'Buy print',
     buyDigital: 'Buy digital file',
   },
   about: {
@@ -42,6 +41,11 @@ export const en: Dictionary = {
   cart: {
     title: 'Cart',
     empty: 'Your cart is empty.',
+    total: 'Total',
+    checkout: 'Checkout',
+    digitalFile: 'Digital download',
+    remove: 'Remove',
+    unavailable: '{count} item(s) are no longer available and were left out.',
   },
   account: {
     signInTitle: 'Sign in',
@@ -83,7 +87,6 @@ export const en: Dictionary = {
     statuses: {
       pending: 'Awaiting payment',
       paid: 'Paid',
-      fulfilled: 'Shipped',
       cancelled: 'Cancelled',
       refunded: 'Refunded',
     },
@@ -94,23 +97,5 @@ export const en: Dictionary = {
   notFound: {
     photoTitle: 'Photograph not found',
     photoBody: 'This photograph is no longer available, or the link is incorrect.',
-  },
-  pricing: {
-    size: 'Size',
-    custom: 'Custom',
-    widthCm: 'Width (cm)',
-    heightCm: 'Height (cm)',
-    paper: 'Paper',
-    qty: 'Qty',
-    addToCart: 'Add to cart',
-    aspectMismatchNotice: "This size doesn't match the photo's proportions.",
-    cropOption: 'Crop to fit',
-    borderOption: 'Add white border',
-    errors: {
-      SIZE_TOO_SMALL: 'That size is too small.',
-      SIZE_TOO_LARGE: 'That size is too large.',
-      EXCEEDS_MAX_PRINT_CM: "This size exceeds the photo's resolution.",
-      UNKNOWN_PAPER_STOCK: 'Choose a valid paper stock.',
-    },
   },
 };

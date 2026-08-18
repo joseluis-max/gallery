@@ -81,7 +81,6 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   const downloadConfig = getDownloadConfig();
   const downloadLinks: string[] = [];
   for (const item of order.items) {
-    if (item.type !== 'digital') continue;
     const token = await mintDownloadToken(db, {
       orderId: order._id,
       photoId: item.photoId,

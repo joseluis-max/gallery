@@ -37,7 +37,6 @@ const digitalItemCount = order.items.length;
 const statusLabel: Record<typeof order.status, string> = {
   pending: lang === 'es' ? 'Pendiente de pago' : 'Awaiting payment',
   paid: lang === 'es' ? 'Pagado' : 'Paid',
-  fulfilled: lang === 'es' ? 'Enviado' : 'Shipped',
   cancelled: lang === 'es' ? 'Cancelado' : 'Cancelled',
   refunded: lang === 'es' ? 'Reembolsado' : 'Refunded',
 };
@@ -66,11 +65,7 @@ const statusLabel: Record<typeof order.status, string> = {
           <li class="flex items-center justify-between py-4">
             <div>
               <p>{item.photoTitle}</p>
-              <p class="text-sm text-ink-muted">
-                {lang === 'es' ? 'Archivo digital' : 'Digital download'}
-                {' · '}
-                {lang === 'es' ? 'Cant.' : 'Qty'} {item.qty}
-              </p>
+              <p class="text-sm text-ink-muted">{lang === 'es' ? 'Archivo digital' : 'Digital download'}</p>
             </div>
             <p>${(item.totalCents / 100).toFixed(2)}</p>
           </li>

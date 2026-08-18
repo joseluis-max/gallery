@@ -6,11 +6,19 @@ export interface Dictionary {
   detail: {
     back: string;
     specs: { camera: string; lens: string; iso: string; aperture: string; shutter: string; location: string };
-    buyPrint: string;
     buyDigital: string;
   };
   about: { title: string; body: string };
-  cart: { title: string; empty: string };
+  cart: {
+    title: string;
+    empty: string;
+    total: string;
+    checkout: string;
+    digitalFile: string;
+    remove: string;
+    /** Contains a `{count}` placeholder. */
+    unavailable: string;
+  };
   account: {
     signInTitle: string;
     registerTitle: string;
@@ -49,23 +57,10 @@ export interface Dictionary {
       | 'UNKNOWN',
       string
     >;
-    statuses: Record<'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded', string>;
+    statuses: Record<'pending' | 'paid' | 'cancelled' | 'refunded', string>;
   };
   footer: { rights: string };
   notFound: { photoTitle: string; photoBody: string };
-  pricing: {
-    size: string;
-    custom: string;
-    widthCm: string;
-    heightCm: string;
-    paper: string;
-    qty: string;
-    addToCart: string;
-    aspectMismatchNotice: string;
-    cropOption: string;
-    borderOption: string;
-    errors: Record<'SIZE_TOO_SMALL' | 'SIZE_TOO_LARGE' | 'EXCEEDS_MAX_PRINT_CM' | 'UNKNOWN_PAPER_STOCK', string>;
-  };
 }
 
 export const es: Dictionary = {
@@ -100,7 +95,6 @@ export const es: Dictionary = {
       shutter: 'Obturación',
       location: 'Ubicación',
     },
-    buyPrint: 'Comprar impresión',
     buyDigital: 'Comprar archivo digital',
   },
   about: {
@@ -110,6 +104,11 @@ export const es: Dictionary = {
   cart: {
     title: 'Carrito',
     empty: 'Tu carrito está vacío.',
+    total: 'Total',
+    checkout: 'Pagar',
+    digitalFile: 'Archivo digital',
+    remove: 'Quitar',
+    unavailable: '{count} artículo(s) ya no están disponibles y se omitieron.',
   },
   account: {
     signInTitle: 'Iniciar sesión',
@@ -151,7 +150,6 @@ export const es: Dictionary = {
     statuses: {
       pending: 'Pendiente de pago',
       paid: 'Pagado',
-      fulfilled: 'Enviado',
       cancelled: 'Cancelado',
       refunded: 'Reembolsado',
     },
@@ -162,23 +160,5 @@ export const es: Dictionary = {
   notFound: {
     photoTitle: 'Fotografía no encontrada',
     photoBody: 'Esta fotografía ya no está disponible o el enlace es incorrecto.',
-  },
-  pricing: {
-    size: 'Tamaño',
-    custom: 'Personalizado',
-    widthCm: 'Ancho (cm)',
-    heightCm: 'Alto (cm)',
-    paper: 'Papel',
-    qty: 'Cantidad',
-    addToCart: 'Agregar al carrito',
-    aspectMismatchNotice: 'Este tamaño no coincide con las proporciones de la foto.',
-    cropOption: 'Recortar para ajustar',
-    borderOption: 'Agregar borde blanco',
-    errors: {
-      SIZE_TOO_SMALL: 'El tamaño es demasiado pequeño.',
-      SIZE_TOO_LARGE: 'El tamaño es demasiado grande.',
-      EXCEEDS_MAX_PRINT_CM: 'Este tamaño excede la resolución de la foto.',
-      UNKNOWN_PAPER_STOCK: 'Selecciona un tipo de papel válido.',
-    },
   },
 };

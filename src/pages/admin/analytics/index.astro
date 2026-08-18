@@ -8,9 +8,9 @@ import {
   getDailyRevenue,
   getDashboardKpis,
   getMonthlyRevenue,
+  getDownloadsSold,
   getNewCustomersByMonth,
   getTopPhotos,
-  getUnitsByType,
 } from '../../../lib/analytics';
 import { formatCents, formatCount, percentChange } from '../../../lib/charts';
 import { getDbConfig } from '../../../lib/config';
@@ -28,13 +28,13 @@ const RANGES = [
 const rangeKey = Astro.url.searchParams.get('range') ?? '30';
 const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0];
 
-const [kpis, monthly, daily, newCustomers, topPhotos, units] = await Promise.all([
+const [kpis, monthly, daily, newCustomers, topPhotos, downloadsSold] = await Promise.all([
   getDashboardKpis(db),
   getMonthlyRevenue(db, 12),
   getDailyRevenue(db, range.days),
   getNewCustomersByMonth(db, 12),
   getTopPhotos(db, 8),
-  getUnitsByType(db),
+  getDownloadsSold(db),
 ]);
 
 const revenueDelta = percentChange(kpis.revenueThisMonthCents, kpis.revenueLastMonthCents);
@@ -67,7 +67,7 @@ const rangeOrders = daily.orders.reduce((sum, point) => sum + point.value, 0);
   </div>
 
   <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3">
-    <StatTile label="Downloads sold" value={formatCount(units.digital ?? 0)} />
+    <StatTile label="Downloads sold" value={formatCount(downloadsSold)} />
     <StatTile label="Customer accounts" value={formatCount(kpis.customerCount)} href="/admin/customers" />
     <StatTile label="Published photos" value={formatCount(kpis.publishedPhotos)} href="/admin/photos" />
   </div>

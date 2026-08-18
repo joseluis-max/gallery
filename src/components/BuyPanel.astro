@@ -45,7 +45,7 @@ const { photoId, digitalPriceCents, t, lang } = Astro.props;
       errorEl.hidden = true;
       button.disabled = true;
 
-      const { error } = await actions.addToCart({ photoId, type: 'digital', qty: 1 });
+      const { error } = await actions.addToCart({ photoId });
 
       if (error) {
         errorEl.textContent = error.message;

@@ -22,7 +22,6 @@ interface CartLine {
   webpUrl: string;
   jpegUrl: string;
   detail: string;
-  qty: number;
   priceCents: number;
 }
 
@@ -42,15 +41,14 @@ for (const item of cart) {
   }
 
   const urls = getPhotoImageUrls(photo, storage);
-  const quote = computeDigitalPrice(item.qty, { settings, digitalPriceOverrideCents: photo.pricing?.digitalPriceCents });
+  const quote = computeDigitalPrice(1, { settings, digitalPriceOverrideCents: photo.pricing?.digitalPriceCents });
 
   lines.push({
     lineId: item.lineId,
     title: photo.title[lang],
     webpUrl: urls.webp,
     jpegUrl: urls.jpeg,
-    detail: lang === 'es' ? 'Archivo digital' : 'Digital download',
-    qty: item.qty,
+    detail: t.cart.digitalFile,
     priceCents: quote.totalCents,
   });
 }
@@ -64,11 +62,7 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
 
     {
       unavailableCount > 0 && (
-        <p class="mt-4 border border-border p-3 text-sm text-accent">
-          {lang === 'es'
-            ? `${unavailableCount} artículo(s) ya no están disponibles y se omitieron.`
-            : `${unavailableCount} item(s) are no longer available and were left out.`}
-        </p>
+        <p class="panel mt-4 p-3 text-sm text-accent">{t.cart.unavailable.replace('{count}', String(unavailableCount))}</p>
       )
     }
 
@@ -91,7 +85,7 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
                 <p class="text-sm text-ink-muted">{line.detail}</p>
               </div>
               <p>${(line.priceCents / 100).toFixed(2)}</p>
-              <button type="button" data-remove data-line-id={line.lineId} class="text-ink-muted hover:text-accent" aria-label="Remove">
+              <button type="button" data-remove data-line-id={line.lineId} class="text-ink-muted hover:text-accent" aria-label={t.cart.remove}>
                 &times;
               </button>
             </li>
@@ -103,7 +97,7 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
     {
       lines.length > 0 && (
         <div class="mt-6 flex items-center justify-between">
-          <span class="font-display text-xl">{lang === 'es' ? 'Total' : 'Total'}</span>
+          <span class="font-display text-xl">{t.cart.total}</span>
           <span class="font-display text-xl">${(totalCents / 100).toFixed(2)}</span>
         </div>
       )
@@ -111,12 +105,8 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
 
     {
       lines.length > 0 && (
-        <button
-          type="button"
-          data-checkout
-          class="mt-8 w-full rounded-full bg-ink px-5 py-3 text-sm uppercase tracking-widest text-surface disabled:opacity-40"
-        >
-          {lang === 'es' ? 'Pagar' : 'Checkout'}
+        <button type="button" data-checkout class="btn btn-primary mt-8 w-full py-3">
+          {t.cart.checkout}
         </button>
       )
     }
@@ -134,14 +124,6 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
     root.querySelectorAll<HTMLButtonElement>('[data-remove]').forEach((button) => {
       button.addEventListener('click', async () => {
         await actions.removeFromCart({ lineId: button.dataset.lineId! });
-        window.location.reload();
-      });
-    });
-
-    root.querySelectorAll<HTMLInputElement>('[data-qty-input]').forEach((input) => {
-      input.addEventListener('change', async () => {
-        const qty = Math.max(1, Math.min(50, Number(input.value) || 1));
-        await actions.updateCartItemQty({ lineId: input.dataset.lineId!, qty });
         window.location.reload();
       });
     });

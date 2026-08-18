@@ -5,10 +5,14 @@ import type { Db, ObjectId } from 'mongodb';
  *
  * Two conventions, both deliberate:
  *
- * 1. **"Revenue" means orders in `paid` or `fulfilled`.** A `pending` order is a
+ * 1. **"Revenue" means `paid` orders that are actual purchases.** A `pending` order is a
  *    Stripe Checkout Session someone may never complete; counting it would inflate
  *    every number on the dashboard. `cancelled`/`refunded` are excluded for the
- *    obvious reason.
+ *    obvious reason. Free-credit claims are also real `paid` orders (see OrderKind), so
+ *    every revenue query additionally excludes `kind: 'free-claim'` — otherwise a $0
+ *    claim would drag average order value toward zero and inflate the order count.
+ *    Written as `$ne` rather than `$eq: 'purchase'` so documents written before `kind`
+ *    existed still count.
  * 2. **Time bucketing happens in JS, not in a `$dateToString` stage.** Month and day
  *    boundaries follow the server's local timezone (the same convention the rest of
  *    the panel's date rendering uses), which a Mongo aggregation would silently
@@ -17,7 +21,14 @@ import type { Db, ObjectId } from 'mongodb';
  *    query side stays a lean projection over one window of orders.
  */
 
-export const REVENUE_STATUSES = ['paid', 'fulfilled'] as const;
+export const REVENUE_STATUSES = ['paid'] as const;
+
+/** Spread into every revenue aggregation's `$match`. Keeps the two conditions that define
+ *  "a sale" in one place so a new report can't accidentally count free claims. */
+export const REVENUE_MATCH = {
+  status: { $in: [...REVENUE_STATUSES] },
+  kind: { $ne: 'free-claim' },
+} as const;
 
 export interface Bucket {
   key: string;
@@ -95,7 +106,7 @@ interface OrderWindowRow {
 async function ordersSince(db: Db, since: Date): Promise<OrderWindowRow[]> {
   return db
     .collection<OrderWindowRow>('orders')
-    .find({ status: { $in: [...REVENUE_STATUSES] }, createdAt: { $gte: since } }, { projection: { createdAt: 1, totalCents: 1 } })
+    .find({ ...REVENUE_MATCH, createdAt: { $gte: since } }, { projection: { createdAt: 1, totalCents: 1 } })
     .toArray();
 }
 
@@ -136,16 +147,13 @@ export async function getStatusCounts(db: Db): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((row) => [row._id as string, row.count as number]));
 }
 
-export async function getUnitsByType(db: Db): Promise<Record<string, number>> {
+/** Total downloads sold. One line item is one download — there is no quantity to sum. */
+export async function getDownloadsSold(db: Db): Promise<number> {
   const rows = await db
     .collection('orders')
-    .aggregate([
-      { $match: { status: { $in: [...REVENUE_STATUSES] } } },
-      { $unwind: '$items' },
-      { $group: { _id: '$items.type', units: { $sum: '$items.qty' }, revenue: { $sum: '$items.totalCents' } } },
-    ])
+    .aggregate([{ $match: REVENUE_MATCH }, { $unwind: '$items' }, { $count: 'units' }])
     .toArray();
-  return Object.fromEntries(rows.map((row) => [row._id as string, row.units as number]));
+  return (rows[0]?.units as number | undefined) ?? 0;
 }
 
 export interface TopPhotoRow {
@@ -159,13 +167,13 @@ export async function getTopPhotos(db: Db, limit = 8): Promise<TopPhotoRow[]> {
   const rows = await db
     .collection('orders')
     .aggregate([
-      { $match: { status: { $in: [...REVENUE_STATUSES] } } },
+      { $match: REVENUE_MATCH },
       { $unwind: '$items' },
       {
         $group: {
           _id: '$items.photoSlug',
           title: { $first: '$items.photoTitle' },
-          units: { $sum: '$items.qty' },
+          units: { $sum: 1 },
           revenueCents: { $sum: '$items.totalCents' },
         },
       },
@@ -182,26 +190,6 @@ export async function getTopPhotos(db: Db, limit = 8): Promise<TopPhotoRow[]> {
   }));
 }
 
-export interface PaperMixRow {
-  paper: string;
-  units: number;
-  revenueCents: number;
-}
-
-export async function getPaperMix(db: Db): Promise<PaperMixRow[]> {
-  const rows = await db
-    .collection('orders')
-    .aggregate([
-      { $match: { status: { $in: [...REVENUE_STATUSES] } } },
-      { $unwind: '$items' },
-      { $match: { 'items.type': 'print' } },
-      { $group: { _id: '$items.paper', units: { $sum: '$items.qty' }, revenueCents: { $sum: '$items.totalCents' } } },
-      { $sort: { units: -1 } },
-    ])
-    .toArray();
-
-  return rows.map((row) => ({ paper: (row._id as string) ?? 'unknown', units: row.units as number, revenueCents: row.revenueCents as number }));
-}
 
 export interface DashboardKpis {
   revenueThisMonthCents: number;
@@ -209,7 +197,6 @@ export interface DashboardKpis {
   ordersThisMonth: number;
   averageOrderCents: number;
   paidOrders: number;
-  paidNotShipped: number;
   failedUploads: number;
   customerCount: number;
   registeredBuyers: number;
@@ -221,27 +208,20 @@ export async function getDashboardKpis(db: Db, now = new Date()): Promise<Dashbo
   const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [thisMonthRows, lastMonthRows, lifetime, paidNotShipped, failedUploads, customerCount, registeredBuyers, publishedPhotos, draftPhotos] =
+  const [thisMonthRows, lastMonthRows, lifetime, failedUploads, customerCount, registeredBuyers, publishedPhotos, draftPhotos] =
     await Promise.all([
       ordersSince(db, startOfThisMonth),
       db
         .collection<OrderWindowRow>('orders')
-        .find(
-          { status: { $in: [...REVENUE_STATUSES] }, createdAt: { $gte: startOfLastMonth, $lt: startOfThisMonth } },
-          { projection: { totalCents: 1 } },
-        )
+        .find({ ...REVENUE_MATCH, createdAt: { $gte: startOfLastMonth, $lt: startOfThisMonth } }, { projection: { totalCents: 1 } })
         .toArray(),
       db
         .collection('orders')
-        .aggregate([
-          { $match: { status: { $in: [...REVENUE_STATUSES] } } },
-          { $group: { _id: null, total: { $sum: '$totalCents' }, count: { $sum: 1 } } },
-        ])
+        .aggregate([{ $match: REVENUE_MATCH }, { $group: { _id: null, total: { $sum: '$totalCents' }, count: { $sum: 1 } } }])
         .toArray(),
-      db.collection('orders').countDocuments({ status: 'paid' }),
       db.collection('uploadJobs').countDocuments({ status: 'failed' }),
       db.collection('users').countDocuments({ role: 'customer' }),
-      db.collection('orders').distinct('userId', { status: { $in: [...REVENUE_STATUSES] } }),
+      db.collection('orders').distinct('userId', REVENUE_MATCH),
       db.collection('photos').countDocuments({ status: 'published' }),
       db.collection('photos').countDocuments({ status: 'draft' }),
     ]);
@@ -255,7 +235,6 @@ export async function getDashboardKpis(db: Db, now = new Date()): Promise<Dashbo
     ordersThisMonth: thisMonthRows.length,
     averageOrderCents: lifetimeCount > 0 ? Math.round(lifetimeTotal / lifetimeCount) : 0,
     paidOrders: lifetimeCount,
-    paidNotShipped,
     failedUploads,
     customerCount,
     // `distinct` skips documents with no `userId`, so guest orders correctly don't
@@ -276,7 +255,7 @@ export interface CustomerStats {
 /** Order totals per account, for the customers table. Returned as a Map so the caller
  *  can join it against a page of users without an N+1 query per row. */
 export async function getCustomerStats(db: Db, userIds?: ObjectId[]): Promise<Map<string, CustomerStats>> {
-  const match: Record<string, unknown> = { status: { $in: [...REVENUE_STATUSES] }, userId: { $exists: true } };
+  const match: Record<string, unknown> = { ...REVENUE_MATCH, userId: { $exists: true } };
   if (userIds) match.userId = { $in: userIds };
 
   const rows = await db

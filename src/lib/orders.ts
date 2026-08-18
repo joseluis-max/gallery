@@ -1,18 +1,20 @@
 import type { Db, ObjectId } from 'mongodb';
 
-export type OrderStatus = 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded';
+export type OrderStatus = 'pending' | 'paid' | 'cancelled' | 'refunded';
+
+/** Purchases and free-credit claims are both real, `paid` orders — that's deliberate:
+ *  `consumeDownloadToken` gates on order status, so modelling a free claim this way means
+ *  a free download flows through the exact same paywall check as a purchase, with no
+ *  second code path to an original file. This field is what keeps $0 claims out of the
+ *  revenue aggregations. */
+export type OrderKind = 'purchase' | 'free-claim';
 
 export interface OrderItem {
-  type: 'print' | 'digital';
   photoId: ObjectId;
   /** Denormalized at order time so the order/admin views never depend on the photo
    *  still existing or being published later. */
   photoSlug: string;
   photoTitle: string;
-  size?: { widthCm: number; heightCm: number };
-  paper?: string;
-  crop?: 'fit' | 'crop' | 'border';
-  qty: number;
   unitPriceCents: number;
   totalCents: number;
 }
@@ -24,24 +26,6 @@ export interface OrderHistoryEntry {
   note?: string;
 }
 
-export interface ShippingAddress {
-  name: string;
-  line1: string;
-  line2?: string;
-  city: string;
-  state?: string;
-  postalCode: string;
-  country: string;
-}
-
-export interface Fulfillment {
-  status: 'unfulfilled' | 'shipped';
-  carrier?: string;
-  tracking?: string;
-  notes?: string;
-  shippedAt?: Date;
-}
-
 export interface OrderDoc {
   _id: ObjectId;
   /** Set only when the order was placed by a signed-in account, and never inferred
@@ -49,17 +33,15 @@ export interface OrderDoc {
    *  by address would let anyone claim a stranger's order history by registering with
    *  their address. Guest orders simply stay guest orders. */
   userId?: ObjectId;
+  kind: OrderKind;
   items: OrderItem[];
   subtotalCents: number;
-  shippingCents: number;
   totalCents: number;
   currency: 'usd';
   status: OrderStatus;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
   customer: { email: string; name?: string };
-  shippingAddress?: ShippingAddress;
-  fulfillment?: Fulfillment;
   history: OrderHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
@@ -68,7 +50,6 @@ export interface OrderDoc {
 export interface NewOrderInput {
   items: OrderItem[];
   subtotalCents: number;
-  shippingCents: number;
   totalCents: number;
   /** Present when a signed-in account placed the order — this is the only way an order
    *  is ever bound to a user. */
@@ -78,17 +59,17 @@ export interface NewOrderInput {
 /**
  * The order is created before the Stripe Checkout Session exists, so for a guest there's
  * no customer email yet — Stripe collects it during hosted checkout, and the webhook
- * back-fills `customer`/`shippingAddress` onto this same document when payment
- * completes (see markOrderPaid). A signed-in buyer's account email is seeded here, and
- * Stripe's own (possibly different) billing email overwrites it at that same point.
+ * back-fills `customer` onto this same document when payment completes (see
+ * markOrderPaid). A signed-in buyer's account email is seeded here, and Stripe's own
+ * (possibly different) billing email overwrites it at that same point.
  */
 export async function createPendingOrder(db: Db, input: NewOrderInput): Promise<OrderDoc> {
   const now = new Date();
   const doc: Omit<OrderDoc, '_id'> = {
     ...(input.user ? { userId: input.user.id } : {}),
+    kind: 'purchase',
     items: input.items,
     subtotalCents: input.subtotalCents,
-    shippingCents: input.shippingCents,
     totalCents: input.totalCents,
     currency: 'usd',
     status: 'pending',
@@ -114,7 +95,6 @@ export interface MarkOrderPaidParams {
   orderId: ObjectId;
   paymentIntentId: string;
   customer?: { email: string; name?: string };
-  shippingAddress?: ShippingAddress;
 }
 
 export async function markOrderPaid(db: Db, params: MarkOrderPaidParams): Promise<OrderDoc | null> {
@@ -127,7 +107,6 @@ export async function markOrderPaid(db: Db, params: MarkOrderPaidParams): Promis
         stripePaymentIntentId: params.paymentIntentId,
         updatedAt: now,
         ...(params.customer ? { customer: params.customer } : {}),
-        ...(params.shippingAddress ? { shippingAddress: params.shippingAddress } : {}),
       },
       $push: { history: { status: 'paid', at: now, actor: 'stripe-webhook', note: 'Payment confirmed' } },
     },
