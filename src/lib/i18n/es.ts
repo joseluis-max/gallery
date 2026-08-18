@@ -11,7 +11,7 @@ export interface Dictionary {
     close: string;
     viewAll: string;
   };
-  home: { heroTitle: string; heroSubtitle: string; featuredTitle: string; viewGallery: string };
+  home: { heroTitle: string; heroSubtitle: string; featuredTitle: string; viewGallery: string; recentCompetitions: string };
   gallery: { title: string; allTags: string; empty: string };
   competitions: {
     title: string;
@@ -107,9 +107,10 @@ export const es: Dictionary = {
   },
   home: {
     heroTitle: 'José Valdiviezo',
-    heroSubtitle: 'Fotografía de naturaleza y vida silvestre — Cuenca, Ecuador',
+    heroSubtitle: 'Fotografía deportiva — Cuenca, Ecuador',
     featuredTitle: 'Selección destacada',
-    viewGallery: 'Ver galería completa',
+    viewGallery: 'Ver todas las fotografías',
+    recentCompetitions: 'Competencias recientes',
   },
   gallery: {
     title: 'Galería',
@@ -147,7 +148,9 @@ export const es: Dictionary = {
   },
   about: {
     title: 'Acerca de José',
-    body: 'José Valdiviezo es un fotógrafo radicado en Cuenca, Ecuador. Trabaja con una Sony A7III y su trabajo se centra en la fotografía de vida silvestre: aves, mamíferos y los paisajes que habitan, siempre con especial atención a la luz natural y al espacio negativo.',
+    // BORRADOR — pendiente de revisión de José. Escrito a propósito sin premios, clientes
+    // ni años de experiencia: nada aquí afirma algo que no se pueda verificar.
+    body: 'José Valdiviezo es un fotógrafo radicado en Cuenca, Ecuador. Su trabajo se centra en la fotografía deportiva: el instante decidido, el gesto del esfuerzo y la tensión de la competencia. Cada competencia se publica como una galería propia, para que quienes participaron puedan encontrar sus fotografías. Junto a ese trabajo mantiene un portafolio de paisaje y vida silvestre, donde la misma atención a la luz natural se toma su tiempo.',
   },
   cart: {
     title: 'Carrito',

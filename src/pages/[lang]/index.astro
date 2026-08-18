@@ -1,6 +1,12 @@
 ---
 import MosaicGrid, { type GridItem } from '../../components/MosaicGrid.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import {
+  formatCompetitionDate,
+  getCompetitionPhotoCounts,
+  listPublishedCompetitions,
+  resolveCoverPhoto,
+} from '../../lib/competitions';
 import { createStorage, getDbConfig } from '../../lib/config';
 import { getDb } from '../../lib/db';
 import { getDictionary, type Locale } from '../../lib/i18n';
@@ -11,7 +17,25 @@ const t = getDictionary(lang);
 
 const db = await getDb(getDbConfig());
 const storage = createStorage();
-const featured = await getFeaturedPhotos(db, 6);
+const [featured, competitions, counts] = await Promise.all([
+  getFeaturedPhotos(db, 6),
+  listPublishedCompetitions(db, 3),
+  getCompetitionPhotoCounts(db),
+]);
+
+// Covers go through the shared resolver, so the homepage strip, the competitions index
+// and each competition page can never disagree about which image represents an event.
+const competitionCards = await Promise.all(
+  competitions.map(async (competition) => {
+    const cover = await resolveCoverPhoto(db, competition);
+    return {
+      competition,
+      urls: cover ? getPhotoImageUrls(cover, storage) : null,
+      lqip: cover?.lqip ?? null,
+      count: counts.get(competition._id.toString()) ?? 0,
+    };
+  }),
+);
 
 const items: GridItem[] = featured.map((photo) => {
   const urls = getPhotoImageUrls(photo, storage);
@@ -27,7 +51,7 @@ const items: GridItem[] = featured.map((photo) => {
 });
 ---
 
-<BaseLayout title={`${t.home.heroTitle} — ${t.home.heroSubtitle}`} lang={lang}>
+<BaseLayout title={`${t.home.heroTitle} — ${t.home.heroSubtitle}`} description={t.about.body} lang={lang}>
   <section class="px-6 py-20 text-center md:px-12 md:py-32">
     <h1 class="font-display text-4xl tracking-tight md:text-6xl">{t.home.heroTitle}</h1>
     <p class="mt-4 text-lg text-ink-muted">{t.home.heroSubtitle}</p>
@@ -43,6 +67,53 @@ const items: GridItem[] = featured.map((photo) => {
             {t.home.viewGallery}
           </a>
         </div>
+      </section>
+    )
+  }
+
+  {/* Only rendered once there are published competitions — an empty strip on the
+      homepage would advertise that there's nothing to see. */}
+  {
+    competitionCards.length > 0 && (
+      <section class="mx-auto max-w-6xl px-6 pb-24 md:px-12">
+        <div class="flex items-baseline justify-between">
+          <h2 class="font-display text-2xl">{t.home.recentCompetitions}</h2>
+          <a href={`/${lang}/competitions`} class="text-sm uppercase tracking-widest text-accent hover:underline">
+            {t.nav.viewAll} &rarr;
+          </a>
+        </div>
+
+        <ul class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {competitionCards.map(({ competition, urls, lqip, count }) => (
+            <li>
+              <a href={`/${lang}/competitions/${competition.slug}`} class="group block">
+                <div class="frame relative aspect-[3/2] bg-border">
+                  {lqip && <img src={lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-105 object-cover blur-md" />}
+                  {urls && (
+                    <picture>
+                      <source srcset={urls.webp} type="image/webp" />
+                      <img
+                        src={urls.jpeg}
+                        alt={competition.name[lang]}
+                        loading="lazy"
+                        decoding="async"
+                        class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+                      />
+                    </picture>
+                  )}
+                </div>
+                <h3 class="mt-3 font-display text-lg">{competition.name[lang]}</h3>
+                <p class="mt-1 text-sm text-ink-muted">
+                  {formatCompetitionDate(competition.date, lang)}
+                  {competition.location && ` · ${competition.location}`}
+                </p>
+                <p class="mt-1 text-xs uppercase tracking-widest text-ink-muted">
+                  {t.competitions.photoCount.replace('{count}', String(count))}
+                </p>
+              </a>
+            </li>
+          ))}
+        </ul>
       </section>
     )
   }

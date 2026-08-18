@@ -15,9 +15,10 @@ export const en: Dictionary = {
   },
   home: {
     heroTitle: 'José Valdiviezo',
-    heroSubtitle: 'Wildlife & Nature Photography — Cuenca, Ecuador',
+    heroSubtitle: 'Sports Photography — Cuenca, Ecuador',
     featuredTitle: 'Featured selection',
-    viewGallery: 'View full gallery',
+    viewGallery: 'View all photographs',
+    recentCompetitions: 'Recent competitions',
   },
   gallery: {
     title: 'Gallery',
@@ -55,7 +56,9 @@ export const en: Dictionary = {
   },
   about: {
     title: 'About José',
-    body: 'José Valdiviezo is a photographer based in Cuenca, Ecuador. Shooting on a Sony A7III, his work centres on wildlife photography — birds, mammals, and the landscapes they live in — always with a close eye for natural light and negative space.',
+    // DRAFT — pending José's review. Deliberately written without awards, clients or
+    // years of experience: nothing here claims anything that can't be verified.
+    body: "José Valdiviezo is a photographer based in Cuenca, Ecuador. His work centres on sports photography — the decisive moment, the shape of real effort, the tension of a close finish. Every competition is published as its own gallery, so the people who were there can find themselves in it. Alongside that he keeps a portfolio of landscape and wildlife work, where the same attention to natural light gets to take its time.",
   },
   cart: {
     title: 'Cart',

@@ -68,11 +68,16 @@ if (photo) {
     description,
     image: urls.jpeg,
     brand: { '@type': 'Person', name: 'José Valdiviezo' },
+    // A plain Offer, not AggregateOffer: there's exactly one price now that sizes and
+    // paper stocks are gone, and `lowPrice` with no `highPrice` described a range that
+    // never existed. Volume discounts deliberately aren't modelled here — they're a
+    // property of a whole cart, not of this photograph.
     offers: {
-      '@type': 'AggregateOffer',
+      '@type': 'Offer',
       priceCurrency: 'USD',
-      lowPrice: (digitalPriceCents / 100).toFixed(2),
+      price: (digitalPriceCents / 100).toFixed(2),
       availability: 'https://schema.org/InStock',
+      itemCondition: 'https://schema.org/NewCondition',
     },
   };
 }
