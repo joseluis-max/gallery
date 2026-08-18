@@ -46,6 +46,8 @@ export const en: Dictionary = {
     digitalFile: 'Digital download',
     remove: 'Remove',
     unavailable: '{count} item(s) are no longer available and were left out.',
+    volumeDiscount: 'Volume discount — {price} per photo',
+    nextTier: 'Add {count} more photo(s) and they all drop to {price} each.',
   },
   account: {
     signInTitle: 'Sign in',

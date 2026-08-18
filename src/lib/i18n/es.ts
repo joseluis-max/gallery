@@ -18,6 +18,10 @@ export interface Dictionary {
     remove: string;
     /** Contains a `{count}` placeholder. */
     unavailable: string;
+    /** Contains a `{price}` placeholder — the discounted per-photo price. */
+    volumeDiscount: string;
+    /** Contains `{count}` and `{price}` placeholders. */
+    nextTier: string;
   };
   account: {
     signInTitle: string;
@@ -109,6 +113,8 @@ export const es: Dictionary = {
     digitalFile: 'Archivo digital',
     remove: 'Quitar',
     unavailable: '{count} artículo(s) ya no están disponibles y se omitieron.',
+    volumeDiscount: 'Descuento por volumen — {price} por foto',
+    nextTier: 'Agrega {count} foto(s) más y todas cuestan {price} cada una.',
   },
   account: {
     signInTitle: 'Iniciar sesión',

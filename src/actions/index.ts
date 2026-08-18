@@ -9,7 +9,7 @@ import { addCartItem, hasCartItem, removeCartItem } from '../lib/cart';
 import { getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
 import { getDb } from '../lib/db';
 import { attachStripeSession, createPendingOrder, type OrderItem } from '../lib/orders';
-import { computeDigitalPrice } from '../lib/pricing';
+import { computeCartPricing } from '../lib/pricing';
 import { getSettings } from '../lib/settings';
 import { createStripeClient } from '../lib/stripe';
 
@@ -66,27 +66,32 @@ export const server = {
       const db = await getDb(getDbConfig());
       const settings = await getSettings(db);
 
-      const orderItems: OrderItem[] = [];
-
       // Every line is re-priced here from the server's own database state — the session
       // cart is only ever a set of photo references, never a price, so nothing the client
-      // sent can affect what gets charged.
+      // sent can affect what gets charged. Volume tiers depend on the whole cart, so the
+      // photos are resolved first and priced together.
+      const photos = [];
       for (const cartItem of cart) {
         const photo = await db.collection('photos').findOne({ _id: parsePhotoId(cartItem.photoId), status: 'published' });
         if (!photo) throw new ActionError({ code: 'BAD_REQUEST', message: 'PHOTO_UNAVAILABLE' });
-
-        const quote = computeDigitalPrice(1, { settings, digitalPriceOverrideCents: photo.pricing?.digitalPriceCents });
-        orderItems.push({
-          photoId: photo._id,
-          photoSlug: photo.slug,
-          photoTitle: photo.title.en,
-          unitPriceCents: quote.unitPriceCents,
-          totalCents: quote.totalCents,
-        });
+        photos.push(photo);
       }
 
-      const subtotalCents = orderItems.reduce((sum, item) => sum + item.totalCents, 0);
-      const totalCents = subtotalCents;
+      const pricing = computeCartPricing(
+        photos.map((photo) => ({ photoId: photo._id.toString(), overrideCents: photo.pricing?.digitalPriceCents })),
+        settings,
+      );
+
+      const orderItems: OrderItem[] = photos.map((photo, i) => ({
+        photoId: photo._id,
+        photoSlug: photo.slug,
+        photoTitle: photo.title.en,
+        unitPriceCents: pricing.lines[i].unitPriceCents,
+        totalCents: pricing.lines[i].unitPriceCents,
+      }));
+
+      const subtotalCents = pricing.totalCents;
+      const totalCents = pricing.totalCents;
 
       // Stripe rejects a zero-total Checkout Session outright. Free photos are claimed
       // through the free-credit flow, which never touches the cart, so a $0 total here

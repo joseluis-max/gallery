@@ -339,7 +339,14 @@ export const admin = {
 
   saveSettings: defineAdminAction({
     accept: 'json',
-    input: z.object({ digitalPriceCents: z.coerce.number().int().nonnegative() }),
+    input: z.object({
+      digitalPriceCents: z.coerce.number().int().nonnegative(),
+      // minQty >= 2: a tier at 1 (or 0) would replace the base price for every cart,
+      // which is a base-price edit wearing a disguise.
+      volumeTiers: z
+        .array(z.object({ minQty: z.coerce.number().int().min(2), unitPriceCents: z.coerce.number().int().nonnegative() }))
+        .default([]),
+    }),
     handler: async (input, context) => {
       const db = await getDb(getDbConfig());
       const { getSettings, saveSettings: persistSettings } = await import('../lib/settings');

@@ -5,7 +5,7 @@ import { createStorage, getDbConfig } from '../../lib/config';
 import { getDb } from '../../lib/db';
 import { getDictionary, type Locale } from '../../lib/i18n';
 import { getPhotoImageUrls, type PhotoDoc } from '../../lib/photos';
-import { computeDigitalPrice } from '../../lib/pricing';
+import { computeCartPricing } from '../../lib/pricing';
 import { getSettings } from '../../lib/settings';
 
 const lang = Astro.params.lang as Locale;
@@ -25,7 +25,9 @@ interface CartLine {
   priceCents: number;
 }
 
-const lines: CartLine[] = [];
+// Resolve every line first: volume tiers price the cart as a whole, so a per-line loop
+// can't know the unit price until it knows how many lines survived.
+const resolved: { lineId: string; photo: PhotoDoc }[] = [];
 let unavailableCount = 0;
 
 for (const item of cart) {
@@ -39,21 +41,27 @@ for (const item of cart) {
     unavailableCount++;
     continue;
   }
+  resolved.push({ lineId: item.lineId, photo });
+}
 
+const pricing = computeCartPricing(
+  resolved.map(({ photo }) => ({ photoId: photo._id.toString(), overrideCents: photo.pricing?.digitalPriceCents })),
+  settings,
+);
+
+const lines: CartLine[] = resolved.map(({ lineId, photo }, i) => {
   const urls = getPhotoImageUrls(photo, storage);
-  const quote = computeDigitalPrice(1, { settings, digitalPriceOverrideCents: photo.pricing?.digitalPriceCents });
-
-  lines.push({
-    lineId: item.lineId,
+  return {
+    lineId,
     title: photo.title[lang],
     webpUrl: urls.webp,
     jpegUrl: urls.jpeg,
     detail: t.cart.digitalFile,
-    priceCents: quote.totalCents,
-  });
-}
+    priceCents: pricing.lines[i].unitPriceCents,
+  };
+});
 
-const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
+const totalCents = pricing.totalCents;
 ---
 
 <BaseLayout title={`${t.cart.title} — José Valdiviezo`} lang={lang}>
@@ -96,9 +104,24 @@ const totalCents = lines.reduce((sum, line) => sum + line.priceCents, 0);
 
     {
       lines.length > 0 && (
-        <div class="mt-6 flex items-center justify-between">
-          <span class="font-display text-xl">{t.cart.total}</span>
-          <span class="font-display text-xl">${(totalCents / 100).toFixed(2)}</span>
+        <div class="mt-6 space-y-2">
+          {pricing.savingsCents > 0 && (
+            <div class="flex items-center justify-between text-sm text-ink-muted">
+              <span>{t.cart.volumeDiscount.replace('{price}', `$${(pricing.unitPriceCents / 100).toFixed(2)}`)}</span>
+              <span>−${(pricing.savingsCents / 100).toFixed(2)}</span>
+            </div>
+          )}
+          <div class="flex items-center justify-between">
+            <span class="font-display text-xl">{t.cart.total}</span>
+            <span class="font-display text-xl">${(totalCents / 100).toFixed(2)}</span>
+          </div>
+          {pricing.nextTier && (
+            <p class="panel p-3 text-sm text-ink-muted">
+              {t.cart.nextTier
+                .replace('{count}', String(pricing.nextTier.photosAway))
+                .replace('{price}', `$${(pricing.nextTier.unitPriceCents / 100).toFixed(2)}`)}
+            </p>
+          )}
         </div>
       )
     }
