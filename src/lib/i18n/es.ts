@@ -1,8 +1,27 @@
 export interface Dictionary {
-  nav: { gallery: string; about: string; cart: string; account: string; signIn: string };
+  nav: {
+    competitions: string;
+    portfolio: string;
+    allPhotographs: string;
+    about: string;
+    cart: string;
+    account: string;
+    signIn: string;
+    menu: string;
+    close: string;
+    viewAll: string;
+  };
   home: { heroTitle: string; heroSubtitle: string; featuredTitle: string; viewGallery: string };
   gallery: { title: string; allTags: string; empty: string };
-  collections: { empty: string };
+  competitions: {
+    title: string;
+    intro: string;
+    empty: string;
+    /** Contains a `{count}` placeholder. */
+    photoCount: string;
+    backToAll: string;
+  };
+  portfolio: { title: string; intro: string; empty: string };
   detail: {
     back: string;
     specs: { camera: string; lens: string; iso: string; aperture: string; shutter: string; location: string };
@@ -69,11 +88,16 @@ export interface Dictionary {
 
 export const es: Dictionary = {
   nav: {
-    gallery: 'Galería',
+    competitions: 'Competencias',
+    portfolio: 'Portafolio',
+    allPhotographs: 'Todas las fotografías',
     about: 'Acerca de',
     cart: 'Carrito',
     account: 'Mi cuenta',
     signIn: 'Iniciar sesión',
+    menu: 'Menú',
+    close: 'Cerrar',
+    viewAll: 'Ver todas las competencias',
   },
   home: {
     heroTitle: 'José Valdiviezo',
@@ -86,8 +110,17 @@ export const es: Dictionary = {
     allTags: 'Todas',
     empty: 'Aún no hay fotografías publicadas.',
   },
-  collections: {
-    empty: 'No se encontraron fotografías en esta colección.',
+  competitions: {
+    title: 'Competencias',
+    intro: 'Eventos deportivos cubiertos por José. Cada galería reúne las fotografías de esa jornada.',
+    empty: 'Todavía no hay competencias publicadas.',
+    photoCount: '{count} fotografías',
+    backToAll: 'Volver a competencias',
+  },
+  portfolio: {
+    title: 'Portafolio',
+    intro: 'Trabajo personal fuera de las competencias: paisaje y vida silvestre.',
+    empty: 'Todavía no hay fotografías publicadas.',
   },
   detail: {
     back: 'Volver a la galería',

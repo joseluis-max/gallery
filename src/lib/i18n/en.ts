@@ -2,11 +2,16 @@ import type { Dictionary } from './es';
 
 export const en: Dictionary = {
   nav: {
-    gallery: 'Gallery',
+    competitions: 'Competitions',
+    portfolio: 'Portfolio',
+    allPhotographs: 'All photographs',
     about: 'About',
     cart: 'Cart',
     account: 'My account',
     signIn: 'Sign in',
+    menu: 'Menu',
+    close: 'Close',
+    viewAll: 'View all competitions',
   },
   home: {
     heroTitle: 'José Valdiviezo',
@@ -19,8 +24,17 @@ export const en: Dictionary = {
     allTags: 'All',
     empty: 'No photographs published yet.',
   },
-  collections: {
-    empty: 'No photographs found in this collection.',
+  competitions: {
+    title: 'Competitions',
+    intro: 'Sporting events José has photographed. Each gallery collects the photographs from that day.',
+    empty: 'No competitions published yet.',
+    photoCount: '{count} photographs',
+    backToAll: 'Back to competitions',
+  },
+  portfolio: {
+    title: 'Portfolio',
+    intro: 'Personal work away from the competitions — landscape and wildlife.',
+    empty: 'No photographs published yet.',
   },
   detail: {
     back: 'Back to gallery',

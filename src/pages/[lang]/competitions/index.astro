@@ -1,0 +1,76 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { formatCompetitionDate, getCompetitionPhotoCounts, listPublishedCompetitions, resolveCoverPhoto } from '../../../lib/competitions';
+import { createStorage, getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { getPhotoImageUrls } from '../../../lib/photos';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+const db = await getDb(getDbConfig());
+const storage = createStorage();
+
+const [competitions, counts] = await Promise.all([listPublishedCompetitions(db), getCompetitionPhotoCounts(db)]);
+
+// Covers resolve through the shared helper (falling back to the first published photo)
+// so this page and each competition page can never disagree about which image is theirs.
+const cards = await Promise.all(
+  competitions.map(async (competition) => {
+    const cover = await resolveCoverPhoto(db, competition);
+    return {
+      competition,
+      urls: cover ? getPhotoImageUrls(cover, storage) : null,
+      lqip: cover?.lqip ?? null,
+      count: counts.get(competition._id.toString()) ?? 0,
+    };
+  }),
+);
+
+---
+
+<BaseLayout title={`${t.competitions.title} — José Valdiviezo`} description={t.competitions.intro} lang={lang}>
+  <div class="mx-auto max-w-6xl px-6 py-12 md:px-12">
+    <h1 class="font-display text-3xl">{t.competitions.title}</h1>
+    <p class="mt-3 max-w-prose text-ink-muted">{t.competitions.intro}</p>
+
+    {cards.length === 0 && <p class="mt-12 text-ink-muted">{t.competitions.empty}</p>}
+
+    {
+      cards.length > 0 && (
+        <ul class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map(({ competition, urls, lqip, count }) => (
+            <li>
+              <a href={`/${lang}/competitions/${competition.slug}`} class="group block">
+                <div class="frame relative aspect-[3/2] bg-border">
+                  {lqip && <img src={lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-105 object-cover blur-md" />}
+                  {urls && (
+                    <picture>
+                      <source srcset={urls.webp} type="image/webp" />
+                      <img
+                        src={urls.jpeg}
+                        alt={competition.name[lang]}
+                        loading="lazy"
+                        decoding="async"
+                        class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+                      />
+                    </picture>
+                  )}
+                </div>
+                <h2 class="mt-3 font-display text-xl">{competition.name[lang]}</h2>
+                <p class="mt-1 text-sm text-ink-muted">
+                  {formatCompetitionDate(competition.date, lang)}
+                  {competition.location && ` · ${competition.location}`}
+                </p>
+                <p class="mt-1 text-xs uppercase tracking-widest text-ink-muted">
+                  {t.competitions.photoCount.replace('{count}', String(count))}
+                </p>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</BaseLayout>

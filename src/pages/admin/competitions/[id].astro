@@ -1,7 +1,7 @@
 ---
 import { ObjectId } from 'mongodb';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getCompetitionById } from '../../../lib/competitions';
+import { getCompetitionById, toDateInputValue } from '../../../lib/competitions';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { PhotoDoc } from '../../../lib/photos';
@@ -24,10 +24,7 @@ const storage = createStorage();
 // Drafts included: the cover is usually chosen before the competition goes live.
 const photos = await db.collection<PhotoDoc>('photos').find({ competitionId }).sort({ order: 1, createdAt: -1 }).toArray();
 
-// <input type="date"> needs yyyy-mm-dd, and toISOString() would shift the date across the
-// day boundary for anyone west of UTC — which is everyone here.
-const d = new Date(competition.date);
-const dateValue = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dateValue = toDateInputValue(competition.date);
 ---
 
 <AdminLayout title={competition.name.en || competition.name.es}>

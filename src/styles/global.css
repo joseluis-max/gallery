@@ -69,6 +69,13 @@
   textarea {
     border-radius: var(--radius-md);
   }
+
+  /* The nav dropdown and mobile menu are <details>/<summary>, which keeps them working
+   * without JavaScript. Tailwind's `list-none` hides the marker in Firefox and Chrome;
+   * Safari needs this pseudo-element too or a disclosure triangle shows through. */
+  summary::-webkit-details-marker {
+    display: none;
+  }
 }
 
 /*

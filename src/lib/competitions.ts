@@ -34,6 +34,24 @@ function competitions(db: Db) {
   return db.collection<CompetitionDoc>('competitions');
 }
 
+/**
+ * `date` is a calendar date, not an instant: an event happened on the 6th, full stop.
+ * `<input type="date">` yields "2026-08-06", which `new Date()` parses as UTC midnight —
+ * so formatting it in Ecuador's local time (UTC-5) renders "August 5". Both helpers below
+ * pin to UTC so what an admin types is what a visitor reads.
+ *
+ * (Deliberately different from lib/analytics.ts, which buckets in local time: order
+ * timestamps are real instants, where the local day genuinely is the right boundary.)
+ */
+export function formatCompetitionDate(date: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(new Date(date));
+}
+
+/** yyyy-mm-dd for a native date input, read in UTC for the same reason. */
+export function toDateInputValue(date: Date): string {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
 export async function listPublishedCompetitions(db: Db, limit = 100): Promise<CompetitionDoc[]> {
   return competitions(db).find({ status: 'published' }).sort({ date: -1 }).limit(limit).toArray();
 }
