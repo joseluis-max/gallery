@@ -7,7 +7,9 @@ import { admin } from './admin';
 import { auth } from './auth';
 import { downloads } from './downloads';
 import { addCartItem, hasCartItem, removeCartItem } from '../lib/cart';
-import { getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
+import { buildCartView } from '../lib/cartView';
+import { createStorage, getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
+import { getDictionary } from '../lib/i18n';
 import { getDb } from '../lib/db';
 import { attachStripeSession, createPendingOrder, type OrderItem } from '../lib/orders';
 import { computeCartPricing } from '../lib/pricing';
@@ -47,12 +49,18 @@ export const server = {
 
   removeFromCart: defineAction({
     accept: 'json',
-    input: z.object({ lineId: z.string().min(1) }),
+    input: z.object({ lineId: z.string().min(1), lang: z.enum(['es', 'en']) }),
     handler: async (input, context) => {
       const cart = (await context.session?.get('cart')) ?? [];
       const next = removeCartItem(cart, input.lineId);
       context.session?.set('cart', next);
-      return { count: next.length };
+
+      // Returns the whole recomputed view, not just a count: volume tiers price the cart
+      // as a whole, so removing one line can change what every remaining line costs. The
+      // page re-renders from this instead of guessing.
+      const db = await getDb(getDbConfig());
+      const view = await buildCartView(db, createStorage(), next, input.lang, getDictionary(input.lang).cart.digitalFile);
+      return { count: next.length, view };
     },
   }),
 

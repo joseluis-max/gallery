@@ -100,24 +100,27 @@ if (photo) {
 
   {
     photo && settings && urls && (
-      <div class="mx-auto max-w-5xl px-4 py-8 md:px-8">
+      <div class="mx-auto max-w-6xl px-4 py-8 md:px-8">
         <a href={`/${lang}/gallery`} class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
           &larr; {t.detail.back}
         </a>
 
-        <div class="mt-6">
-          <Lightbox
-            slug={photo.slug}
-            title={title}
-            webpUrl={urls.webp}
-            jpegUrl={urls.jpeg}
-            aspectRatio={photo.aspectRatio}
-            lqip={photo.lqip}
-          />
-        </div>
-
-        <div class="mt-8 grid gap-10 md:grid-cols-[1.6fr_1fr]">
+        {/* Photograph beside its details rather than stacked above them. The right column
+            sticks so the price and download control stay in view next to a tall image
+            instead of scrolling away from it. */}
+        <div class="mt-6 grid gap-10 md:grid-cols-[1.35fr_1fr]">
           <div>
+            <Lightbox
+              slug={photo.slug}
+              title={title}
+              webpUrl={urls.webp}
+              jpegUrl={urls.jpeg}
+              aspectRatio={photo.aspectRatio}
+              lqip={photo.lqip}
+            />
+          </div>
+
+          <div class="md:sticky md:top-8 md:self-start">
             <h1 class="font-display text-2xl md:text-3xl">{title}</h1>
             {description && <p class="mt-4 text-ink-muted leading-relaxed">{description}</p>}
 
@@ -181,19 +184,19 @@ if (photo) {
                 </>
               )}
             </dl>
-          </div>
 
-          <aside id="buy-panel" class="border-t border-border pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0">
-            <BuyPanel
-              photoId={photo._id.toString()}
-              digitalPriceCents={digitalPriceCents}
-              t={t}
-              lang={lang}
-              freeDownloadsRemaining={freeDownloadsRemaining}
-              alreadyClaimed={alreadyClaimed}
-              ownedOrderId={ownedOrderId}
-            />
-          </aside>
+            <div class="mt-8 border-t border-border pt-6">
+              <BuyPanel
+                photoId={photo._id.toString()}
+                digitalPriceCents={digitalPriceCents}
+                t={t}
+                lang={lang}
+                freeDownloadsRemaining={freeDownloadsRemaining}
+                alreadyClaimed={alreadyClaimed}
+                ownedOrderId={ownedOrderId}
+              />
+            </div>
+          </div>
         </div>
       </div>
     )
