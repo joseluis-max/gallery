@@ -5,6 +5,7 @@ import { z } from 'astro/zod';
 import { ActionError, defineAction } from 'astro:actions';
 import { admin } from './admin';
 import { auth } from './auth';
+import { downloads } from './downloads';
 import { addCartItem, hasCartItem, removeCartItem } from '../lib/cart';
 import { getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
 import { getDb } from '../lib/db';
@@ -24,6 +25,7 @@ function parsePhotoId(raw: string): InstanceType<typeof ObjectId> {
 export const server = {
   admin,
   auth,
+  downloads,
 
   addToCart: defineAction({
     accept: 'json',

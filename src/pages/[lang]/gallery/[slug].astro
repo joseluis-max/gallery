@@ -6,7 +6,9 @@ import { getCompetitionById } from '../../../lib/competitions';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
+import type { OrderDoc } from '../../../lib/orders';
 import { getPhotoBySlug, getPhotoImageUrls } from '../../../lib/photos';
+import { findActiveUserById } from '../../../lib/users';
 import { getSettings } from '../../../lib/settings';
 
 const lang = Astro.params.lang as Locale;
@@ -28,7 +30,30 @@ let digitalPriceCents = 0;
 let jsonLd: Record<string, unknown> | null = null;
 let competition: Awaited<ReturnType<typeof getCompetitionById>> = null;
 
+// The credit balance is read from the user document, never from the session — the session
+// is a snapshot taken at sign-in and would show a stale count after a claim in another tab.
+let freeDownloadsRemaining: number | undefined;
+let ownedOrderId: string | undefined;
+let alreadyClaimed = false;
+
 if (photo) {
+  const sessionUser = await Astro.session?.get('user');
+  if (sessionUser) {
+    const viewer = await findActiveUserById(db, sessionUser.id);
+    if (viewer) {
+      freeDownloadsRemaining = viewer.freeDownloadsRemaining;
+      // Anything this account already owns — bought or claimed — offers a fresh download
+      // instead of selling the same file twice.
+      const owned = await db
+        .collection<OrderDoc>('orders')
+        .findOne({ userId: viewer._id, status: 'paid', 'items.photoId': photo._id }, { sort: { createdAt: -1 } });
+      if (owned) {
+        ownedOrderId = owned._id.toString();
+        alreadyClaimed = owned.kind === 'free-claim';
+      }
+    }
+  }
+
   if (photo.competitionId) competition = await getCompetitionById(db, photo.competitionId);
   settings = await getSettings(db);
   const storage = createStorage();
@@ -159,7 +184,15 @@ if (photo) {
           </div>
 
           <aside id="buy-panel" class="border-t border-border pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0">
-            <BuyPanel photoId={photo._id.toString()} digitalPriceCents={digitalPriceCents} t={t} lang={lang} />
+            <BuyPanel
+              photoId={photo._id.toString()}
+              digitalPriceCents={digitalPriceCents}
+              t={t}
+              lang={lang}
+              freeDownloadsRemaining={freeDownloadsRemaining}
+              alreadyClaimed={alreadyClaimed}
+              ownedOrderId={ownedOrderId}
+            />
           </aside>
         </div>
       </div>

@@ -16,10 +16,19 @@ export interface UserDoc {
   /** Disabled accounts keep their orders and audit trail but can't sign in — the
    *  reversible alternative to deleting a customer who has order history. */
   disabled: boolean;
+  /** Free downloads this account has left, of FREE_DOWNLOAD_GRANT. A one-time grant that
+   *  never replenishes; an admin can reset it from the customer's page.
+   *
+   *  Deliberately NOT mirrored onto `SessionUser`: the session is a snapshot taken at
+   *  sign-in, so a credit spent in one tab would leave a stale count in another. Every
+   *  reader loads the user document instead. */
+  freeDownloadsRemaining: number;
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt?: Date;
 }
+
+export const FREE_DOWNLOAD_GRANT = 2;
 
 /** What a signed-in user looks like inside the session cookie — deliberately no
  *  password hash, and small enough that it costs nothing to carry on every request. */
@@ -103,6 +112,7 @@ export async function createUser(db: Db, input: CreateUserInput): Promise<UserDo
     passwordHash: hashPassword(input.password),
     role: input.role ?? 'customer',
     disabled: false,
+    freeDownloadsRemaining: FREE_DOWNLOAD_GRANT,
     createdAt: now,
     updatedAt: now,
   };
@@ -198,6 +208,36 @@ export async function updateProfile(db: Db, id: ObjectId, input: { name: string;
 
 export async function setUserRole(db: Db, id: ObjectId, role: UserRole): Promise<void> {
   const result = await users(db).updateOne({ _id: id }, { $set: { role, updatedAt: new Date() } });
+  if (result.matchedCount === 0) throw new UserError('USER_NOT_FOUND');
+}
+
+/**
+ * Spends one free download, atomically.
+ *
+ * The `$gt: 0` guard lives in the *filter*, not in a preceding read — a read-then-write
+ * would let two concurrent claims both see 1 remaining and both succeed. Returns null when
+ * there was nothing left to spend, which the caller surfaces as NO_FREE_DOWNLOADS_LEFT.
+ */
+export async function spendFreeDownload(db: Db, id: ObjectId): Promise<UserDoc | null> {
+  return users(db).findOneAndUpdate(
+    { _id: id, freeDownloadsRemaining: { $gt: 0 } },
+    { $inc: { freeDownloadsRemaining: -1 }, $set: { updatedAt: new Date() } },
+    { returnDocument: 'after' },
+  );
+}
+
+/** Compensating write for a claim that failed after the credit was already spent. */
+export async function refundFreeDownload(db: Db, id: ObjectId): Promise<void> {
+  await users(db).updateOne({ _id: id }, { $inc: { freeDownloadsRemaining: 1 }, $set: { updatedAt: new Date() } });
+}
+
+/** Admin override — also the recovery path if a credit is ever lost to a crash between
+ *  spending it and creating the order. */
+export async function setFreeDownloads(db: Db, id: ObjectId, remaining: number): Promise<void> {
+  const result = await users(db).updateOne(
+    { _id: id },
+    { $set: { freeDownloadsRemaining: Math.max(0, remaining), updatedAt: new Date() } },
+  );
   if (result.matchedCount === 0) throw new UserError('USER_NOT_FOUND');
 }
 

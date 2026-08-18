@@ -1,6 +1,7 @@
 // Creates collections and indexes per the data model. Safe to re-run — createIndex is
 // naturally idempotent, and createCollection failures for "already exists" are ignored.
 import { getDb } from '../src/lib/db.ts';
+import { FREE_DOWNLOAD_GRANT } from '../src/lib/users.ts';
 import { getDbConfig } from './config.ts';
 
 async function ensureCollection(db: Awaited<ReturnType<typeof getDb>>, name: string) {
@@ -88,6 +89,21 @@ async function main() {
   // Sparse: guest orders have no userId, and there are expected to be many of them.
   await db.collection('orders').createIndex({ userId: 1, createdAt: -1 }, { sparse: true });
 
+  // THIS INDEX, not application code, is what makes claiming the same photograph twice
+  // impossible. The action checks first for a friendly answer, but two simultaneous
+  // requests can both pass that check — only a unique constraint can actually stop the
+  // second insert, and the action catches its duplicate-key error and refunds the credit.
+  //
+  // partialFilterExpression scopes it to free claims, so a customer can still legitimately
+  // buy the same photograph twice. Legal as a compound multikey index because only
+  // `items.photoId` is an array, and a free-claim order always holds exactly one item.
+  await ensureIndex(
+    db,
+    'orders',
+    { userId: 1, 'items.photoId': 1 },
+    { unique: true, partialFilterExpression: { kind: 'free-claim' } },
+  );
+
   await db.collection('downloadTokens').createIndex({ tokenHash: 1 }, { unique: true });
   await db.collection('downloadTokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   await db.collection('downloadTokens').createIndex({ orderId: 1 });
@@ -137,6 +153,15 @@ async function main() {
     .updateMany({ competitionId: { $exists: false } }, { $set: { competitionId: null }, $unset: { collections: '', maxPrintCm: '' } });
   if (converted.modifiedCount > 0) {
     console.log(`migrated ${converted.modifiedCount} photo(s): collections → competitionId (portfolio)`);
+  }
+
+  // Migration: accounts created before free downloads existed have no credit balance.
+  // Idempotent — matches nothing once every account carries the field.
+  const granted = await db
+    .collection('users')
+    .updateMany({ freeDownloadsRemaining: { $exists: false } }, { $set: { freeDownloadsRemaining: FREE_DOWNLOAD_GRANT } });
+  if (granted.modifiedCount > 0) {
+    console.log(`granted ${FREE_DOWNLOAD_GRANT} free download(s) to ${granted.modifiedCount} existing account(s)`);
   }
 
   console.log('Indexes ensured.');

@@ -26,6 +26,12 @@ export interface Dictionary {
     back: string;
     specs: { camera: string; lens: string; iso: string; aperture: string; shutter: string; location: string };
     buyDigital: string;
+    /** Contains a `{remaining}` placeholder. */
+    downloadFree: string;
+    freeUsedUp: string;
+    freeSignedOut: string;
+    alreadyYours: string;
+    downloadAgain: string;
   };
   about: { title: string; body: string };
   cart: {
@@ -133,6 +139,11 @@ export const es: Dictionary = {
       location: 'Ubicación',
     },
     buyDigital: 'Comprar archivo digital',
+    downloadFree: 'Descargar gratis ({remaining} restantes)',
+    freeUsedUp: 'Ya usaste tus 2 descargas gratuitas.',
+    freeSignedOut: 'Crea una cuenta y llévate 2 fotografías gratis',
+    alreadyYours: 'Ya es tuya',
+    downloadAgain: 'Descargar de nuevo',
   },
   about: {
     title: 'Acerca de José',

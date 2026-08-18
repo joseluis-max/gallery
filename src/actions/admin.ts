@@ -17,6 +17,7 @@ import {
   countActiveAdmins,
   createUser,
   findUserById,
+  setFreeDownloads,
   setUserDisabled,
   setUserPassword,
   setUserRole,
@@ -508,6 +509,34 @@ export const admin = {
       const after = await persistSettings(db, input);
 
       await writeAuditLog(db, { actor: await actorEmail(context), action: 'pricing.update', targetType: 'settings', targetId: 'singleton', before, after });
+
+      return { ok: true };
+    },
+  }),
+
+  setFreeDownloads: defineAdminAction({
+    accept: 'json',
+    input: z.object({ userId: z.string().min(1), remaining: z.coerce.number().int().min(0).max(50) }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const userId = new ObjectId(input.userId);
+      const before = await findUserById(db, userId);
+      if (!before) throw new ActionError({ code: 'NOT_FOUND', message: 'USER_NOT_FOUND' });
+
+      try {
+        await setFreeDownloads(db, userId, input.remaining);
+      } catch (err) {
+        throw toUserActionError(err);
+      }
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: 'user.free_downloads',
+        targetType: 'user',
+        targetId: input.userId,
+        before: { freeDownloadsRemaining: before.freeDownloadsRemaining },
+        after: { freeDownloadsRemaining: input.remaining },
+      });
 
       return { ok: true };
     },

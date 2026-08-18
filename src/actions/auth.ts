@@ -11,17 +11,16 @@ import {
 import { writeAuditLog } from '../lib/audit';
 import { getDbConfig } from '../lib/config';
 import { getDb } from '../lib/db';
+import { requireSessionUser } from './sessionGuard';
 import {
   authenticateUser,
   createUser,
-  findActiveUserById,
   recordLogin,
   setUserPassword,
   toSessionUser,
   updateProfile,
   UserError,
   type SessionUser,
-  type UserDoc,
 } from '../lib/users';
 
 /** `UserError`'s codes are already the machine-readable strings the sign-in/sign-up UI
@@ -32,21 +31,6 @@ function toActionError(err: unknown): never {
     throw new ActionError({ code: err.code === 'EMAIL_TAKEN' ? 'CONFLICT' : 'BAD_REQUEST', message: err.code });
   }
   throw err;
-}
-
-/** Revalidates the cookie's user against the database — an account disabled mid-session
- *  loses these mutations immediately rather than at cookie expiry. */
-async function requireSessionUser(context: ActionAPIContext): Promise<UserDoc> {
-  const sessionUser = await context.session?.get('user');
-  if (!sessionUser) throw new ActionError({ code: 'UNAUTHORIZED', message: 'AUTH_REQUIRED' });
-
-  const db = await getDb(getDbConfig());
-  const current = await findActiveUserById(db, sessionUser.id);
-  if (!current) {
-    context.session?.delete('user');
-    throw new ActionError({ code: 'UNAUTHORIZED', message: 'AUTH_REQUIRED' });
-  }
-  return current;
 }
 
 /** Both sign-in paths regenerate the session id before writing the user onto it — an

@@ -47,6 +47,11 @@ export const en: Dictionary = {
       location: 'Location',
     },
     buyDigital: 'Buy digital file',
+    downloadFree: 'Download free ({remaining} left)',
+    freeUsedUp: "You've used your 2 free downloads.",
+    freeSignedOut: 'Create an account and get 2 photographs free',
+    alreadyYours: 'Already yours',
+    downloadAgain: 'Download again',
   },
   about: {
     title: 'About José',

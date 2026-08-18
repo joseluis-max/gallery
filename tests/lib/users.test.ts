@@ -6,7 +6,10 @@ import {
   assertValidCredentials,
   authenticateUser,
   createUser,
+  FREE_DOWNLOAD_GRANT,
   isAdmin,
+  refundFreeDownload,
+  spendFreeDownload,
   isValidEmail,
   normalizeEmail,
   toSessionUser,
@@ -38,6 +41,7 @@ function makeUser(overrides: Partial<UserDoc> = {}): UserDoc {
     passwordHash: hashPassword('correct-horse-battery'),
     role: 'customer',
     disabled: false,
+    freeDownloadsRemaining: FREE_DOWNLOAD_GRANT,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -184,5 +188,46 @@ describe('toSessionUser / isAdmin', () => {
     expect(isAdmin(toSessionUser(makeUser({ role: 'admin' })))).toBe(true);
     expect(isAdmin(toSessionUser(makeUser({ role: 'customer' })))).toBe(false);
     expect(isAdmin(undefined)).toBe(false);
+  });
+});
+
+describe('free download credits', () => {
+  it('grants every new account the full allowance', async () => {
+    const { db, collection } = makeMockDb();
+    await createUser(db, { name: 'Buyer', email: 'new@example.com', password: 'correct-horse-battery' });
+    expect(collection.insertOne.mock.calls[0][0].freeDownloadsRemaining).toBe(FREE_DOWNLOAD_GRANT);
+  });
+
+  describe('spendFreeDownload', () => {
+    // The whole safety property of the free-download flow rests on this filter. A
+    // refactor to read-then-write would still pass a naive "returns the user" assertion
+    // while letting two concurrent claims both spend the last credit — so the assertion
+    // is on the filter object actually handed to Mongo.
+    it('puts the "has credits left" guard in the atomic filter, not a preceding read', async () => {
+      const userId = new ObjectId();
+      const { db, collection } = makeMockDb({ findOneAndUpdateResult: { freeDownloadsRemaining: 1 } });
+
+      await spendFreeDownload(db, userId);
+
+      const [filter, update] = collection.findOneAndUpdate.mock.calls[0];
+      expect(filter).toMatchObject({ _id: userId, freeDownloadsRemaining: { $gt: 0 } });
+      expect(update.$inc).toEqual({ freeDownloadsRemaining: -1 });
+    });
+
+    it('returns null when the filter matched nothing, i.e. no credits left', async () => {
+      const { db } = makeMockDb({ findOneAndUpdateResult: null });
+      expect(await spendFreeDownload(db, new ObjectId())).toBeNull();
+    });
+  });
+
+  it('refundFreeDownload hands exactly one credit back', async () => {
+    const userId = new ObjectId();
+    const { db, collection } = makeMockDb();
+
+    await refundFreeDownload(db, userId);
+
+    const [filter, update] = collection.updateOne.mock.calls[0];
+    expect(filter).toEqual({ _id: userId });
+    expect(update.$inc).toEqual({ freeDownloadsRemaining: 1 });
   });
 });

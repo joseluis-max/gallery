@@ -5,7 +5,7 @@ import { formatCents } from '../../../lib/charts';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { listOrdersForUser } from '../../../lib/orders';
-import { findUserById, MIN_PASSWORD_LENGTH } from '../../../lib/users';
+import { findUserById, FREE_DOWNLOAD_GRANT, MIN_PASSWORD_LENGTH } from '../../../lib/users';
 
 const idParam = Astro.params.id as string;
 let userId: InstanceType<typeof ObjectId>;
@@ -104,7 +104,25 @@ const isSelf = viewer?.id === user._id.toString();
           <dt class="text-ink-muted">Last sign-in</dt>
           <dd>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—'}</dd>
         </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-muted">Free downloads left</dt>
+          <dd class="flex items-center gap-2">
+            <span data-free-count>{user.freeDownloadsRemaining}</span>
+            <span class="text-ink-muted">of {FREE_DOWNLOAD_GRANT}</span>
+            <button
+              type="button"
+              data-reset-free
+              data-grant={FREE_DOWNLOAD_GRANT}
+              class="text-xs uppercase tracking-widest underline hover:text-accent"
+            >
+              Reset
+            </button>
+          </dd>
+        </div>
       </dl>
+      <p class="mt-2 text-xs text-ink-muted">
+        A one-time grant that doesn't replenish. Resetting is also the fix if a credit is ever lost to a failed claim.
+      </p>
 
       <div class="mt-8 border border-border p-4" data-user-admin data-user-id={user._id.toString()}>
         <h2 class="text-sm uppercase tracking-widest text-ink-muted">Account</h2>
@@ -200,5 +218,25 @@ const isSelf = viewer?.id === user._id.toString();
     }
     form.reset();
     statusEl.textContent = 'Password updated.';
+  });
+
+  wrapper.querySelector<HTMLButtonElement>('[data-reset-free]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    // The grant size comes from the server via a data attribute — FREE_DOWNLOAD_GRANT is
+    // a server-side constant and isn't in scope here.
+    const grant = Number(button.dataset.grant);
+    button.disabled = true;
+    statusEl.textContent = 'Saving…';
+
+    const { error } = await actions.admin.setFreeDownloads({ userId, remaining: grant });
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      button.disabled = false;
+      return;
+    }
+    const count = document.querySelector('[data-free-count]');
+    if (count) count.textContent = String(grant);
+    statusEl.textContent = 'Free downloads reset.';
+    button.disabled = false;
   });
 </script>

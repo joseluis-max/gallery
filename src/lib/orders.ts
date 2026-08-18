@@ -82,6 +82,50 @@ export async function createPendingOrder(db: Db, input: NewOrderInput): Promise<
   return { ...doc, _id: result.insertedId };
 }
 
+export interface FreeClaimInput {
+  user: { id: ObjectId; email: string; name?: string };
+  item: OrderItem;
+}
+
+/**
+ * Records a free-credit claim as a real order, `paid`, for $0.
+ *
+ * Two things about this are deliberate:
+ *
+ * 1. **It's an order at all.** `consumeDownloadToken` gates on order status, so modelling
+ *    a claim this way means a free download travels the exact same paywall path as a
+ *    purchase. There is no second, looser route to an original file — which is the whole
+ *    reason `mintDownloadToken` still requires an orderId.
+ * 2. **It is inserted already `paid`,** in one write, rather than inserted `pending` and
+ *    patched. Any window where the order is pending is a window where the customer's own
+ *    freshly-minted token is rejected by that same status check.
+ *
+ * No `stripeSessionId`: that unique index is sparse, so any number of free orders coexist.
+ */
+export async function createFreeClaimOrder(db: Db, input: FreeClaimInput): Promise<OrderDoc> {
+  const now = new Date();
+  const doc: Omit<OrderDoc, '_id'> = {
+    userId: input.user.id,
+    kind: 'free-claim',
+    items: [input.item],
+    subtotalCents: 0,
+    totalCents: 0,
+    currency: 'usd',
+    status: 'paid',
+    customer: { email: input.user.email, name: input.user.name },
+    history: [{ status: 'paid', at: now, actor: 'free-claim', note: 'Free download claimed' }],
+    createdAt: now,
+    updatedAt: now,
+  };
+  const result = await db.collection<Omit<OrderDoc, '_id'>>('orders').insertOne(doc);
+  return { ...doc, _id: result.insertedId };
+}
+
+/** The existing free claim for this photograph, if the account already has one. */
+export async function findFreeClaim(db: Db, userId: ObjectId, photoId: ObjectId): Promise<OrderDoc | null> {
+  return db.collection<OrderDoc>('orders').findOne({ userId, kind: 'free-claim', 'items.photoId': photoId });
+}
+
 export async function attachStripeSession(db: Db, orderId: ObjectId, stripeSessionId: string): Promise<void> {
   await db.collection<OrderDoc>('orders').updateOne({ _id: orderId }, { $set: { stripeSessionId, updatedAt: new Date() } });
 }

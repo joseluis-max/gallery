@@ -7,23 +7,78 @@ interface Props {
   digitalPriceCents: number;
   t: Dictionary;
   lang: Locale;
+  /** Undefined for a signed-out visitor. Read fresh from the database on every render —
+   *  never from the session, which is a sign-in snapshot that would go stale the moment a
+   *  credit is spent in another tab. */
+  freeDownloadsRemaining?: number;
+  /** True when this account has already claimed this photograph — it can be downloaded
+   *  again without spending a second credit. */
+  alreadyClaimed?: boolean;
+  /** Set when the viewer already bought or claimed this photograph, so the panel can
+   *  offer a fresh download link instead of selling it twice. */
+  ownedOrderId?: string;
 }
 
-const { photoId, digitalPriceCents, t, lang } = Astro.props;
+const { photoId, digitalPriceCents, t, lang, freeDownloadsRemaining, alreadyClaimed = false, ownedOrderId } = Astro.props;
+
+const signedIn = freeDownloadsRemaining !== undefined;
+const hasCredits = (freeDownloadsRemaining ?? 0) > 0;
+const owned = alreadyClaimed || Boolean(ownedOrderId);
+
+// Signing in must return the visitor to this photograph, not dump them on the account
+// page — login.astro already runs `?next=` through safeRedirectTarget.
+const signInHref = `/${lang}/account/login?next=${encodeURIComponent(Astro.url.pathname)}`;
 ---
 
 {/*
-  Replaces SizePicker.astro, which was ~90% print controls (size presets, custom cm inputs,
-  paper stock, quantity, crop choice, and a live quotePrice round trip on every change).
-  Digital downloads have exactly one price and no options, so the whole live-quote machinery
-  goes with them: the price is known server-side at render time and never needs re-quoting.
+  Replaces SizePicker.astro, which was ~90% print controls. A digital download has one
+  price and no options, so the whole live-quote machinery went with them; what's left is
+  the free-vs-paid decision.
 */}
-<div data-buy-panel data-photo-id={photoId} data-lang={lang} class="space-y-4">
-  <p class="font-display text-2xl">${(digitalPriceCents / 100).toFixed(2)}</p>
+<div
+  data-buy-panel
+  data-photo-id={photoId}
+  data-lang={lang}
+  data-order-id={ownedOrderId}
+  data-owned={String(owned)}
+  class="space-y-4"
+>
+  {!owned && <p class="font-display text-2xl">${(digitalPriceCents / 100).toFixed(2)}</p>}
 
-  <button type="button" data-add-to-cart class="btn btn-primary w-full py-3">
-    {t.detail.buyDigital}
-  </button>
+  {
+    owned ? (
+      <>
+        <p class="font-display text-xl">{t.detail.alreadyYours}</p>
+        <button type="button" data-redownload class="btn btn-primary w-full py-3">
+          {t.detail.downloadAgain}
+        </button>
+      </>
+    ) : signedIn && hasCredits ? (
+      <>
+        <button type="button" data-claim-free class="btn btn-primary w-full py-3">
+          {t.detail.downloadFree.replace('{remaining}', String(freeDownloadsRemaining))}
+        </button>
+        <button type="button" data-add-to-cart class="btn btn-ghost w-full py-3">
+          {t.detail.buyDigital}
+        </button>
+      </>
+    ) : (
+      <>
+        <button type="button" data-add-to-cart class="btn btn-primary w-full py-3">
+          {t.detail.buyDigital}
+        </button>
+        {signedIn ? (
+          <p class="text-sm text-ink-muted">{t.detail.freeUsedUp}</p>
+        ) : (
+          <p class="text-sm text-ink-muted">
+            <a href={signInHref} class="underline hover:text-ink">
+              {t.detail.freeSignedOut} &rarr;
+            </a>
+          </p>
+        )}
+      </>
+    )
+  }
 
   <p data-buy-error hidden class="text-sm text-accent"></p>
 </div>
@@ -38,27 +93,68 @@ const { photoId, digitalPriceCents, t, lang } = Astro.props;
 
     const photoId = root.dataset.photoId!;
     const lang = root.dataset.lang!;
-    const button = root.querySelector<HTMLButtonElement>('[data-add-to-cart]')!;
     const errorEl = root.querySelector<HTMLElement>('[data-buy-error]')!;
 
-    button.addEventListener('click', async () => {
+    function fail(button: HTMLButtonElement, message: string) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+      button.disabled = false;
+    }
+
+    /**
+     * The action returns `/api/download/<token>`, which 302s to a short-lived presigned
+     * URL. Clicking a real anchor keeps the visitor on the page and lets the browser
+     * handle it as a download; navigating the tab there instead would leave them staring
+     * at a redirect.
+     */
+    function startDownload(url: string) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = '';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    root.querySelector<HTMLButtonElement>('[data-add-to-cart]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget as HTMLButtonElement;
       errorEl.hidden = true;
       button.disabled = true;
 
       const { error } = await actions.addToCart({ photoId });
+      if (error) return fail(button, error.message);
 
-      if (error) {
-        errorEl.textContent = error.message;
-        errorEl.hidden = false;
-        button.disabled = false;
-        return;
-      }
-
-      // Navigating to the cart is the only confirmation available right now. Phase 7
-      // replaces this with a header cart badge and an in-place "In cart" state, which is
-      // the better behaviour — bouncing the visitor out of the gallery after every add is
-      // how you sell one photo instead of three.
       window.location.href = `/${lang}/cart`;
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-claim-free]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget as HTMLButtonElement;
+      errorEl.hidden = true;
+      button.disabled = true;
+
+      const { data, error } = await actions.downloads.claimFree({ photoId });
+      if (error || !data) return fail(button, error?.message ?? 'CLAIM_FAILED');
+
+      startDownload(data.url);
+      // Reload so the panel re-renders from the server with the new balance — the count
+      // lives in the database, not in this page's state.
+      window.location.reload();
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-redownload]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget as HTMLButtonElement;
+      errorEl.hidden = true;
+      button.disabled = true;
+
+      const orderId = root.dataset.orderId;
+      const { data, error } = orderId
+        ? await actions.downloads.reissue({ orderId, photoId })
+        : await actions.downloads.claimFree({ photoId });
+
+      if (error || !data) return fail(button, error?.message ?? 'DOWNLOAD_FAILED');
+
+      startDownload(data.url);
+      button.disabled = false;
     });
   });
 </script>
