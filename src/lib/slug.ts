@@ -10,12 +10,13 @@ export function slugify(input: string): string {
     .slice(0, 80);
 }
 
-/** Appends -2, -3, ... until the slug doesn't collide with an existing photo. */
-export async function uniqueSlug(db: Db, base: string): Promise<string> {
+/** Appends -2, -3, ... until the slug doesn't collide within `collectionName`. Defaults
+ *  to `photos`; competitions have their own unique-slug namespace. */
+export async function uniqueSlug(db: Db, base: string, collectionName = 'photos'): Promise<string> {
   const root = slugify(base) || 'photo';
   let candidate = root;
   let n = 2;
-  while (await db.collection('photos').findOne({ slug: candidate })) {
+  while (await db.collection(collectionName).findOne({ slug: candidate })) {
     candidate = `${root}-${n}`;
     n += 1;
   }

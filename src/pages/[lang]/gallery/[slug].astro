@@ -2,6 +2,7 @@
 import BuyPanel from '../../../components/BuyPanel.astro';
 import Lightbox from '../../../components/Lightbox.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getCompetitionById } from '../../../lib/competitions';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
@@ -25,8 +26,10 @@ let urls: { webp: string; jpeg: string } | null = null;
 let settings: Awaited<ReturnType<typeof getSettings>> | null = null;
 let digitalPriceCents = 0;
 let jsonLd: Record<string, unknown> | null = null;
+let competition: Awaited<ReturnType<typeof getCompetitionById>> = null;
 
 if (photo) {
+  if (photo.competitionId) competition = await getCompetitionById(db, photo.competitionId);
   settings = await getSettings(db);
   const storage = createStorage();
   urls = getPhotoImageUrls(photo, storage);
@@ -93,25 +96,24 @@ if (photo) {
             <h1 class="font-display text-2xl md:text-3xl">{title}</h1>
             {description && <p class="mt-4 text-ink-muted leading-relaxed">{description}</p>}
 
-            {photo.collections.length > 0 && (
-              <ul class="mt-6 flex flex-wrap gap-2 text-xs uppercase tracking-widest">
-                {photo.collections.map((collection) => (
-                  <li>
-                    <a
-                      href={`/${lang}/collections/${collection}`}
-                      class="rounded-full bg-ink px-3 py-1 text-surface hover:opacity-80"
-                    >
-                      {collection}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+            {/* Routes on the competition's generated ASCII slug, not its display name —
+                which is also what retires the unencoded-href bug the old free-text
+                collections had, since every real event name has spaces and accents. */}
+            {competition && (
+              <p class="mt-6">
+                <a
+                  href={`/${lang}/competitions/${competition.slug}`}
+                  class="chip border-ink bg-ink uppercase tracking-widest text-surface hover:opacity-80"
+                >
+                  {competition.name[lang]}
+                </a>
+              </p>
             )}
 
             {photo.tags.length > 0 && (
               <ul class="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-widest text-ink-muted">
                 {photo.tags.map((tag) => (
-                  <li class="rounded-full border border-border px-3 py-1">{tag}</li>
+                  <li class="chip">{tag}</li>
                 ))}
               </ul>
             )}

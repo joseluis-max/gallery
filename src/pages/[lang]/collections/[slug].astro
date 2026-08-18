@@ -1,41 +1,10 @@
 ---
-import MosaicGrid, { type GridItem } from '../../../components/MosaicGrid.astro';
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { createStorage, getDbConfig } from '../../../lib/config';
-import { getDb } from '../../../lib/db';
-import { getDictionary, type Locale } from '../../../lib/i18n';
-import { getPhotoImageUrls, getPublishedPhotos } from '../../../lib/photos';
+import type { Locale } from '../../../lib/i18n';
 
+// `/collections/<name>` was the old free-text grouping, replaced by competitions (real
+// documents, at /competitions/<slug>) and the portfolio (everything not shot at an
+// event). Every collection that existed here — "galapagos" — is portfolio work now, so
+// that's where these URLs point. Permanent, because the old route is never coming back.
 const lang = Astro.params.lang as Locale;
-const collection = Astro.params.slug as string;
-const t = getDictionary(lang);
-
-const db = await getDb(getDbConfig());
-const storage = createStorage();
-const photos = await getPublishedPhotos(db, { collection });
-
-const items: GridItem[] = photos.map((photo) => {
-  const urls = getPhotoImageUrls(photo, storage);
-  return {
-    href: `/${lang}/gallery/${photo.slug}`,
-    slug: photo.slug,
-    title: photo.title[lang],
-    aspectRatio: photo.aspectRatio,
-    lqip: photo.lqip,
-    webpUrl: urls.webp,
-    jpegUrl: urls.jpeg,
-  };
-});
-
-const collectionTitle = collection.charAt(0).toUpperCase() + collection.slice(1);
+return Astro.redirect(`/${lang}/portfolio`, 301);
 ---
-
-<BaseLayout title={`${collectionTitle} — José Valdiviezo`} lang={lang}>
-  <div class="px-6 pb-6 pt-12 md:px-12">
-    <h1 class="font-display text-3xl">{collectionTitle}</h1>
-  </div>
-
-  <div class="px-2 pb-20 md:px-6">
-    {items.length > 0 ? <MosaicGrid items={items} /> : <p class="px-4 text-ink-muted">{t.collections.empty}</p>}
-  </div>
-</BaseLayout>

@@ -4,6 +4,7 @@ import { z } from 'astro/zod';
 import { ActionError } from 'astro:actions';
 import { defineAdminAction, requireAdmin } from './adminGuard';
 import { writeAuditLog } from '../lib/audit';
+import type { CompetitionDoc } from '../lib/competitions';
 import { createStorage, getDbConfig } from '../lib/config';
 import { getDb } from '../lib/db';
 import { processOriginal } from '../lib/images';
@@ -106,9 +107,8 @@ async function processUploadJob(db: Db, storage: StorageAdapter, job: UploadJobD
       aspectRatio: processed.aspectRatio,
       storage: { originalKey: job.originalKey, publicKey: publicWebpKey },
       lqip: processed.lqip,
-      maxPrintCm: processed.maxPrintCm,
       tags: [],
-      collections: [],
+      competitionId: job.competitionId ?? null,
       featured: false,
       status: 'draft',
       createdAt: now,
@@ -137,6 +137,8 @@ export const admin = {
       filename: z.string().min(1),
       contentType: z.string().min(1),
       bytes: z.coerce.number().positive(),
+      /** Empty string means portfolio (no competition). */
+      competitionId: z.string().optional(),
     }),
     handler: async (input) => {
       if (!ALLOWED_UPLOAD_TYPES.has(input.contentType)) {
@@ -149,6 +151,16 @@ export const admin = {
       const db = await getDb(getDbConfig());
       const storage = createStorage();
 
+      // Resolved here rather than trusted: a job carrying an id that doesn't exist would
+      // silently produce photographs pointing at nothing.
+      let competitionId: ObjectId | undefined;
+      if (input.competitionId) {
+        competitionId = new ObjectId(input.competitionId);
+        if (!(await db.collection('competitions').findOne({ _id: competitionId }))) {
+          throw new ActionError({ code: 'BAD_REQUEST', message: 'COMPETITION_NOT_FOUND' });
+        }
+      }
+
       const originalKey = `uploads/${randomUUID()}-${input.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const now = new Date();
       const { insertedId } = await db.collection('uploadJobs').insertOne({
@@ -156,6 +168,7 @@ export const admin = {
         originalKey,
         filename: input.filename,
         bytes: input.bytes,
+        ...(competitionId ? { competitionId } : {}),
         createdAt: now,
         updatedAt: now,
       });
@@ -229,15 +242,10 @@ export const admin = {
       title: z.object({ es: z.string(), en: z.string() }),
       description: z.object({ es: z.string(), en: z.string() }),
       tags: z.array(z.string()),
-      collections: z.array(z.string()),
+      /** Null moves the photograph to the portfolio. */
+      competitionId: z.string().nullable(),
       featured: z.boolean(),
-      pricingOverride: z
-        .object({
-          baseCents: z.coerce.number().optional(),
-          ratePerCm2Cents: z.coerce.number().optional(),
-          digitalPriceCents: z.coerce.number().optional(),
-        })
-        .optional(),
+      pricingOverride: z.object({ digitalPriceCents: z.coerce.number().optional() }).optional(),
     }),
     handler: async (input, context) => {
       const db = await getDb(getDbConfig());
@@ -245,11 +253,19 @@ export const admin = {
       const before = await db.collection<PhotoDoc>('photos').findOne({ _id: photoId });
       if (!before) throw new ActionError({ code: 'NOT_FOUND', message: 'PHOTO_NOT_FOUND' });
 
+      let competitionId: ObjectId | null = null;
+      if (input.competitionId) {
+        competitionId = new ObjectId(input.competitionId);
+        if (!(await db.collection('competitions').findOne({ _id: competitionId }))) {
+          throw new ActionError({ code: 'BAD_REQUEST', message: 'COMPETITION_NOT_FOUND' });
+        }
+      }
+
       const patch = {
         title: input.title,
         description: input.description,
         tags: input.tags,
-        collections: input.collections,
+        competitionId,
         featured: input.featured,
         pricing: input.pricingOverride,
         updatedAt: new Date(),
@@ -261,7 +277,7 @@ export const admin = {
         action: 'photo.update',
         targetType: 'photo',
         targetId: input.photoId,
-        before: { title: before.title, description: before.description, tags: before.tags, collections: before.collections, featured: before.featured, pricing: before.pricing },
+        before: { title: before.title, description: before.description, tags: before.tags, competitionId: before.competitionId, featured: before.featured, pricing: before.pricing },
         after: patch,
       });
 
@@ -324,11 +340,149 @@ export const admin = {
     },
   }),
 
+  createCompetition: defineAdminAction({
+    accept: 'json',
+    input: z.object({
+      name: z.object({ es: z.string().min(1), en: z.string().min(1) }),
+      description: z.object({ es: z.string(), en: z.string() }),
+      location: z.string(),
+      /** ISO date string from a native <input type="date">. */
+      date: z.string().min(1),
+    }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      // Slug from the English name so URLs stay ASCII regardless of accents in Spanish.
+      const slug = await uniqueSlug(db, input.name.en || input.name.es, 'competitions');
+      const now = new Date();
+
+      const doc: Omit<CompetitionDoc, '_id'> = {
+        slug,
+        name: input.name,
+        description: input.description,
+        location: input.location,
+        date: new Date(input.date),
+        status: 'draft',
+        createdAt: now,
+        updatedAt: now,
+      };
+      const { insertedId } = await db.collection<Omit<CompetitionDoc, '_id'>>('competitions').insertOne(doc);
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: 'competition.create',
+        targetType: 'competition',
+        targetId: insertedId.toString(),
+        after: doc,
+      });
+
+      return { id: insertedId.toString(), slug };
+    },
+  }),
+
+  updateCompetition: defineAdminAction({
+    accept: 'json',
+    input: z.object({
+      competitionId: z.string().min(1),
+      name: z.object({ es: z.string().min(1), en: z.string().min(1) }),
+      description: z.object({ es: z.string(), en: z.string() }),
+      location: z.string(),
+      date: z.string().min(1),
+      coverPhotoId: z.string().nullable().optional(),
+    }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const competitionId = new ObjectId(input.competitionId);
+      const before = await db.collection<CompetitionDoc>('competitions').findOne({ _id: competitionId });
+      if (!before) throw new ActionError({ code: 'NOT_FOUND', message: 'COMPETITION_NOT_FOUND' });
+
+      // The slug is deliberately NOT regenerated from the new name: it's the published
+      // URL, and renaming an event ("Copa 2026" → "Copa Nacional 2026") must not break
+      // every link that already points at it.
+      const patch = {
+        name: input.name,
+        description: input.description,
+        location: input.location,
+        date: new Date(input.date),
+        coverPhotoId: input.coverPhotoId ? new ObjectId(input.coverPhotoId) : undefined,
+        updatedAt: new Date(),
+      };
+      await db.collection('competitions').updateOne({ _id: competitionId }, { $set: patch });
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: 'competition.update',
+        targetType: 'competition',
+        targetId: input.competitionId,
+        before: { name: before.name, description: before.description, location: before.location, date: before.date, coverPhotoId: before.coverPhotoId },
+        after: patch,
+      });
+
+      return { ok: true };
+    },
+  }),
+
+  setCompetitionPublished: defineAdminAction({
+    accept: 'json',
+    input: z.object({ competitionId: z.string().min(1), published: z.boolean() }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const competitionId = new ObjectId(input.competitionId);
+      const status = input.published ? 'published' : 'draft';
+
+      const result = await db.collection('competitions').updateOne({ _id: competitionId }, { $set: { status, updatedAt: new Date() } });
+      if (result.matchedCount === 0) throw new ActionError({ code: 'NOT_FOUND', message: 'COMPETITION_NOT_FOUND' });
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: input.published ? 'competition.publish' : 'competition.unpublish',
+        targetType: 'competition',
+        targetId: input.competitionId,
+        after: { status },
+      });
+
+      return { ok: true };
+    },
+  }),
+
+  deleteCompetition: defineAdminAction({
+    accept: 'json',
+    input: z.object({ competitionId: z.string().min(1) }),
+    handler: async (input, context) => {
+      const db = await getDb(getDbConfig());
+      const competitionId = new ObjectId(input.competitionId);
+
+      // Refused rather than cascaded, mirroring deletePhoto: deleting an event should
+      // never quietly move its photographs into the portfolio, where they'd appear
+      // alongside the landscape work with no indication anything happened.
+      const photoCount = await db.collection('photos').countDocuments({ competitionId });
+      if (photoCount > 0) {
+        throw new ActionError({ code: 'CONFLICT', message: `HAS_${photoCount}_PHOTOS` });
+      }
+
+      const result = await db.collection('competitions').deleteOne({ _id: competitionId });
+      if (result.deletedCount === 0) throw new ActionError({ code: 'NOT_FOUND', message: 'COMPETITION_NOT_FOUND' });
+
+      await writeAuditLog(db, {
+        actor: await actorEmail(context),
+        action: 'competition.delete',
+        targetType: 'competition',
+        targetId: input.competitionId,
+      });
+
+      return { ok: true };
+    },
+  }),
+
   reorderPhotos: defineAdminAction({
     accept: 'json',
     input: z.object({ orderedIds: z.array(z.string().min(1)) }),
     handler: async (input, context) => {
       const db = await getDb(getDbConfig());
+      // Known limitation: `order` is a single global number shared by every competition
+      // and the portfolio, so reordering within one competition also shifts these
+      // photographs' position relative to everything else. Harmless while ordering is
+      // only used as a tie-break inside an already-filtered list; making it truly
+      // per-competition needs an order map keyed by competition id.
       await Promise.all(
         input.orderedIds.map((id, index) => db.collection('photos').updateOne({ _id: new ObjectId(id) }, { $set: { order: index } })),
       );

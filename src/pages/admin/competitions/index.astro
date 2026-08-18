@@ -1,0 +1,176 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getCompetitionPhotoCounts, listAllCompetitions } from '../../../lib/competitions';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+const [competitions, counts] = await Promise.all([listAllCompetitions(db), getCompetitionPhotoCounts(db)]);
+---
+
+<AdminLayout title="Competitions">
+  <div class="flex items-center justify-between">
+    <h1 class="font-display text-2xl">Competitions</h1>
+    <button type="button" data-open-new class="btn btn-primary py-1.5">New competition</button>
+  </div>
+  <p class="mt-2 max-w-2xl text-sm text-ink-muted">
+    Sporting events you've photographed. Photographs not assigned to one appear in the
+    <a href="/admin/photos?competition=portfolio" class="underline">portfolio</a> instead. A competition only appears on
+    the public site once it's published.
+  </p>
+
+  <form data-new-form hidden class="panel mt-6 max-w-2xl space-y-4 p-4">
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Name (ES)
+        <input name="name_es" required class="field mt-1 block w-full" />
+      </label>
+      <label class="block text-sm">
+        Name (EN)
+        <input name="name_en" required class="field mt-1 block w-full" />
+      </label>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Date
+        <input type="date" name="date" required class="field mt-1 block w-full" />
+      </label>
+      <label class="block text-sm">
+        Location
+        <input name="location" placeholder="Cuenca, Ecuador" class="field mt-1 block w-full" />
+      </label>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Description (ES)
+        <textarea name="description_es" rows="2" class="field mt-1 block w-full"></textarea>
+      </label>
+      <label class="block text-sm">
+        Description (EN)
+        <textarea name="description_en" rows="2" class="field mt-1 block w-full"></textarea>
+      </label>
+    </div>
+    <div class="flex items-center gap-3">
+      <button type="submit" class="btn btn-primary py-1.5">Create</button>
+      <button type="button" data-cancel-new class="text-sm text-ink-muted underline">Cancel</button>
+      <span data-new-status class="text-sm text-ink-muted"></span>
+    </div>
+  </form>
+
+  {competitions.length === 0 && <p class="mt-8 text-ink-muted">No competitions yet.</p>}
+
+  {
+    competitions.length > 0 && (
+      <table class="mt-6 w-full text-sm">
+        <thead>
+          <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+            <th class="py-2">Name</th>
+            <th class="py-2">Date</th>
+            <th class="py-2">Location</th>
+            <th class="py-2">Photos</th>
+            <th class="py-2">Status</th>
+            <th class="py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {competitions.map((competition) => (
+            <tr class="border-b border-border" data-competition-row data-competition-id={competition._id.toString()}>
+              <td class="py-2">
+                <a href={`/admin/competitions/${competition._id.toString()}`} class="hover:underline">
+                  {competition.name.en || competition.name.es}
+                </a>
+                <span class="block text-xs text-ink-muted">/{competition.slug}</span>
+              </td>
+              <td class="py-2 text-ink-muted">{new Date(competition.date).toLocaleDateString()}</td>
+              <td class="py-2 text-ink-muted">{competition.location || '—'}</td>
+              <td class="py-2">
+                <a href={`/admin/photos?competition=${competition._id.toString()}`} class="underline">
+                  {counts.get(competition._id.toString()) ?? 0}
+                </a>
+              </td>
+              <td class="py-2 capitalize">{competition.status}</td>
+              <td class="py-2 text-right">
+                <button type="button" data-toggle-publish data-published={String(competition.status === 'published')} class="text-xs uppercase tracking-widest underline">
+                  {competition.status === 'published' ? 'Unpublish' : 'Publish'}
+                </button>
+                <button type="button" data-delete class="ml-3 text-xs uppercase tracking-widest text-ink-muted underline hover:text-accent">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+  <p data-row-status class="mt-4 text-sm text-accent"></p>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const newForm = document.querySelector<HTMLFormElement>('[data-new-form]')!;
+  const newStatus = document.querySelector<HTMLElement>('[data-new-status]')!;
+  const rowStatus = document.querySelector<HTMLElement>('[data-row-status]')!;
+
+  document.querySelector('[data-open-new]')!.addEventListener('click', () => {
+    newForm.hidden = false;
+    newForm.querySelector<HTMLInputElement>('[name=name_es]')!.focus();
+  });
+  document.querySelector('[data-cancel-new]')!.addEventListener('click', () => {
+    newForm.hidden = true;
+  });
+
+  function value(form: HTMLFormElement, name: string): string {
+    return (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement)?.value ?? '';
+  }
+
+  newForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    newStatus.textContent = 'Creating…';
+
+    const { error } = await actions.admin.createCompetition({
+      name: { es: value(newForm, 'name_es'), en: value(newForm, 'name_en') },
+      description: { es: value(newForm, 'description_es'), en: value(newForm, 'description_en') },
+      location: value(newForm, 'location'),
+      date: value(newForm, 'date'),
+    });
+
+    if (error) {
+      newStatus.textContent = `Error: ${error.message}`;
+      return;
+    }
+    window.location.reload();
+  });
+
+  // Delegated from the table so both row actions share one listener.
+  document.querySelector('tbody')?.addEventListener('click', async (event) => {
+    const target = event.target as HTMLElement;
+    const row = target.closest<HTMLElement>('[data-competition-row]');
+    if (!row) return;
+    const competitionId = row.dataset.competitionId!;
+    rowStatus.textContent = '';
+
+    if (target.matches('[data-toggle-publish]')) {
+      const published = target.dataset.published === 'true';
+      const { error } = await actions.admin.setCompetitionPublished({ competitionId, published: !published });
+      if (error) rowStatus.textContent = `Error: ${error.message}`;
+      else window.location.reload();
+      return;
+    }
+
+    if (target.matches('[data-delete]')) {
+      if (!confirm('Delete this competition? Only possible while it has no photographs.')) return;
+      const { error } = await actions.admin.deleteCompetition({ competitionId });
+      if (error) {
+        // The action refuses rather than cascading, so the message carries the count.
+        const match = /^HAS_(\d+)_PHOTOS$/.exec(error.message);
+        rowStatus.textContent = match
+          ? `Can't delete: ${match[1]} photograph(s) still belong to this competition. Move them to another competition or the portfolio first.`
+          : `Error: ${error.message}`;
+        return;
+      }
+      window.location.reload();
+    }
+  });
+</script>

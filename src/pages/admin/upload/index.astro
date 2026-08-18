@@ -1,5 +1,14 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { listAllCompetitions } from '../../../lib/competitions';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+const competitions = await listAllCompetitions(db);
+// Preselected when arriving from a competition's own page, so "upload into this
+// competition" actually does.
+const preselected = Astro.url.searchParams.get('competition') ?? '';
 ---
 
 <AdminLayout title="Upload">
@@ -9,9 +18,25 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
     processed (rotate, watermark, derivatives) and lands here as a draft.
   </p>
 
+  <label class="mt-6 block max-w-sm text-sm">
+    Add to competition
+    <select data-competition-select class="field mt-1 block w-full">
+      <option value="" selected={!preselected}>— Portfolio (no competition) —</option>
+      {
+        competitions.map((competition) => (
+          <option value={competition._id.toString()} selected={preselected === competition._id.toString()}>
+            {competition.name.en || competition.name.es}
+            {competition.status === 'draft' ? ' (draft)' : ''}
+          </option>
+        ))
+      }
+    </select>
+    <span class="mt-1 block text-xs text-ink-muted">Applies to every file in this batch. Change it before dropping files.</span>
+  </label>
+
   <div
     data-dropzone
-    class="mt-6 flex min-h-40 flex-col items-center justify-center border-2 border-dashed border-border p-10 text-center text-sm text-ink-muted"
+    class="mt-6 flex min-h-40 flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-10 text-center text-sm text-ink-muted"
   >
     <p>Drag JPEG/PNG/TIFF files here, or</p>
     <label class="mt-2 cursor-pointer underline">
@@ -100,10 +125,15 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
     localUploads.set(key, local);
     render();
 
+    // Read per file rather than captured once, so changing the select mid-batch applies
+    // to whatever is dropped next instead of silently using a stale value.
+    const competitionId = document.querySelector<HTMLSelectElement>('[data-competition-select]')?.value || undefined;
+
     const { data, error: requestError } = await actions.admin.requestUploadUrl({
       filename: file.name,
       contentType: file.type,
       bytes: file.size,
+      competitionId,
     });
     if (requestError || !data) {
       local.status = 'failed';

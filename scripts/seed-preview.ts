@@ -25,7 +25,6 @@ interface SeedMetadataEntry {
   title: { es: string; en: string };
   description: { es: string; en: string };
   tags?: string[];
-  collections?: string[];
 }
 
 function slugFromFilename(filename: string): string {
@@ -80,14 +79,14 @@ async function main() {
           width: processed.width,
           height: processed.height,
           aspectRatio: processed.aspectRatio,
-          maxPrintCm: processed.maxPrintCm,
           lqip: processed.lqip,
           'storage.originalKey': originalKey,
           'storage.publicKey': publicWebpKey,
           title: meta?.title ?? { es: slug, en: slug },
           description: meta?.description ?? { es: '', en: '' },
           tags: meta?.tags ?? [],
-          collections: meta?.collections ?? [],
+          // The seed set is José's landscape/wildlife work, not competition coverage.
+          competitionId: null,
           status: 'published',
           featured: i < 6,
           order: i,

@@ -47,6 +47,7 @@ async function main() {
   const db = await getDb(getDbConfig());
 
   await ensureCollection(db, 'photos');
+  await ensureCollection(db, 'competitions');
   await ensureCollection(db, 'orders');
   await ensureCollection(db, 'downloadTokens');
   await ensureCollection(db, 'stripeEvents');
@@ -58,8 +59,23 @@ async function main() {
 
   await db.collection('photos').createIndex({ slug: 1 }, { unique: true });
   await db.collection('photos').createIndex({ status: 1 });
-  await db.collection('photos').createIndex({ collections: 1 });
   await db.collection('photos').createIndex({ tags: 1 });
+  // Serves both the per-competition listing and the `{competitionId: null}` portfolio
+  // listing from one index, and covers the `order` sort both of them use.
+  await ensureIndex(db, 'photos', { status: 1, competitionId: 1, order: 1 });
+
+  // Left behind by the collections → competitionId migration below. Dropped rather than
+  // left in place: it indexes a field no document has any more, so it costs write time
+  // and misleads anyone reading the index list. `.catch` because it's already gone on
+  // every run after the first, and on a database that never had it.
+  await db
+    .collection('photos')
+    .dropIndex('collections_1')
+    .then(() => console.log('dropped obsolete index: photos.collections_1'))
+    .catch(() => {});
+
+  await db.collection('competitions').createIndex({ slug: 1 }, { unique: true });
+  await db.collection('competitions').createIndex({ status: 1, date: -1 });
 
   // Sparse, not just unique: an order is inserted *before* its Stripe Checkout Session
   // exists (createPendingOrder → attachStripeSession), and a non-sparse unique index
@@ -105,6 +121,22 @@ async function main() {
     .updateMany({ r2: { $exists: true } }, { $rename: { r2: 'storage' } });
   if (renamed.modifiedCount > 0) {
     console.log(`migrated ${renamed.modifiedCount} photo(s): r2 → storage`);
+  }
+
+  // Migration: `collections: string[]` (free text, no documents of its own) became
+  // `competitionId: ObjectId | null` pointing at a real competitions document. Existing
+  // photographs become portfolio work — they're José's landscape and wildlife shots, not
+  // competition coverage — and an admin assigns any that belong to an event. Also drops
+  // maxPrintCm, which only meant anything while physical prints were sold.
+  //
+  // Idempotent: the filter matches nothing once every document has been converted. Note
+  // Mongo matches `{competitionId: null}` against a missing field too, so the queries
+  // work correctly whether or not this has run yet.
+  const converted = await db
+    .collection('photos')
+    .updateMany({ competitionId: { $exists: false } }, { $set: { competitionId: null }, $unset: { collections: '', maxPrintCm: '' } });
+  if (converted.modifiedCount > 0) {
+    console.log(`migrated ${converted.modifiedCount} photo(s): collections → competitionId (portfolio)`);
   }
 
   console.log('Indexes ensured.');

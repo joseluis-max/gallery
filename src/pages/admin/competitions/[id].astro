@@ -1,0 +1,176 @@
+---
+import { ObjectId } from 'mongodb';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getCompetitionById } from '../../../lib/competitions';
+import { createStorage, getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import type { PhotoDoc } from '../../../lib/photos';
+
+const idParam = Astro.params.id as string;
+let competitionId: InstanceType<typeof ObjectId>;
+try {
+  competitionId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+const db = await getDb(getDbConfig());
+const competition = await getCompetitionById(db, competitionId);
+if (!competition) {
+  return new Response('Not found', { status: 404 });
+}
+
+const storage = createStorage();
+// Drafts included: the cover is usually chosen before the competition goes live.
+const photos = await db.collection<PhotoDoc>('photos').find({ competitionId }).sort({ order: 1, createdAt: -1 }).toArray();
+
+// <input type="date"> needs yyyy-mm-dd, and toISOString() would shift the date across the
+// day boundary for anyone west of UTC — which is everyone here.
+const d = new Date(competition.date);
+const dateValue = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+---
+
+<AdminLayout title={competition.name.en || competition.name.es}>
+  <a href="/admin/competitions" class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">&larr; Competitions</a>
+
+  <div class="mt-4 flex items-baseline justify-between">
+    <h1 class="font-display text-2xl">{competition.name.en || competition.name.es}</h1>
+    <span class="text-xs uppercase tracking-widest text-ink-muted">
+      {competition.status} · /{competition.slug}
+    </span>
+  </div>
+  <p class="mt-2 text-sm text-ink-muted">
+    The URL slug is fixed at creation — renaming the competition won't break links that already point at it.
+  </p>
+
+  <form data-edit-form data-competition-id={competition._id.toString()} class="mt-6 max-w-2xl space-y-4">
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Name (ES)
+        <input name="name_es" value={competition.name.es} required class="field mt-1 block w-full" />
+      </label>
+      <label class="block text-sm">
+        Name (EN)
+        <input name="name_en" value={competition.name.en} required class="field mt-1 block w-full" />
+      </label>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Date
+        <input type="date" name="date" value={dateValue} required class="field mt-1 block w-full" />
+      </label>
+      <label class="block text-sm">
+        Location
+        <input name="location" value={competition.location} class="field mt-1 block w-full" />
+      </label>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block text-sm">
+        Description (ES)
+        <textarea name="description_es" rows="3" class="field mt-1 block w-full">{competition.description.es}</textarea>
+      </label>
+      <label class="block text-sm">
+        Description (EN)
+        <textarea name="description_en" rows="3" class="field mt-1 block w-full">{competition.description.en}</textarea>
+      </label>
+    </div>
+
+    <label class="block text-sm">
+      Cover photograph
+      <select name="coverPhotoId" class="field mt-1 block w-full">
+        <option value="">— First photograph in the competition —</option>
+        {
+          photos.map((photo) => (
+            <option value={photo._id.toString()} selected={competition.coverPhotoId?.toString() === photo._id.toString()}>
+              {photo.title.en || photo.slug}
+              {photo.status === 'draft' ? ' (draft)' : ''}
+            </option>
+          ))
+        }
+      </select>
+      <span class="mt-1 block text-xs text-ink-muted">
+        A draft or deleted cover falls back to the first published photograph, so a competition with photographs never
+        renders as an empty card.
+      </span>
+    </label>
+
+    <div class="flex items-center gap-3 pt-2">
+      <button type="submit" class="btn btn-primary py-2">Save</button>
+      <button type="button" data-toggle-publish data-published={String(competition.status === 'published')} class="btn btn-ghost py-2">
+        {competition.status === 'published' ? 'Unpublish' : 'Publish'}
+      </button>
+      <span data-save-status class="text-sm text-ink-muted"></span>
+    </div>
+  </form>
+
+  <section class="mt-12">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm uppercase tracking-widest text-ink-muted">Photographs ({photos.length})</h2>
+      <a href={`/admin/upload?competition=${competition._id.toString()}`} class="text-sm underline">Upload into this competition →</a>
+    </div>
+
+    {photos.length === 0 && <p class="mt-4 text-sm text-ink-muted">No photographs assigned yet.</p>}
+
+    {
+      photos.length > 0 && (
+        <div class="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
+          {photos.map((photo) => (
+            <a href={`/admin/photos/${photo._id.toString()}`} class="frame block">
+              <img
+                src={storage.publicUrl(photo.storage.publicKey.replace(/\.webp$/i, '.jpg'))}
+                alt={photo.title.en || photo.slug}
+                class="aspect-[3/2] w-full object-cover"
+              />
+              <span class="mt-1 block truncate text-xs text-ink-muted">
+                {photo.status === 'draft' ? '● ' : ''}
+                {photo.title.en || photo.slug}
+              </span>
+            </a>
+          ))}
+        </div>
+      )
+    }
+  </section>
+</AdminLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const form = document.querySelector<HTMLFormElement>('[data-edit-form]')!;
+  const statusEl = document.querySelector<HTMLElement>('[data-save-status]')!;
+  const competitionId = form.dataset.competitionId!;
+
+  function field(name: string): string {
+    return (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement)?.value ?? '';
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    statusEl.textContent = 'Saving…';
+
+    const { error } = await actions.admin.updateCompetition({
+      competitionId,
+      name: { es: field('name_es'), en: field('name_en') },
+      description: { es: field('description_es'), en: field('description_en') },
+      location: field('location'),
+      date: field('date'),
+      coverPhotoId: field('coverPhotoId') || null,
+    });
+
+    statusEl.textContent = error ? `Error: ${error.message}` : 'Saved.';
+  });
+
+  document.querySelector<HTMLButtonElement>('[data-toggle-publish]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const published = button.dataset.published === 'true';
+    button.disabled = true;
+
+    const { error } = await actions.admin.setCompetitionPublished({ competitionId, published: !published });
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      button.disabled = false;
+      return;
+    }
+    window.location.reload();
+  });
+</script>
