@@ -129,7 +129,7 @@ const alternates = LOCALES.map((locale) => ({
           <a href={`/${lang}/portfolio`} class="hover:text-ink">{t.nav.portfolio}</a>
           <a href={`/${lang}/about`} class="hover:text-ink">{t.nav.about}</a>
           <a href={`/${lang}/cart`} class="hover:text-ink">
-            {t.nav.cart}{cartCount > 0 && <span data-cart-count> ({cartCount})</span>}
+            {t.nav.cart}<span data-cart-count hidden={cartCount === 0}> ({cartCount})</span>
           </a>
           <a href={`/${lang}/account`} class="hover:text-ink">{sessionUser ? t.nav.account : t.nav.signIn}</a>
           <ThemeToggle />
@@ -138,7 +138,7 @@ const alternates = LOCALES.map((locale) => ({
         {/* Mobile: five links plus a theme toggle don't fit 375px, so they collapse. */}
         <div class="flex items-center gap-4 text-sm text-ink-muted md:hidden">
           <a href={`/${lang}/cart`} class="hover:text-ink">
-            {t.nav.cart}{cartCount > 0 && <span data-cart-count> ({cartCount})</span>}
+            {t.nav.cart}<span data-cart-count hidden={cartCount === 0}> ({cartCount})</span>
           </a>
           <details data-mobile-menu>
             <summary class="cursor-pointer list-none px-1 text-lg" aria-label={t.nav.menu}>☰</summary>

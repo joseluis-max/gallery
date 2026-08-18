@@ -43,7 +43,11 @@ export const server = {
       // a file the buyer already has.
       const next = hasCartItem(cart, input.photoId) ? cart : addCartItem(cart, { photoId: input.photoId });
       context.session?.set('cart', next);
-      return { count: next.length };
+
+      // The line's id goes back to the caller so a toggle button (gallery grid, buy panel)
+      // can flip straight to "remove" without a round trip to re-read the session.
+      const lineId = next.find((item) => item.photoId === input.photoId)!.lineId;
+      return { count: next.length, lineId };
     },
   }),
 

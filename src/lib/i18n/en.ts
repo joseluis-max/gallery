@@ -24,6 +24,8 @@ export const en: Dictionary = {
     title: 'Gallery',
     allTags: 'All',
     empty: 'No photographs published yet.',
+    addToCart: 'Add to cart',
+    removeFromCart: 'Remove from cart',
   },
   competitions: {
     title: 'Competitions',

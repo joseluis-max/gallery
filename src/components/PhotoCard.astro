@@ -10,28 +10,188 @@ interface Props {
    *  computed by the grid, not this component, so it stays layout-agnostic. */
   tileClass: string;
   eager?: boolean;
+  photoId: string;
+  inCart: boolean;
+  /** The cart line to remove when toggling off. Present exactly when `inCart` is true. */
+  lineId?: string;
+  addToCartLabel: string;
+  removeFromCartLabel: string;
 }
 
-const { href, slug, title, lqip, webpUrl, jpegUrl, tileClass, eager = false } = Astro.props;
+const {
+  href,
+  slug,
+  title,
+  lqip,
+  webpUrl,
+  jpegUrl,
+  tileClass,
+  eager = false,
+  photoId,
+  inCart,
+  lineId,
+  addToCartLabel,
+  removeFromCartLabel,
+} = Astro.props;
 ---
 
-<a href={href} class={`group relative block overflow-hidden bg-border ${tileClass}`} data-reveal>
-  <img
-    src={lqip}
-    alt=""
-    aria-hidden="true"
-    class="absolute inset-0 h-full w-full object-cover scale-105 blur-md"
-    loading="eager"
-  />
-  <picture>
-    <source srcset={webpUrl} type="image/webp" />
+{/*
+  The link and the cart toggle are siblings, not nested — a <button> inside an <a> is
+  invalid HTML and would fire both the toggle and the navigation on one click. The anchor
+  is stretched to fill the tile with an absolute overlay instead, so this keeps the whole
+  photo clickable everywhere except the small corner the button occupies.
+*/}
+<div class={`group relative overflow-hidden bg-border ${tileClass}`} data-reveal>
+  <a href={href} class="absolute inset-0 block">
     <img
-      src={jpegUrl}
-      alt={title}
-      loading={eager ? 'eager' : 'lazy'}
-      decoding="async"
-      transition:name={`photo-${slug}`}
-      class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+      src={lqip}
+      alt=""
+      aria-hidden="true"
+      class="absolute inset-0 h-full w-full object-cover scale-105 blur-md"
+      loading="eager"
     />
-  </picture>
-</a>
+    <picture>
+      <source srcset={webpUrl} type="image/webp" />
+      <img
+        src={jpegUrl}
+        alt={title}
+        loading={eager ? 'eager' : 'lazy'}
+        decoding="async"
+        transition:name={`photo-${slug}`}
+        class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+      />
+    </picture>
+  </a>
+
+  <button
+    type="button"
+    class="cart-toggle"
+    data-cart-toggle
+    data-photo-id={photoId}
+    data-line-id={lineId ?? ''}
+    data-in-cart={String(inCart)}
+    data-add-label={addToCartLabel}
+    data-remove-label={removeFromCartLabel}
+    aria-pressed={inCart}
+    aria-label={inCart ? removeFromCartLabel : addToCartLabel}
+    title={inCart ? removeFromCartLabel : addToCartLabel}
+  >
+    <svg class="icon-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+    <svg class="icon-remove" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  </button>
+</div>
+
+<style>
+  .cart-toggle {
+    position: absolute;
+    right: 0.5rem;
+    top: 0.5rem;
+    z-index: 10;
+    display: inline-flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background-color: rgb(0 0 0 / 0.5);
+    color: #fff;
+    backdrop-filter: blur(4px);
+    transition:
+      background-color 0.15s ease,
+      transform 0.1s ease;
+  }
+  .cart-toggle:hover:not(:disabled) {
+    background-color: rgb(0 0 0 / 0.7);
+  }
+  .cart-toggle:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+  .cart-toggle:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  /* Added state reuses the site accent instead of a generic "success" green, so it reads
+     as brand-consistent rather than a form-validation checkmark. */
+  .cart-toggle[data-in-cart='true'] {
+    background-color: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+  .cart-toggle .icon-add,
+  .cart-toggle .icon-remove {
+    height: 1.125rem;
+    width: 1.125rem;
+  }
+  .cart-toggle .icon-remove {
+    display: none;
+  }
+  .cart-toggle[data-in-cart='true'] .icon-add {
+    display: none;
+  }
+  .cart-toggle[data-in-cart='true'] .icon-remove {
+    display: block;
+  }
+</style>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  function applyState(button: HTMLButtonElement, inCart: boolean, lineId: string) {
+    button.dataset.inCart = String(inCart);
+    button.dataset.lineId = lineId;
+    button.setAttribute('aria-pressed', String(inCart));
+    const label = inCart ? button.dataset.removeLabel! : button.dataset.addLabel!;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+
+  function updateHeaderCount(count: number) {
+    for (const el of document.querySelectorAll<HTMLElement>('[data-cart-count]')) {
+      el.textContent = count > 0 ? ` (${count})` : '';
+      el.hidden = count === 0;
+    }
+  }
+
+  // Module scope, deliberately — this script is bundled and evaluated once per full page
+  // load, not re-run on ClientRouter navigations (see Lightbox.astro for the same idiom),
+  // so a plain boolean here survives the whole session. Delegating from `document` means
+  // every card on every future page is covered without rebinding after each navigation.
+  let cartToggleBound = false;
+
+  document.addEventListener('astro:page-load', () => {
+    if (cartToggleBound) return;
+    cartToggleBound = true;
+
+    document.addEventListener('click', async (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-cart-toggle]');
+      if (!button || button.disabled) return;
+
+      button.disabled = true;
+      const photoId = button.dataset.photoId!;
+      const wasInCart = button.dataset.inCart === 'true';
+      const lang = document.documentElement.lang === 'es' ? 'es' : 'en';
+
+      try {
+        if (wasInCart) {
+          const lineId = button.dataset.lineId;
+          if (!lineId) return;
+          const { data, error } = await actions.removeFromCart({ lineId, lang });
+          if (error || !data) return;
+          applyState(button, false, '');
+          updateHeaderCount(data.count);
+        } else {
+          const { data, error } = await actions.addToCart({ photoId });
+          if (error || !data) return;
+          applyState(button, true, data.lineId);
+          updateHeaderCount(data.count);
+        }
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+</script>

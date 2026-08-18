@@ -37,8 +37,12 @@ const competitionCards = await Promise.all(
   }),
 );
 
+const cart = (await Astro.session?.get('cart')) ?? [];
+const cartLineByPhotoId = new Map(cart.map((item) => [item.photoId, item.lineId]));
+
 const items: GridItem[] = featured.map((photo) => {
   const urls = getPhotoImageUrls(photo, storage);
+  const photoId = photo._id.toString();
   return {
     href: `/${lang}/gallery/${photo.slug}`,
     slug: photo.slug,
@@ -47,6 +51,9 @@ const items: GridItem[] = featured.map((photo) => {
     lqip: photo.lqip,
     webpUrl: urls.webp,
     jpegUrl: urls.jpeg,
+    photoId,
+    inCart: cartLineByPhotoId.has(photoId),
+    lineId: cartLineByPhotoId.get(photoId),
   };
 });
 ---
@@ -61,7 +68,7 @@ const items: GridItem[] = featured.map((photo) => {
     items.length > 0 && (
       <section class="px-2 pb-20 md:px-6">
         <h2 class="sr-only">{t.home.featuredTitle}</h2>
-        <MosaicGrid items={items} />
+        <MosaicGrid items={items} addToCartLabel={t.gallery.addToCart} removeFromCartLabel={t.gallery.removeFromCart} />
         <div class="mt-10 text-center">
           <a href={`/${lang}/gallery`} class="text-sm uppercase tracking-widest text-accent hover:underline">
             {t.home.viewGallery}

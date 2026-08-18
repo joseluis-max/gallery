@@ -23,8 +23,12 @@ let items: GridItem[] = [];
 if (competition) {
   const storage = createStorage();
   const photos = await getPublishedPhotos(db, { competitionId: competition._id });
+  const cart = (await Astro.session?.get('cart')) ?? [];
+  const cartLineByPhotoId = new Map(cart.map((item) => [item.photoId, item.lineId]));
+
   items = photos.map((photo) => {
     const urls = getPhotoImageUrls(photo, storage);
+    const photoId = photo._id.toString();
     return {
       href: `/${lang}/gallery/${photo.slug}`,
       slug: photo.slug,
@@ -33,6 +37,9 @@ if (competition) {
       lqip: photo.lqip,
       webpUrl: urls.webp,
       jpegUrl: urls.jpeg,
+      photoId,
+      inCart: cartLineByPhotoId.has(photoId),
+      lineId: cartLineByPhotoId.get(photoId),
     };
   });
 }
@@ -73,7 +80,13 @@ if (competition) {
         </div>
 
         <div class="px-2 pb-20 md:px-6">
-          {items.length > 0 ? <MosaicGrid items={items} /> : <p class="px-4 text-ink-muted">{t.gallery.empty}</p>}
+          {
+            items.length > 0 ? (
+              <MosaicGrid items={items} addToCartLabel={t.gallery.addToCart} removeFromCartLabel={t.gallery.removeFromCart} />
+            ) : (
+              <p class="px-4 text-ink-muted">{t.gallery.empty}</p>
+            )
+          }
         </div>
       </>
     )

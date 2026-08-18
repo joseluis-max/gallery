@@ -12,7 +12,7 @@ export interface Dictionary {
     viewAll: string;
   };
   home: { heroTitle: string; heroSubtitle: string; featuredTitle: string; viewGallery: string; recentCompetitions: string };
-  gallery: { title: string; allTags: string; empty: string };
+  gallery: { title: string; allTags: string; empty: string; addToCart: string; removeFromCart: string };
   competitions: {
     title: string;
     intro: string;
@@ -116,6 +116,8 @@ export const es: Dictionary = {
     title: 'Galería',
     allTags: 'Todas',
     empty: 'Aún no hay fotografías publicadas.',
+    addToCart: 'Añadir al carrito',
+    removeFromCart: 'Quitar del carrito',
   },
   competitions: {
     title: 'Competencias',

@@ -9,13 +9,21 @@ export interface GridItem {
   lqip: string;
   webpUrl: string;
   jpegUrl: string;
+  photoId: string;
+  /** Whether the viewer's session cart already holds this photo — read fresh on every
+   *  render, same as the buy panel, so the toggle never opens showing a stale state. */
+  inCart: boolean;
+  /** The cart line to remove when toggling off. Present exactly when `inCart` is true. */
+  lineId?: string;
 }
 
 interface Props {
   items: GridItem[];
+  addToCartLabel: string;
+  removeFromCartLabel: string;
 }
 
-const { items } = Astro.props;
+const { items, addToCartLabel, removeFromCartLabel } = Astro.props;
 
 /*
  * An asymmetric modular grid in the Japanese editorial tradition (see Muji/Casa BRUTUS
@@ -65,6 +73,11 @@ function tileClassFor(item: GridItem, index: number): string {
         jpegUrl={item.jpegUrl}
         tileClass={tileClassFor(item, i)}
         eager={i < 4}
+        photoId={item.photoId}
+        inCart={item.inCart}
+        lineId={item.lineId}
+        addToCartLabel={addToCartLabel}
+        removeFromCartLabel={removeFromCartLabel}
       />
     ))
   }

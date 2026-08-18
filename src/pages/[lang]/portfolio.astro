@@ -17,8 +17,12 @@ const storage = createStorage();
 // a chip can never lead to an empty page.
 const [photos, tags] = await Promise.all([getPortfolioPhotos(db, { tag: activeTag }), getPortfolioTags(db)]);
 
+const cart = (await Astro.session?.get('cart')) ?? [];
+const cartLineByPhotoId = new Map(cart.map((item) => [item.photoId, item.lineId]));
+
 const items: GridItem[] = photos.map((photo) => {
   const urls = getPhotoImageUrls(photo, storage);
+  const photoId = photo._id.toString();
   return {
     href: `/${lang}/gallery/${photo.slug}`,
     slug: photo.slug,
@@ -27,6 +31,9 @@ const items: GridItem[] = photos.map((photo) => {
     lqip: photo.lqip,
     webpUrl: urls.webp,
     jpegUrl: urls.jpeg,
+    photoId,
+    inCart: cartLineByPhotoId.has(photoId),
+    lineId: cartLineByPhotoId.get(photoId),
   };
 });
 ---
@@ -56,6 +63,12 @@ const items: GridItem[] = photos.map((photo) => {
   </div>
 
   <div class="px-2 pb-20 md:px-6">
-    {items.length > 0 ? <MosaicGrid items={items} /> : <p class="px-4 text-ink-muted">{t.portfolio.empty}</p>}
+    {
+      items.length > 0 ? (
+        <MosaicGrid items={items} addToCartLabel={t.gallery.addToCart} removeFromCartLabel={t.gallery.removeFromCart} />
+      ) : (
+        <p class="px-4 text-ink-muted">{t.portfolio.empty}</p>
+      )
+    }
   </div>
 </BaseLayout>
