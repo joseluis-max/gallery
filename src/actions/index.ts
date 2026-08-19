@@ -6,6 +6,7 @@ import { ActionError, defineAction } from 'astro:actions';
 import { admin } from './admin';
 import { auth } from './auth';
 import { downloads } from './downloads';
+import { transfer } from './transfer';
 import { addCartItem, hasCartItem, removeCartItem } from '../lib/cart';
 import { buildCartView } from '../lib/cartView';
 import { createStorage, getDbConfig } from '../lib/config';
@@ -27,6 +28,7 @@ export const server = {
   admin,
   auth,
   downloads,
+  transfer,
 
   addToCart: defineAction({
     accept: 'json',

@@ -130,6 +130,10 @@ describe('GET /api/payphone-confirm', () => {
       orderId,
       actor: 'payphone-confirm',
       payment: {
+        // Stamped now that bank transfers are a second way an order can become paid — the
+        // admin panel and the CSV export both distinguish them, and an order paid before
+        // this field existed reads as Payphone by omission.
+        method: 'payphone',
         transactionId: String(PAYPHONE_TX),
         authorizationCode: 'W23178284',
         cardBrand: 'Visa',

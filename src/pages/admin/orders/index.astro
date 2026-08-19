@@ -1,11 +1,17 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { countTransfersInReview } from '../../../lib/bankTransfer';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { OrderDoc } from '../../../lib/orders';
 import { listUnreconciledAttempts } from '../../../lib/payments';
 
 const db = await getDb(getDbConfig());
+
+// Bank transfers deliver nothing until a person approves them, so an unreviewed queue is a
+// customer waiting — the one number on this page that is about someone else's time rather
+// than about a fault.
+const transfersInReview = await countTransfersInReview(db);
 
 // Payphone has no webhook, so the buyer's browser is a mandatory link in the fulfilment
 // chain: a closed tab or a dead process can strand a payment with nothing to retry it.
@@ -43,6 +49,18 @@ const orders = await db.collection<OrderDoc>('orders').find(query).sort({ create
       Export CSV
     </a>
   </div>
+
+  {
+    transfersInReview > 0 && (
+      <section class="panel mt-6 border-accent p-4">
+        <h2 class="text-sm uppercase tracking-widest text-accent">Bank transfers waiting for review</h2>
+        <p class="mt-2 text-sm">
+          <strong>{transfersInReview}</strong> buyer(s) have transferred money and uploaded a receipt. Nothing is delivered
+          until you approve it — <a href="/admin/transfers" class="underline">open the queue</a>.
+        </p>
+      </section>
+    )
+  }
 
   {
     needsAttention > 0 && (

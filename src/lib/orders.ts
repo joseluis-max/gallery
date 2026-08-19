@@ -26,6 +26,11 @@ export interface OrderHistoryEntry {
   note?: string;
 }
 
+/** How the money arrived. Absent on orders paid before there was more than one way, which
+ *  were all Payphone — readers should treat `undefined` as `'payphone'` rather than
+ *  back-filling, since nothing about those orders is in doubt. */
+export type PaymentMethod = 'payphone' | 'transfer';
+
 /**
  * What the gateway said when it approved the payment. Display and support data only —
  * nothing in here is ever re-read to decide entitlement. `status` is what decides that,
@@ -34,13 +39,22 @@ export interface OrderHistoryEntry {
  * Replaces `stripePaymentIntentId`, which was the same idea in one provider's vocabulary.
  * `document` is the buyer's cédula/RUC: the Cajita collects it, issuing an SRI factura
  * needs it, and it cannot be obtained again afterwards.
+ *
+ * A bank transfer fills in far less of this — there is no gateway to answer, so
+ * `transactionId` carries our own review id and `reference` carries whatever the buyer
+ * said their transfer was called. The card fields simply stay absent, which is why every
+ * one of them is optional and why the admin panel renders whatever is present rather than
+ * a fixed set of rows.
  */
 export interface OrderPayment {
+  method?: PaymentMethod;
   transactionId: string;
   authorizationCode?: string;
   cardBrand?: string;
   lastDigits?: string;
   document?: string;
+  /** Bank transfers only: the buyer's own description of the transfer, unverified. */
+  reference?: string;
 }
 
 export interface OrderDoc {

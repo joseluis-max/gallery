@@ -1,6 +1,7 @@
 ---
 import { ObjectId } from 'mongodb';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { findLatestTransferForOrder } from '../../../lib/bankTransfer';
 import { getDbConfig, getDownloadConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
@@ -72,6 +73,15 @@ const emailNotice = order.customer.email
 // `?payment=declined` on this URL and all they get is a sentence.
 const paymentParam = Astro.url.searchParams.get('payment');
 const paymentNotice = paymentParam === 'declined' ? t.order.declined : paymentParam === 'unconfirmed' ? t.order.unconfirmed : null;
+
+// A bank transfer leaves an order pending for hours while a person looks at a screenshot,
+// which is a state the Payphone-only version of this page had no way to express: "we're
+// waiting on payment confirmation" is misleading when the truth is "we have your receipt".
+// Only read for a pending order — once it is paid, how it was paid is on `order.payment`
+// and this query would answer a question nobody asked.
+const latestTransfer = order.status === 'pending' ? await findLatestTransferForOrder(db, order._id) : null;
+const transferInReview = latestTransfer?.status === 'in-review';
+const transferRejected = latestTransfer?.status === 'rejected';
 ---
 
 <BaseLayout title={`${lang === 'es' ? 'Pedido' : 'Order'} #${order._id.toString()} — José Valdiviezo`} lang={lang}>
@@ -84,7 +94,7 @@ const paymentNotice = paymentParam === 'declined' ? t.order.declined : paymentPa
     {paymentNotice && <p class="panel mt-6 p-4 text-sm text-accent">{paymentNotice}</p>}
 
     {
-      order.status === 'pending' && (
+      order.status === 'pending' && !transferInReview && (
         <p class="mt-6 text-ink-muted">
           {lang === 'es'
             ? 'Estamos esperando la confirmación del pago. Esta página se actualizará automáticamente una vez confirmado.'
@@ -94,13 +104,42 @@ const paymentNotice = paymentParam === 'declined' ? t.order.declined : paymentPa
     }
 
     {
-      order.status === 'pending' && order.kind === 'purchase' && (
-        // The recovery path for an abandoned payment. `data-astro-reload` is required, not
-        // decorative: a soft navigation would not re-evaluate Payphone's CDN module, so the
-        // widget on the other side would have nothing to render with.
-        <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="btn btn-primary mt-6 inline-block px-6 py-3">
-          {t.order.completePayment}
-        </a>
+      transferInReview && (
+        // Replaces the generic waiting line rather than joining it: a buyer who has already
+        // uploaded a receipt is not waiting on a gateway, they are waiting on a person, and
+        // telling them the page will update "automatically" would be a promise about a
+        // review that happens on someone else's schedule.
+        <section class="panel mt-6 p-4">
+          <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.inReviewTitle}</h2>
+          <p class="mt-2 text-sm text-ink-muted">{t.transfer.inReview}</p>
+        </section>
+      )
+    }
+
+    {
+      transferRejected && (
+        <section class="panel mt-6 border-accent p-4">
+          <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.rejectedTitle}</h2>
+          {latestTransfer?.rejectionReason && (
+            <p class="mt-2 text-sm">{t.transfer.rejected.replace('{reason}', latestTransfer.rejectionReason)}</p>
+          )}
+        </section>
+      )
+    }
+
+    {
+      order.status === 'pending' && order.kind === 'purchase' && !transferInReview && (
+        <div class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+          {/* The recovery path for an abandoned payment. `data-astro-reload` is required,
+              not decorative: a soft navigation would not re-evaluate Payphone's CDN module,
+              so the widget on the other side would have nothing to render with. */}
+          <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="btn btn-primary inline-block px-6 py-3">
+            {t.order.completePayment}
+          </a>
+          <a href={`/${lang}/checkout/${order._id.toString()}/transfer`} class="text-sm underline">
+            {transferRejected ? t.transfer.tryAgain : t.transfer.payByTransfer}
+          </a>
+        </div>
       )
     }
 

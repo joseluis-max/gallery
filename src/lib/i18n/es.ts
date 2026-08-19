@@ -65,6 +65,60 @@ export interface Dictionary {
     emailContinue: string;
     errors: Record<'WIDGET_UNAVAILABLE' | 'INVALID_EMAIL' | 'UNKNOWN', string>;
   };
+  /** Direct bank transfer: the method chooser on the checkout page, the transfer page
+   *  itself, and the states the order page shows while a receipt is being reviewed. */
+  transfer: {
+    methodTitle: string;
+    methodCard: string;
+    methodCardHint: string;
+    methodTransfer: string;
+    methodTransferHint: string;
+    title: string;
+    /** Contains an `{amount}` placeholder — the exact figure to transfer. */
+    intro: string;
+    accountTitle: string;
+    bank: string;
+    accountType: string;
+    accountNumber: string;
+    holder: string;
+    idNumber: string;
+    amount: string;
+    /** Contains an `{order}` placeholder — the short order number to type into the bank's
+     *  description field, which is what lets the photographer match the money to a pedido. */
+    conceptHint: string;
+    copy: string;
+    copied: string;
+    uploadTitle: string;
+    uploadHint: string;
+    fileLabel: string;
+    referenceLabel: string;
+    referenceHint: string;
+    emailLabel: string;
+    emailHint: string;
+    submit: string;
+    submitting: string;
+    payByCard: string;
+    reviewNotice: string;
+    inReviewTitle: string;
+    inReview: string;
+    rejectedTitle: string;
+    /** Contains a `{reason}` placeholder — what the photographer wrote when refusing it. */
+    rejected: string;
+    tryAgain: string;
+    payByTransfer: string;
+    errors: Record<
+      | 'RECEIPT_REQUIRED'
+      | 'RECEIPT_TOO_LARGE'
+      | 'RECEIPT_TYPE_NOT_ALLOWED'
+      | 'TOO_MANY_RECEIPTS'
+      | 'INVALID_EMAIL'
+      | 'EMAIL_REQUIRED'
+      | 'ORDER_NOT_FOUND'
+      | 'ORDER_NOT_PENDING'
+      | 'UNKNOWN',
+      string
+    >;
+  };
   order: {
     /** Shown when the gateway reported the payment as cancelled or declined. */
     declined: string;
@@ -96,6 +150,24 @@ export interface Dictionary {
     total: string;
     viewOrder: string;
     footer: string;
+    /** Sent the moment a comprobante is uploaded. A bank transfer is not confirmed by a
+     *  gateway in ten seconds — it waits for a human — so this is what a guest who closes
+     *  the tab has to get back to their order with. */
+    transferReceived: {
+      /** Contains an `{order}` placeholder. */
+      subject: string;
+      intro: string;
+      body: string;
+    };
+    /** Sent when the photographer refuses a comprobante. Without it, a buyer whose receipt
+     *  was unreadable would wait forever for downloads that are never coming. */
+    transferRejected: {
+      /** Contains an `{order}` placeholder. */
+      subject: string;
+      intro: string;
+      reasonLabel: string;
+      retry: string;
+    };
   };
   account: {
     signInTitle: string;
@@ -232,6 +304,53 @@ export const es: Dictionary = {
       UNKNOWN: 'Algo salió mal. Inténtalo de nuevo.',
     },
   },
+  transfer: {
+    methodTitle: 'Cómo quieres pagar',
+    methodCard: 'Tarjeta de crédito o débito',
+    methodCardHint: 'Pago inmediato. Recibes tus descargas al instante.',
+    methodTransfer: 'Transferencia bancaria',
+    methodTransferHint: 'Transfieres desde tu banco y subes el comprobante. Activamos tus descargas al verificarlo.',
+    title: 'Pago por transferencia bancaria',
+    intro: 'Transfiere exactamente {amount} a la siguiente cuenta y luego sube el comprobante. Revisamos cada transferencia a mano, así que tus descargas se activan una vez que confirmemos el depósito.',
+    accountTitle: 'Datos de la cuenta',
+    bank: 'Banco',
+    accountType: 'Tipo de cuenta',
+    accountNumber: 'Número de cuenta',
+    holder: 'Titular',
+    idNumber: 'Cédula',
+    amount: 'Monto exacto',
+    conceptHint: 'Si tu banco te deja escribir un concepto o descripción, pon el número de pedido {order}. Nos ayuda a encontrar tu transferencia más rápido.',
+    copy: 'Copiar',
+    copied: 'Copiado',
+    uploadTitle: 'Sube tu comprobante',
+    uploadHint: 'Captura de pantalla o PDF del comprobante, hasta 10 MB. Formatos: JPG, PNG, WEBP, HEIC o PDF.',
+    fileLabel: 'Comprobante',
+    referenceLabel: 'Número de documento o referencia (opcional)',
+    referenceHint: 'El número que te dio tu banco al hacer la transferencia.',
+    emailLabel: 'Correo electrónico',
+    emailHint: 'Aquí te avisamos cuando verifiquemos el pago y te enviamos los enlaces de descarga.',
+    submit: 'Enviar comprobante',
+    submitting: 'Enviando…',
+    payByCard: 'Prefiero pagar con tarjeta',
+    reviewNotice: 'Las transferencias se revisan a mano, normalmente dentro de las siguientes 24 horas.',
+    inReviewTitle: 'Comprobante en revisión',
+    inReview: 'Recibimos tu comprobante y lo estamos verificando. Te escribiremos en cuanto confirmemos el pago y aquí mismo aparecerán tus descargas.',
+    rejectedTitle: 'No pudimos verificar tu transferencia',
+    rejected: 'Motivo: {reason}',
+    tryAgain: 'Subir otro comprobante',
+    payByTransfer: 'Pagar por transferencia bancaria',
+    errors: {
+      RECEIPT_REQUIRED: 'Adjunta el comprobante de tu transferencia.',
+      RECEIPT_TOO_LARGE: 'El archivo pesa más de 10 MB. Sube una captura o un PDF más liviano.',
+      RECEIPT_TYPE_NOT_ALLOWED: 'Formato no admitido. Sube una imagen (JPG, PNG, WEBP, HEIC) o un PDF.',
+      TOO_MANY_RECEIPTS: 'Ya subiste varios comprobantes para este pedido. Escríbenos y lo revisamos contigo.',
+      INVALID_EMAIL: 'Ingresa un correo electrónico válido.',
+      EMAIL_REQUIRED: 'Necesitamos tu correo para enviarte los enlaces de descarga.',
+      ORDER_NOT_FOUND: 'No encontramos este pedido.',
+      ORDER_NOT_PENDING: 'Este pedido ya no está pendiente de pago.',
+      UNKNOWN: 'Algo salió mal. Inténtalo de nuevo.',
+    },
+  },
   order: {
     declined: 'El pago fue cancelado o rechazado. No se te cobró nada; puedes intentarlo de nuevo.',
     unconfirmed: 'No pudimos confirmar el pago. Si se te realizó un cargo, se reversará automáticamente. Escríbenos si tienes dudas.',
@@ -251,6 +370,17 @@ export const es: Dictionary = {
     total: 'Total',
     viewOrder: 'Ver tu pedido',
     footer: 'José Valdiviezo — Fotografía',
+    transferReceived: {
+      subject: 'Recibimos tu comprobante — pedido #{order}',
+      intro: 'Gracias. Recibimos el comprobante de tu transferencia y lo estamos verificando.',
+      body: 'Normalmente confirmamos dentro de las siguientes 24 horas. Cuando lo hagamos te enviaremos otro correo con tus enlaces de descarga, y también aparecerán en la página de tu pedido.',
+    },
+    transferRejected: {
+      subject: 'No pudimos verificar tu transferencia — pedido #{order}',
+      intro: 'Revisamos el comprobante que subiste y no pudimos confirmar el pago de este pedido.',
+      reasonLabel: 'Motivo',
+      retry: 'Puedes subir otro comprobante desde la página de tu pedido. Si crees que es un error, responde a este correo.',
+    },
   },
   account: {
     signInTitle: 'Iniciar sesión',

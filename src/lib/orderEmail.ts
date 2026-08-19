@@ -120,3 +120,77 @@ ${
     html,
   };
 }
+
+export interface TransferEmailParams {
+  order: Pick<OrderDoc, '_id' | 'totalCents'>;
+  lang: Locale;
+  orderUrl: string;
+}
+
+/**
+ * The plain sibling of `buildOrderEmail`: a subject, some paragraphs and the link back to
+ * the order. Both transfer notices are this shape, and neither carries download links —
+ * that is precisely what distinguishes them from the receipt.
+ *
+ * Same table-free inline styling and same both-parts rule as above, for the same reasons.
+ */
+function buildNoticeEmail(params: {
+  lang: Locale;
+  subject: string;
+  paragraphs: string[];
+  orderUrl: string;
+}): Omit<EmailMessage, 'to'> {
+  const t = getDictionary(params.lang).email;
+
+  const text = [params.subject, '', ...params.paragraphs, '', `${t.viewOrder}: ${params.orderUrl}`, '', t.footer].join('\n');
+
+  const html = `<div style="font-family:Georgia,serif;color:#2b2724;max-width:560px;margin:0 auto;padding:24px;">
+<h1 style="font-size:20px;font-weight:normal;">${escapeHtml(params.subject)}</h1>
+${params.paragraphs
+  .map((paragraph) => `<p style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.5;">${escapeHtml(paragraph)}</p>`)
+  .join('\n')}
+<p style="font-family:system-ui,sans-serif;font-size:14px;margin-top:32px;">
+<a href="${escapeHtml(params.orderUrl)}" style="color:#b4401f;">${escapeHtml(t.viewOrder)}</a></p>
+<p style="font-family:system-ui,sans-serif;font-size:12px;color:#6f6862;">${escapeHtml(t.footer)}</p>
+</div>`;
+
+  return { subject: params.subject, text, html };
+}
+
+/**
+ * Sent the moment a comprobante is uploaded.
+ *
+ * A card payment resolves in seconds and the buyer never leaves the tab; a transfer waits
+ * on a person, possibly overnight. For a *guest* — who has no account and whose only
+ * durable route back is the order URL — this email is the difference between "waiting" and
+ * "lost", which is why it exists even though it delivers nothing.
+ */
+export function buildTransferReceivedEmail(params: TransferEmailParams): Omit<EmailMessage, 'to'> {
+  const t = getDictionary(params.lang).email;
+  const orderNumber = params.order._id.toString().slice(-8);
+
+  return buildNoticeEmail({
+    lang: params.lang,
+    subject: fill(t.transferReceived.subject, { order: orderNumber }),
+    paragraphs: [t.transferReceived.intro, `${t.total}: ${money(params.order.totalCents)}`, t.transferReceived.body],
+    orderUrl: params.orderUrl,
+  });
+}
+
+/** Sent when the photographer refuses a receipt. The reason is the whole payload: without
+ *  it the buyer is left guessing at what to re-upload. */
+export function buildTransferRejectedEmail(params: TransferEmailParams & { reason?: string }): Omit<EmailMessage, 'to'> {
+  const t = getDictionary(params.lang).email;
+  const orderNumber = params.order._id.toString().slice(-8);
+
+  return buildNoticeEmail({
+    lang: params.lang,
+    subject: fill(t.transferRejected.subject, { order: orderNumber }),
+    paragraphs: [
+      t.transferRejected.intro,
+      ...(params.reason ? [`${t.transferRejected.reasonLabel}: ${params.reason}`] : []),
+      t.transferRejected.retry,
+    ],
+    orderUrl: params.orderUrl,
+  });
+}

@@ -19,13 +19,17 @@ export const GET: APIRoute = async ({ url }) => {
   const query: Filter<OrderDoc> = status ? { status: status as OrderStatus } : {};
   const orders = await db.collection<OrderDoc>('orders').find(query).sort({ createdAt: -1 }).toArray();
 
-  const header = ['Order ID', 'Date', 'Customer Email', 'Status', 'Items', 'Subtotal', 'Total'];
+  const header = ['Order ID', 'Date', 'Customer Email', 'Status', 'Method', 'Items', 'Subtotal', 'Total'];
   const rows = orders.map((order) =>
     [
       order._id.toString(),
       new Date(order.createdAt).toISOString(),
       order.customer.email,
       order.status,
+      // Blank rather than a guessed value for an unpaid order — the method is only known
+      // once something has actually been paid. A paid order with no `method` predates bank
+      // transfers, and every one of those was Payphone.
+      order.payment ? (order.payment.method ?? 'payphone') : '',
       String(order.items.length),
       (order.subtotalCents / 100).toFixed(2),
       (order.totalCents / 100).toFixed(2),

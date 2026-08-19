@@ -1,0 +1,275 @@
+---
+// Paying by direct bank transfer: the account to send money to, and the form that hands
+// back a comprobante.
+//
+// A sibling of `[lang]/checkout/[orderId].astro` rather than a tab inside it, on purpose.
+// That page has three obligations it documents at the top — the Payphone token in the
+// HTML, a permissive Referrer-Policy, and a payment attempt written before the widget can
+// render — and every one of them exists for a gateway this page never speaks to. Keeping
+// them apart means a buyer paying by transfer never creates a Payphone attempt that will
+// sit unconfirmed forever, and the card page keeps its invariants unweakened.
+//
+// The other half of the difference: nothing here can complete a payment. This page's whole
+// output is evidence for a person to read, which is why it ends at "we'll write to you"
+// rather than at a receipt.
+import { ObjectId } from 'mongodb';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { BANK_ACCOUNT, findLatestTransferForOrder } from '../../../../lib/bankTransfer';
+import { getDbConfig } from '../../../../lib/config';
+import { getDb } from '../../../../lib/db';
+import { getDictionary, type Locale } from '../../../../lib/i18n';
+import { canViewOrder, getOrderById } from '../../../../lib/orders';
+
+export const prerender = false;
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+const idParam = Astro.params.orderId as string;
+
+let orderId: InstanceType<typeof ObjectId>;
+try {
+  orderId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+const db = await getDb(getDbConfig());
+const order = await getOrderById(db, orderId);
+
+if (!order) {
+  return new Response('Not found', { status: 404 });
+}
+
+// 404 rather than 403, matching the card checkout page and the order page: a 403 would
+// confirm this order id exists.
+const viewer = await Astro.session?.get('user');
+if (!canViewOrder(order, viewer)) {
+  return new Response('Not found', { status: 404 });
+}
+
+// One page shows order state; this one only collects a payment. Paid, cancelled and
+// refunded all resolve the same way.
+if (order.status !== 'pending') {
+  return Astro.redirect(`/${lang}/order/${orderId.toString()}`, 302);
+}
+
+// The bank details and the amount are worth nothing to a cache once the order is paid, and
+// the page is per-order anyway.
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+const latest = await findLatestTransferForOrder(db, order._id);
+const inReview = latest?.status === 'in-review';
+const rejected = latest?.status === 'rejected';
+
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const total = money(order.totalCents);
+const orderNumber = order._id.toString().slice(-8);
+const knownEmail = order.customer.email || '';
+
+/** Every row of the account panel. Built as data so the copy button, the label and the
+ *  value can't drift apart, and so `copyable` is a property of the row rather than a
+ *  judgement call repeated per row in the markup. */
+const accountRows = [
+  { label: t.transfer.bank, value: BANK_ACCOUNT.bank, copyable: false },
+  { label: t.transfer.accountType, value: BANK_ACCOUNT.accountType[lang], copyable: false },
+  { label: t.transfer.accountNumber, value: BANK_ACCOUNT.accountNumber, copyable: true },
+  { label: t.transfer.holder, value: BANK_ACCOUNT.holder, copyable: false },
+  { label: t.transfer.idNumber, value: BANK_ACCOUNT.idNumber, copyable: true },
+  { label: t.transfer.amount, value: total, copyable: true },
+];
+---
+
+<BaseLayout title={`${t.transfer.title} — José Valdiviezo`} lang={lang}>
+  <div
+    class="mx-auto max-w-5xl px-6 py-16"
+    data-transfer-page
+    data-order-id={order._id.toString()}
+    data-lang={lang}
+    data-copy={JSON.stringify({
+      copy: t.transfer.copy,
+      copied: t.transfer.copied,
+      submit: t.transfer.submit,
+      submitting: t.transfer.submitting,
+      ...t.transfer.errors,
+    })}
+  >
+    <h1 class="font-display text-2xl">{t.transfer.title}</h1>
+    <p class="mt-3 max-w-2xl text-ink-muted">{t.transfer.intro.replace('{amount}', total)}</p>
+
+    <div class="mt-8 grid gap-10 md:grid-cols-[1.35fr_1fr]">
+      {/* Same two-rail shape as the card checkout — what you're paying for on the right,
+          what you do about it on the left — so switching methods doesn't relayout the page
+          under the buyer. */}
+      <section class="md:sticky md:top-8 md:col-start-2 md:row-start-1 md:self-start">
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
+        <ul class="mt-3 divide-y divide-border border-y border-border">
+          {
+            order.items.map((item) => (
+              <li class="flex items-center justify-between gap-4 py-4">
+                <div>
+                  <p>{item.photoTitle}</p>
+                  <p class="text-sm text-ink-muted">{t.cart.digitalFile}</p>
+                </div>
+                <p class="shrink-0">{money(item.totalCents)}</p>
+              </li>
+            ))
+          }
+        </ul>
+        <div class="mt-4 flex justify-between font-display text-lg">
+          <span>{t.checkout.total}</span>
+          <span>{total}</span>
+        </div>
+
+        {/* A reload, because the card page renders a widget from a remote module that a
+            soft navigation would not re-evaluate — the same reason the order page marks
+            its "complete payment" link. */}
+        <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="mt-6 inline-block text-sm underline">
+          {t.transfer.payByCard}
+        </a>
+      </section>
+
+      <section class="md:col-start-1 md:row-start-1">
+        {
+          inReview && (
+            <div class="panel mb-8 p-4">
+              <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.inReviewTitle}</h2>
+              <p class="mt-2 text-sm text-ink-muted">{t.transfer.inReview}</p>
+            </div>
+          )
+        }
+
+        {
+          rejected && (
+            <div class="panel mb-8 border-accent p-4">
+              <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.rejectedTitle}</h2>
+              {latest?.rejectionReason && (
+                <p class="mt-2 text-sm">{t.transfer.rejected.replace('{reason}', latest.rejectionReason)}</p>
+              )}
+            </div>
+          )
+        }
+
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.transfer.accountTitle}</h2>
+        <dl class="mt-3 divide-y divide-border border-y border-border">
+          {
+            accountRows.map((row) => (
+              <div class="flex items-center justify-between gap-4 py-3">
+                <dt class="text-sm text-ink-muted">{row.label}</dt>
+                <dd class="flex items-center gap-3">
+                  <span class="font-mono">{row.value}</span>
+                  {row.copyable && (
+                    <button type="button" data-copy-value={row.value} class="chip shrink-0 text-xs hover:border-ink">
+                      {t.transfer.copy}
+                    </button>
+                  )}
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
+        <p class="mt-3 text-sm text-ink-muted">{t.transfer.conceptHint.replace('{order}', `#${orderNumber}`)}</p>
+
+        <h2 class="mt-10 text-sm uppercase tracking-widest text-ink-muted">{t.transfer.uploadTitle}</h2>
+        <form data-transfer-form class="panel mt-3 space-y-4 p-4">
+          <div>
+            <label class="block text-sm" for="transfer-email">{t.transfer.emailLabel}</label>
+            <input
+              id="transfer-email"
+              name="email"
+              type="email"
+              required
+              autocomplete="email"
+              value={knownEmail}
+              class="field mt-2 w-full"
+            />
+            <p class="mt-2 text-sm text-ink-muted">{t.transfer.emailHint}</p>
+          </div>
+
+          <div>
+            <label class="block text-sm" for="transfer-receipt">{t.transfer.fileLabel}</label>
+            {/* The accept list mirrors RECEIPT_TYPES in lib/bankTransfer.ts. It is a
+                convenience for the file picker only — the server re-checks the type, since
+                this attribute is trivially bypassed. */}
+            <input
+              id="transfer-receipt"
+              name="receipt"
+              type="file"
+              required
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+              class="field mt-2 w-full"
+            />
+            <p class="mt-2 text-sm text-ink-muted">{t.transfer.uploadHint}</p>
+          </div>
+
+          <div>
+            <label class="block text-sm" for="transfer-reference">{t.transfer.referenceLabel}</label>
+            <input id="transfer-reference" name="reference" type="text" maxlength="120" class="field mt-2 w-full" />
+            <p class="mt-2 text-sm text-ink-muted">{t.transfer.referenceHint}</p>
+          </div>
+
+          <p data-transfer-error hidden class="text-sm text-accent"></p>
+
+          <button type="submit" data-transfer-submit class="btn btn-primary w-full py-3">{t.transfer.submit}</button>
+          <p class="text-xs text-ink-muted">{t.transfer.reviewNotice}</p>
+        </form>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-transfer-page]');
+    if (!root || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const copy = JSON.parse(root.dataset.copy!) as Record<string, string>;
+    const form = root.querySelector<HTMLFormElement>('[data-transfer-form]')!;
+    const submit = root.querySelector<HTMLButtonElement>('[data-transfer-submit]')!;
+    const errorEl = root.querySelector<HTMLElement>('[data-transfer-error]')!;
+
+    // Copy buttons for the two values a buyer retypes into a banking app, where one wrong
+    // digit sends the money to a stranger. `writeText` needs a secure context; if it isn't
+    // available the number is still right there to read, so the failure is silent.
+    for (const button of root.querySelectorAll<HTMLButtonElement>('[data-copy-value]')) {
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copyValue!);
+          button.textContent = copy.copied;
+          setTimeout(() => (button.textContent = copy.copy), 1500);
+        } catch {
+          /* Clipboard unavailable — nothing to recover, the value is on screen. */
+        }
+      });
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      submit.disabled = true;
+      submit.textContent = copy.submitting;
+
+      // FormData straight from the form: the action is `accept: 'form'` because it carries
+      // a file, so this is the payload Astro parses the input schema out of.
+      const payload = new FormData(form);
+      payload.set('orderId', root.dataset.orderId!);
+      payload.set('lang', root.dataset.lang!);
+
+      const { data, error } = await actions.transfer.submitReceipt(payload);
+
+      if (error || !data) {
+        submit.disabled = false;
+        submit.textContent = copy.submit;
+        errorEl.textContent = copy[error?.message ?? 'UNKNOWN'] ?? copy.UNKNOWN;
+        errorEl.hidden = false;
+        return;
+      }
+
+      // A full navigation rather than a router swap: the order page has to be re-rendered
+      // server-side to pick up the submission that just happened.
+      window.location.href = data.orderUrl;
+    });
+  });
+</script>

@@ -16,11 +16,16 @@ substitutions:
   # runtime. The hashed valdiviezo-gallery-fvve3xyyxq-ue.a.run.app URL still resolves
   # too, but the custom domain is what canonical links/sitemap/OG tags should name.
   _SITE_URL: https://josevaldiviezo.com
-  # Mailgun's verified sending domain, exactly as the Mailgun dashboard lists it (e.g.
-  # mg.josevaldiviezo.com). SET THIS before the next deploy: order confirmations — and
-  # therefore every download link — are sent through it, and an unset value makes each
-  # send throw. The API key is NOT here; it lives in Secret Manager as mailgun-api-key.
-  _MAILGUN_DOMAIN: ''
+  # Mailgun's sending domain, exactly as the Mailgun dashboard lists it. Order
+  # confirmations — and therefore every download link — are sent through it. The API key is
+  # NOT here; it lives in Secret Manager as mailgun-api-key.
+  #
+  # NOTE: as of this writing replies.yupanasoftware.com does not resolve in public DNS —
+  # neither it nor its parent yupanasoftware.com has any record, so it cannot yet be a
+  # verified Mailgun domain and sends against it will be rejected. Deploying with it is
+  # safe (a failed send is caught and logged, and the order page serves the files
+  # regardless), but email stays dark until the domain is registered and verified.
+  _MAILGUN_DOMAIN: replies.yupanasoftware.com
   # Optional From override. Must be an address on _MAILGUN_DOMAIN or Mailgun refuses the
   # message; empty means no-reply@<domain>.
   _MAILGUN_FROM: ''

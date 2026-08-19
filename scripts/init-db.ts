@@ -56,6 +56,7 @@ async function main() {
   // drops, so removing a collection that may hold data is a different class of action.
   // Drop it by hand once the Payphone switch is verified in production.
   await ensureCollection(db, 'payphoneTransactions');
+  await ensureCollection(db, 'bankTransfers');
   await ensureCollection(db, 'settings');
   await ensureCollection(db, 'auditLog');
   await ensureCollection(db, 'uploadJobs');
@@ -127,6 +128,16 @@ async function main() {
   // attempt with no recorded confirm is exactly what that view needs to see, and these
   // documents are payment evidence.
   await db.collection('payphoneTransactions').createIndex({ createdAt: -1 });
+
+  // Bank transfers. `{status, submittedAt}` serves the admin queue, which is almost always
+  // "in-review, newest first"; `{orderId, submittedAt}` serves the buyer's order page and
+  // the per-order history on the admin order page.
+  //
+  // No TTL here either, and for the same reason as payphoneTransactions: these documents
+  // are the evidence behind a payment somebody approved by hand, and the receipt they
+  // point at outlives any question anyone is likely to ask about it.
+  await ensureIndex(db, 'bankTransfers', { status: 1, submittedAt: -1 });
+  await ensureIndex(db, 'bankTransfers', { orderId: 1, submittedAt: -1 });
 
   await db.collection('auditLog').createIndex({ at: -1 });
   await db.collection('auditLog').createIndex({ targetType: 1, targetId: 1 });

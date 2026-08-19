@@ -1,0 +1,107 @@
+---
+// The bank-transfer queue: every comprobante a buyer has uploaded, newest first.
+//
+// This page lists and links; it does not decide. Approving is done from the order page,
+// where the reviewer can see the receipt beside the items, the total and the customer —
+// which is the context the decision actually needs. Two places to click Approve would mean
+// two copies of the wiring, and one of them would eventually drift.
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { listTransfers, type BankTransferStatus } from '../../../lib/bankTransfer';
+import { getDbConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+
+const db = await getDb(getDbConfig());
+
+const STATUSES: BankTransferStatus[] = ['in-review', 'approved', 'rejected', 'superseded'];
+
+// Defaults to the only status that means "someone is waiting on you". `?status=` (empty)
+// is how you deliberately ask for everything, so the default can be the useful view rather
+// than the complete one.
+const raw = Astro.url.searchParams.get('status');
+const status = raw === null ? 'in-review' : (raw as BankTransferStatus) || undefined;
+const filter = status && STATUSES.includes(status) ? status : undefined;
+
+const transfers = await listTransfers(db, filter);
+
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+---
+
+<AdminLayout title="Transfers">
+  <h1 class="font-display text-2xl">Bank transfers</h1>
+  <p class="mt-2 max-w-2xl text-sm text-ink-muted">
+    Buyers who paid by transfer to Banco Pichincha and uploaded a receipt. Nothing is delivered until you approve one —
+    open the order, check the receipt against the amount, then approve or reject it there.
+  </p>
+
+  <form class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+    <select name="status" class="field">
+      <option value="" selected={filter === undefined}>All statuses</option>
+      {
+        STATUSES.map((value) => (
+          <option value={value} selected={filter === value}>
+            {value}
+          </option>
+        ))
+      }
+    </select>
+    <button type="submit" class="btn btn-ghost py-1.5">Filter</button>
+  </form>
+
+  <table class="mt-6 w-full text-sm">
+    <thead>
+      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+        <th class="py-2">Submitted</th>
+        <th class="py-2">Order</th>
+        <th class="py-2">Customer</th>
+        <th class="py-2">Amount</th>
+        <th class="py-2">Reference</th>
+        <th class="py-2">Receipt</th>
+        <th class="py-2">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        transfers.map((transfer) => (
+          <tr class="border-b border-border">
+            <td class="py-2 text-ink-muted">{new Date(transfer.submittedAt).toLocaleString()}</td>
+            <td class="py-2">
+              <a href={`/admin/orders/${transfer.orderId.toString()}`} class="underline hover:text-accent">
+                #{transfer.orderId.toString().slice(-8)}
+              </a>
+              <span class="ml-2 text-xs text-ink-muted">{transfer.orderStatus ?? '—'}</span>
+            </td>
+            <td class="py-2">{transfer.customerEmail || '—'}</td>
+            <td class="py-2">{money(transfer.amountCents)}</td>
+            <td class="py-2 font-mono text-xs">{transfer.reference ?? '—'}</td>
+            <td class="py-2">
+              {/* A new tab, and data-astro-reload so the router does not try to swap a JPEG
+                  in as a page. The endpoint answers with the bytes themselves. */}
+              <a
+                href={`/api/admin/transfer-receipt/${transfer._id.toString()}`}
+                target="_blank"
+                rel="noopener"
+                data-astro-reload
+                class="underline hover:text-accent"
+              >
+                View
+              </a>
+            </td>
+            <td class="py-2">
+              <span class={transfer.status === 'in-review' ? 'text-accent' : 'text-ink-muted'}>{transfer.status}</span>
+              {transfer.reviewedBy && <span class="block text-xs text-ink-muted">{transfer.reviewedBy}</span>}
+            </td>
+          </tr>
+        ))
+      }
+      {
+        transfers.length === 0 && (
+          <tr>
+            <td colspan="7" class="py-4 text-ink-muted">
+              No transfers match this filter.
+            </td>
+          </tr>
+        )
+      }
+    </tbody>
+  </table>
+</AdminLayout>

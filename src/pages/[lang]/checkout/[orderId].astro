@@ -144,7 +144,27 @@ const widgetConfig = {
       </section>
 
       <section class="md:col-start-1 md:row-start-1">
-        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.checkout.paymentSection}</h2>
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.transfer.methodTitle}</h2>
+
+        {/*
+          Two methods, and the choice is expressed as a link rather than a tab or a radio
+          group. Bank transfer lives on its own route — see the header of
+          checkout/[orderId]/transfer.astro — so a buyer choosing it must actually leave
+          this page, and pretending otherwise would only hide that the card panel below is
+          already live and already holds a Payphone attempt.
+        */}
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <div aria-current="true" class="panel border-ink p-4">
+            <p class="text-sm">{t.transfer.methodCard}</p>
+            <p class="mt-1 text-xs text-ink-muted">{t.transfer.methodCardHint}</p>
+          </div>
+          <a href={`/${lang}/checkout/${order._id.toString()}/transfer`} class="panel p-4 hover:border-ink">
+            <p class="text-sm">{t.transfer.methodTransfer}</p>
+            <p class="mt-1 text-xs text-ink-muted">{t.transfer.methodTransferHint}</p>
+          </a>
+        </div>
+
+        <h2 class="mt-10 text-sm uppercase tracking-widest text-ink-muted">{t.checkout.paymentSection}</h2>
 
         <div data-email-gate hidden={knownEmail !== ''} class="panel mt-3 p-4">
           <label class="block text-sm" for="checkout-email">{t.checkout.emailLabel}</label>

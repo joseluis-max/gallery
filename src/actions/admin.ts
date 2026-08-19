@@ -4,10 +4,14 @@ import { z } from 'astro/zod';
 import { ActionError } from 'astro:actions';
 import { defineAdminAction, requireAdmin } from './adminGuard';
 import { writeAuditLog } from '../lib/audit';
+import { closeTransferReview, findTransferById } from '../lib/bankTransfer';
 import type { CompetitionDoc } from '../lib/competitions';
-import { createStorage, getDbConfig } from '../lib/config';
+import { createEmailer, createStorage, getDbConfig, getDownloadConfig, getPublicSiteUrl } from '../lib/config';
 import { getDb } from '../lib/db';
+import { fulfilOrder } from '../lib/fulfilment';
 import { processOriginal } from '../lib/images';
+import { buildTransferRejectedEmail } from '../lib/orderEmail';
+import { getOrderById } from '../lib/orders';
 import type { PhotoDoc } from '../lib/photos';
 import { serializeForAction } from '../lib/serialize';
 import { uniqueSlug } from '../lib/slug';
@@ -749,6 +753,152 @@ export const admin = {
       });
 
       return { ok: true };
+    },
+  }),
+
+  /**
+   * Accepts a bank transfer: the order becomes paid, tokens are minted, the receipt email
+   * goes out. This is the *entire* authorization for that money — there is no gateway to
+   * ask — which is why it runs through `fulfilOrder`, the same code the Payphone return
+   * leg uses, rather than anything bespoke.
+   *
+   * Ordering is deliberate and is explained in full on `closeTransferReview`: fulfil
+   * first, close the review second. `markOrderPaid` is the atomic gate, so a double-click
+   * cannot mint two sets of tokens; a crash between the two steps leaves a paid order with
+   * a row still in the queue, which an admin resolves by clicking Approve again — this
+   * handler is written to make that second click a no-op rather than a second fulfilment.
+   */
+  approveTransfer: defineAdminAction({
+    accept: 'json',
+    input: z.object({ transferId: z.string().min(1) }),
+    handler: async (input, context) => {
+      const actor = await actorEmail(context);
+      const db = await getDb(getDbConfig());
+
+      let transferId: ObjectId;
+      try {
+        transferId = new ObjectId(input.transferId);
+      } catch {
+        throw new ActionError({ code: 'BAD_REQUEST', message: 'TRANSFER_NOT_FOUND' });
+      }
+
+      const transfer = await findTransferById(db, transferId);
+      if (!transfer) throw new ActionError({ code: 'NOT_FOUND', message: 'TRANSFER_NOT_FOUND' });
+      if (transfer.status !== 'in-review') {
+        throw new ActionError({ code: 'CONFLICT', message: 'ALREADY_REVIEWED' });
+      }
+
+      const order = await getOrderById(db, transfer.orderId);
+      if (!order) throw new ActionError({ code: 'NOT_FOUND', message: 'ORDER_NOT_FOUND' });
+      // `paid` is allowed through: the buyer may have paid by card in the meantime, or a
+      // previous approval may have died after fulfilling, and in both cases the right
+      // outcome is to close the review. A cancelled or refunded order is different —
+      // approving it would mark the transfer accepted while delivering nothing at all.
+      if (order.status !== 'pending' && order.status !== 'paid') {
+        throw new ActionError({ code: 'CONFLICT', message: 'ORDER_NOT_PAYABLE' });
+      }
+
+      const downloadConfig = getDownloadConfig();
+      const result = await fulfilOrder(db, {
+        order,
+        actor: `admin:${actor}`,
+        lang: transfer.lang,
+        payment: {
+          method: 'transfer',
+          // Our own review id, not the bank's — nothing in this flow ever sees a bank
+          // reference we could verify, so the honest identifier is the record that made
+          // the decision. What the buyer typed rides alongside it as `reference`.
+          transactionId: transfer._id.toString(),
+          ...(transfer.reference ? { reference: transfer.reference } : {}),
+        },
+        siteUrl: getPublicSiteUrl(),
+        ttlDays: downloadConfig.ttlDays,
+        maxUses: downloadConfig.maxUses,
+        emailer: createEmailer(),
+      });
+
+      // A null `closed` means someone else closed this row between the check above and
+      // here. Not an error: the state the admin wanted — order paid, row out of the queue
+      // — is exactly what they are looking at.
+      await closeTransferReview(db, transfer._id, { status: 'approved', reviewedBy: actor });
+
+      await writeAuditLog(db, {
+        actor,
+        action: 'transfer.approve',
+        targetType: 'bankTransfer',
+        targetId: transfer._id.toString(),
+        after: { orderId: transfer.orderId.toString(), amountCents: transfer.amountCents },
+      });
+
+      // `alreadyPaid` distinguishes "this click paid the order" from "the order was
+      // already paid and this click only tidied the queue", so the panel can say so
+      // instead of implying a second receipt went out.
+      return { ok: true, alreadyPaid: !result.paid, emailed: result.emailed };
+    },
+  }),
+
+  /**
+   * Refuses a bank transfer, with a reason.
+   *
+   * The reason is required rather than optional because it is the entire content of the
+   * email the buyer receives — "we could not verify your transfer" with nothing after it
+   * leaves someone who paid correctly with no idea what to do next. The order stays
+   * `pending`, so they can upload a better receipt or pay by card instead.
+   */
+  rejectTransfer: defineAdminAction({
+    accept: 'json',
+    input: z.object({ transferId: z.string().min(1), reason: z.string().trim().min(3).max(500) }),
+    handler: async (input, context) => {
+      const actor = await actorEmail(context);
+      const db = await getDb(getDbConfig());
+
+      let transferId: ObjectId;
+      try {
+        transferId = new ObjectId(input.transferId);
+      } catch {
+        throw new ActionError({ code: 'BAD_REQUEST', message: 'TRANSFER_NOT_FOUND' });
+      }
+
+      // The claim IS the check here — unlike approval there is no second atomic gate
+      // downstream, so a null means another admin already decided and this click must not
+      // send a contradicting email.
+      const closed = await closeTransferReview(db, transferId, {
+        status: 'rejected',
+        reviewedBy: actor,
+        rejectionReason: input.reason,
+      });
+      if (!closed) throw new ActionError({ code: 'CONFLICT', message: 'ALREADY_REVIEWED' });
+
+      await writeAuditLog(db, {
+        actor,
+        action: 'transfer.reject',
+        targetType: 'bankTransfer',
+        targetId: closed._id.toString(),
+        after: { orderId: closed.orderId.toString(), reason: input.reason },
+      });
+
+      const order = await getOrderById(db, closed.orderId);
+      const email = order?.customer.email;
+      if (!order || !email) {
+        return { ok: true, emailed: false };
+      }
+
+      // Best effort, like every other send in this codebase: the decision is recorded and
+      // visible on the buyer's own order page whether or not the mail leaves.
+      try {
+        const siteUrl = getPublicSiteUrl();
+        const message = buildTransferRejectedEmail({
+          order,
+          lang: closed.lang,
+          orderUrl: `${siteUrl}/${closed.lang}/order/${order._id.toString()}`,
+          reason: input.reason,
+        });
+        await createEmailer().send({ to: email, ...message });
+        return { ok: true, emailed: true };
+      } catch (err) {
+        console.error('admin.rejectTransfer: rejection recorded but the email did not send', closed._id.toString(), err);
+        return { ok: true, emailed: false };
+      }
     },
   }),
 };

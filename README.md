@@ -92,6 +92,85 @@ pipeline uses, so the two can't drift; density and opacity live in
 `src/lib/watermarkOverlay.ts` (`DEFAULT_OVERLAY_OPACITY`, currently `0.28`) and in the
 component's `TILE_PX`.
 
+## The second payment method: direct bank transfer
+
+Not every buyer in Ecuador wants to hand a card to a widget, and Payphone's per-transaction
+cost is real on a $2 photograph. So the checkout page offers a second route: transfer the
+money in your own banking app, upload the comprobante, and the photographer releases the
+downloads once he has seen the money arrive.
+
+**The account buyers are shown** lives in `BANK_ACCOUNT` in `src/lib/bankTransfer.ts` —
+Banco Pichincha, cuenta de ahorro transaccional `2208996600`, José Luis Valdiviezo Peña,
+cédula `0150454320`. It is a constant, not an environment variable and not an admin
+setting: it is rendered on a public page, it changes roughly never, and a typo in it sends
+money to a stranger with nothing downstream noticing. Changing it should be a diff someone
+reviews.
+
+The flow, and what is authoritative at each step:
+
+| Step | Where | What it proves |
+|---|---|---|
+| Buyer picks "transferencia bancaria" | `/[lang]/checkout/[orderId]` → `/transfer` | Nothing. It's a link |
+| Buyer transfers in their bank app | Outside this system entirely | — |
+| Buyer uploads a receipt | `actions.transfer.submitReceipt` | Nothing. A screenshot is not evidence |
+| **Admin approves** | `/admin/orders/[id]` | **This is the entire authorization** |
+| Order is paid, tokens minted, links emailed | `fulfilOrder` | Same code the card path runs |
+
+Five things about that are deliberate:
+
+1. **The transfer page is its own route, not a tab.** `checkout/[orderId].astro` documents
+   three obligations it carries for Payphone — the token in the HTML, a permissive
+   `Referrer-Policy`, and a payment attempt written before the widget may render. A buyer
+   paying by transfer should trip none of them, and in particular should not leave an
+   unconfirmed Payphone attempt behind for every visit.
+2. **Receipts go through the app, not a presigned PUT.** The admin upload path hands the
+   browser a presigned URL because a 25MB original has no business transiting the app
+   server; a receipt is a few hundred KB, and presigning would mean minting a bucket-write
+   credential for an unauthenticated visitor. The 10MB cap and the content-type allowlist
+   (`RECEIPT_TYPES`) are what make carrying the bytes safe.
+3. **Receipts are private.** They land under `originals/` — a bank screenshot has an
+   account number and a balance on it — and are readable only through
+   `/api/admin/transfer-receipt/[id]`, which re-reads the admin from the database rather
+   than trusting the session's `role`. That route is under `/api/`, so the middleware's
+   blanket `/admin/*` page guard does **not** cover it; its own check is the only guard.
+4. **Fulfilment is shared, not reimplemented.** `src/lib/fulfilment.ts` holds
+   markOrderPaid → mint tokens → email, and both the Payphone return leg and the admin
+   approval call it. An approved transfer delivers exactly what a card payment delivers,
+   by construction rather than by two code paths agreeing.
+5. **Approve is idempotent; reject is atomic.** Approval fulfils first and closes the
+   review second, because `markOrderPaid` is the atomic gate — a double-click or a crash
+   between the two steps cannot mint a second set of tokens, and a re-click simply tidies
+   the queue. Rejection has no such downstream gate, so the atomic `closeTransferReview`
+   claim *is* its guard: the loser of a race gets `ALREADY_REVIEWED` rather than sending a
+   contradicting email.
+
+The buyer is emailed twice on this path — once when the receipt lands ("we have it, we're
+checking"), once when it is approved (the ordinary receipt with download links) or rejected
+(with the reason the admin typed, which is required for exactly that purpose). A guest's
+order URL is their only durable way back, which is why the first email exists at all even
+though it delivers nothing.
+
+**Where to watch it:** `/admin/transfers` is the queue, defaulting to `in-review`;
+`/admin/orders` shows a banner when anything is waiting; the decision itself is on the
+order page, where the receipt sits beside the total and the customer. Every approval and
+rejection writes an `auditLog` entry naming the admin.
+
+**What this method does not have:** any automated verification. Nothing in the codebase
+reads a bank statement. If the photographer approves a receipt for a payment that never
+arrived, the files go out — the control is a human comparing an amount against Banco
+Pichincha, and the panel's job is only to put both numbers in front of him.
+
+**Verified when this shipped:** `pnpm test` (279 unit tests, including 22 new ones over
+`lib/bankTransfer.ts` and `lib/fulfilment.ts` — the receipt allowlist, the size cap, the
+"buyer's filename never reaches the storage key" property, the supersede-then-insert order,
+the `in-review` review claim, and that an already-paid order mints no second set of tokens
+and sends no second receipt), `pnpm check` (0 errors) and `pnpm build`. Routing and the
+guards were probed against a running dev server: a malformed order id 404s on both checkout
+routes, `/admin/transfers` renders the login page rather than any queue content when signed
+out, and `/api/admin/transfer-receipt/[id]` answers 401. **Not** exercised end to end
+against real data — no test order was pushed through upload → approve → download, because
+the only database configured here holds live orders.
+
 ## Getting started
 
 ```bash
@@ -670,7 +749,22 @@ gcloud builds submit --config cloudbuild.yaml --region=us-east1
 ```
 
 That one command builds the image, pushes it to Artifact Registry, and rolls out a new
-Cloud Run revision. Three things about this setup are non-obvious enough to be worth
+Cloud Run revision. The Mailgun sending domain lives in `cloudbuild.yaml` as
+`_MAILGUN_DOMAIN`; override it for a one-off deploy with
+`--substitutions=_MAILGUN_DOMAIN=<domain>`.
+
+**One-time, before the first deploy that includes email** — the rollout fails without it:
+
+```bash
+# 1. Store the Mailgun private API key.
+printf '%s' "<mailgun private api key>"   | gcloud secrets create mailgun-api-key --data-file=- --replication-policy=automatic
+
+# 2. Let the service account read it, as it already reads the other four.
+gcloud secrets add-iam-policy-binding mailgun-api-key   --member=serviceAccount:valdiviezo-storage@boxwood-theory-473017-t1.iam.gserviceaccount.com   --role=roles/secretmanager.secretAccessor
+```
+
+Rotating the key later is `gcloud secrets versions add mailgun-api-key --data-file=-`
+followed by a new revision — `:latest` is resolved at container start, not at build. Three things about this setup are non-obvious enough to be worth
 stating:
 
 - **Sessions must not live on the filesystem.** `@astrojs/node` defaults to a local-disk
@@ -688,9 +782,13 @@ stating:
   `SERVICE-HASH-ue.a.run.app` form rather than the deterministic
   `SERVICE-PROJECTNUMBER.REGION.run.app` one.
 - **Secrets come from Secret Manager**, mounted as environment variables by the revision
-  (`mongodb-uri`, `gcs-access-key-id`, `gcs-secret-access-key`, `payphone-token`).
-  Nothing secret is in the image, in `cloudbuild.yaml`, or in
+  (`mongodb-uri`, `gcs-access-key-id`, `gcs-secret-access-key`, `payphone-token`,
+  `mailgun-api-key`). Nothing secret is in the image, in `cloudbuild.yaml`, or in
   the revision's plain config. `.dockerignore` excludes `.env` from the build context.
+
+  `--set-secrets` is all-or-nothing: `gcloud run deploy` **fails the whole rollout** if any
+  named secret is missing, so `mailgun-api-key` has to exist before the next deploy — see
+  the one-time setup below.
 
 `--memory=1Gi` is deliberate: sharp decoding a 24MP original does not fit comfortably in
 Cloud Run's 512MiB default.
