@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 900px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 10px 18px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 11px; font-size: 11px; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); cursor: pointer; background: transparent;
+      font-family: inherit; white-space: nowrap; transition: all .18s var(--ease);
+    }
+    .chip:hover { border-color: var(--ink); color: var(--ink); }
+    .chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+
+    /* Competition card: the cover carries the weight, the meta line answers "was I there?" */
+    .card { display: block; transition: transform .2s var(--ease); }
+    .card:hover { transform: translateY(-2px); }
+    .cover { border-radius: var(--r-md); overflow: hidden; aspect-ratio: 3 / 2; background: var(--border); position: relative; }
+    .cover .ph { width: 100%; height: 100%; transition: transform .6s var(--ease); }
+    .card:hover .cover .ph { transform: scale(1.03); }
+    .cover-count {
+      position: absolute; left: 10px; bottom: 10px; background: rgba(10,10,10,.72); color: #fff;
+      border-radius: 999px; padding: 3px 10px; font-size: 11px; letter-spacing: .04em;
+      opacity: 0; transform: translateY(4px); transition: all .22s var(--ease);
+    }
+    .card:hover .cover-count { opacity: 1; transform: none; }
+
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: color-mix(in oklab, var(--surface) 88%, transparent); backdrop-filter: blur(8px); z-index: 20;">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+    <nav style="display: flex; align-items: center; gap: 20px; font-size: 13px;">
+      <a href="#" class="navlink" style="color: var(--ink);">Competencias</a>
+      <a href="#" class="navlink">Portafolio</a>
+      <a href="#" class="navlink">Acerca de</a>
+      <a href="#" class="navlink" style="display: inline-flex; gap: 7px; align-items: center;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+        Carrito
+      </a>
+      <a href="#" class="navlink" style="display: inline-flex; gap: 6px; align-items: center;">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5 20c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5"></path></svg>
+        Iniciar sesión
+      </a>
+    </nav>
+  </header>
+
+  <div style="max-width: 1180px; margin: 0 auto; padding: 34px 32px 56px;">
+    <h1 class="display" style="font-size: 30px; margin: 0;">Competencias</h1>
+    <p style="margin: 8px 0 0; max-width: 560px; color: var(--muted);">
+      Eventos deportivos cubiertos por José. Cada galería reúne las fotografías de esa jornada.
+    </p>
+
+    <!-- Year filter: a photographer's third season makes this list long, and "which year"
+         is the only question a returning rider actually asks of it. -->
+    <div style="display: flex; align-items: center; gap: 7px; margin-top: 20px; flex-wrap: wrap;">
+      <sc-for list="{{years}}" as="y" hint-placeholder-count="4">
+        <button class="chip {{y.onClass}}" onClick="{{y.pick}}">{{y.label}}</button>
+      </sc-for>
+      <span style="flex: 1;"></span>
+      <span style="font-size: 12px; color: var(--muted);">{{shownCount}} competencias · {{photoCount}} fotografías</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 22px;">
+      <sc-for list="{{competitions}}" as="c" hint-placeholder-count="6">
+        <a href="#" class="card">
+          <span class="cover">
+            <span class="ph {{c.cls}}" role="img" aria-label="{{c.name}}"></span>
+            <span class="cover-count">{{c.count}} fotografías</span>
+          </span>
+          <span class="display" style="display: block; font-size: 19px; margin-top: 11px;">{{c.name}}</span>
+          <span style="display: block; font-size: 13px; color: var(--muted); margin-top: 3px;">{{c.meta}}</span>
+          <span class="eyebrow" style="display: block; margin-top: 5px;">{{c.count}} fotografías</span>
+        </a>
+      </sc-for>
+    </div>
+  </div>
+
+  <footer style="padding: 20px 32px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted);">
+    © 2026 José Valdiviezo — Cuenca, Ecuador
+  </footer>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { year: 'todas' };
+  }
+
+  renderVals() {
+    const all = [
+      { cls: 'ph-lagoon', name: 'Vuelta al Cajas', meta: '12 de julio, 2026 · Cuenca', count: 184, year: '2026' },
+      { cls: 'ph-tortoise', name: 'Maratón de Cuenca', meta: '28 de junio, 2026 · Cuenca', count: 312, year: '2026' },
+      { cls: 'ph-beach', name: 'Triatlón Yaguarcocha', meta: '5 de junio, 2026 · Ibarra', count: 96, year: '2026' },
+      { cls: 'ph-coast', name: 'Open Shimano', meta: '14 de septiembre, 2025 · Cuenca', count: 241, year: '2025' },
+      { cls: 'ph-lava', name: 'Enduro Turi', meta: '3 de agosto, 2025 · Cuenca', count: 158, year: '2025' },
+      { cls: 'ph-pelican', name: 'Ruta de las Cascadas', meta: '19 de mayo, 2025 · Baños', count: 127, year: '2025' },
+    ];
+    const years = ['todas', '2026', '2025'];
+    const visible = this.state.year === 'todas' ? all : all.filter((c) => c.year === this.state.year);
+
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+      years: years.map((y) => ({
+        label: y,
+        onClass: this.state.year === y ? 'on' : '',
+        pick: () => this.setState({ year: y }),
+      })),
+      competitions: visible,
+      shownCount: visible.length,
+      photoCount: visible.reduce((sum, c) => sum + c.count, 0),
+    };
+  }
+}
+</script>
+</body>
+</html>

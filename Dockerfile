@@ -22,8 +22,15 @@ COPY . .
 
 # PUBLIC_SITE_URL is a *client* astro:env var: it is inlined into the built output
 # (canonical URLs, hreflang, sitemap, OG tags), so it has to be known at build time
-# rather than injected as a runtime environment variable. Cloud Run service URLs are
-# deterministic, so deploy.sh computes it up front and passes it here.
+# rather than injected as a runtime environment variable. cloudbuild.yaml supplies it as
+# `--build-arg PUBLIC_SITE_URL=${_SITE_URL}`.
+#
+# Any build path that does NOT pass it fails here rather than shipping a wrong canonical
+# URL, and it fails as "PUBLIC_SITE_URL is missing" rather than "empty": an unset ARG makes
+# the ENV below the empty string, and astro:env treats "" as absent. That is what the Cloud
+# Run console's continuous-deployment wizard does -- it generates its own inline build
+# config with no --build-arg -- so the trigger must be pointed at cloudbuild.yaml. See the
+# deploy section of the README.
 ARG PUBLIC_SITE_URL
 ENV PUBLIC_SITE_URL=$PUBLIC_SITE_URL
 

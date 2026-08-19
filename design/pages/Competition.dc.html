@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 900px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 10px 18px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 11px; font-size: 11px; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); cursor: pointer; background: transparent;
+      font-family: inherit; white-space: nowrap; transition: all .18s var(--ease);
+    }
+    .chip:hover { border-color: var(--ink); color: var(--ink); }
+    .chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+
+    /* The hero is the event's own photograph, dimmed enough to carry type. Not a gradient
+       for decoration's sake — it is the only way white text survives a bright frame. */
+    .hero { position: relative; height: 300px; overflow: hidden; }
+    .hero .ph { position: absolute; inset: 0; }
+    .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,.78), rgba(10,10,10,.15) 60%); }
+    .hero-body { position: absolute; left: 32px; right: 32px; bottom: 22px; color: #fff; z-index: 1; }
+
+    .tile { position: relative; overflow: hidden; border-radius: var(--r-md); background: var(--border); cursor: pointer; }
+    .tile .ph { width: 100%; height: 100%; transition: transform .5s var(--ease); }
+    .tile:hover .ph { transform: scale(1.04); }
+    .tile-veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,.55), rgba(10,10,10,0) 55%); opacity: 0; transition: opacity .25s var(--ease); }
+    .tile:hover .tile-veil { opacity: 1; }
+    .tile-name { position: absolute; left: 11px; bottom: 9px; color: #fff; font-size: 12px; opacity: 0; transform: translateY(4px); transition: all .25s var(--ease); }
+    .tile:hover .tile-name { opacity: 1; transform: none; }
+    .tile-add {
+      position: absolute; top: 9px; right: 9px; width: 30px; height: 30px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+      background: rgba(255,255,255,.92); color: #0a0a0a; border: 0; opacity: 0; transform: scale(.85);
+      transition: all .2s var(--ease);
+    }
+    .tile:hover .tile-add, .tile-add.on { opacity: 1; transform: none; }
+    .tile-add.on { background: var(--accent); color: var(--accent-ink); }
+
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border);">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+    <nav style="display: flex; align-items: center; gap: 20px; font-size: 13px;">
+      <a href="#" class="navlink" style="color: var(--ink);">Competencias</a>
+      <a href="#" class="navlink">Portafolio</a>
+      <a href="#" class="navlink">Acerca de</a>
+      <a href="#" class="navlink" style="display: inline-flex; gap: 7px; align-items: center;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+        Carrito
+        <span style="background: var(--accent); color: var(--accent-ink); border-radius: 999px; font-size: 10px; padding: 1px 6px;">{{cartCount}}</span>
+      </a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <span class="ph ph-lagoon" role="img" aria-label="Vuelta al Cajas"></span>
+    <div class="hero-body">
+      <a href="#" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.8);">
+        <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
+        Volver a competencias
+      </a>
+      <h1 class="display" style="font-size: 38px; margin: 8px 0 0;">Vuelta al Cajas 2026</h1>
+      <p style="margin: 6px 0 0; font-size: 14px; color: rgba(255,255,255,.86);">12 de julio, 2026 · Cuenca, Azuay · 184 fotografías</p>
+    </div>
+  </section>
+
+  <!-- The bar that makes a 184-photo gallery usable: find your number, then take the set.
+       Sticky, because on a page this long it is needed at the bottom as much as the top. -->
+  <div style="position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 26px; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--surface) 90%, transparent); backdrop-filter: blur(8px);">
+    <label style="display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 7px 14px; min-width: 240px; background: var(--raised);">
+      <svg class="icon" style="color: var(--muted);" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+      <input placeholder="Buscar por nombre de archivo" style="border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; outline: none; width: 100%;">
+    </label>
+
+    <sc-for list="{{tags}}" as="tag" hint-placeholder-count="4">
+      <button class="chip {{tag.onClass}}" onClick="{{tag.pick}}">{{tag.label}}</button>
+    </sc-for>
+
+    <span style="flex: 1;"></span>
+
+    <sc-if value="{{hasCart}}" hint-placeholder-val="{{true}}">
+      <a href="#" class="btn btn-primary" style="padding: 8px 16px;">
+        Ver carrito ({{cartCount}})
+        <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+      </a>
+    </sc-if>
+  </div>
+
+  <section style="padding: 6px 8px 30px;">
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 138px; gap: 4px;">
+      <sc-for list="{{tiles}}" as="tile" hint-placeholder-count="8">
+        <div class="tile" style="grid-column: span {{tile.cols}}; grid-row: span {{tile.rows}};">
+          <span class="ph {{tile.cls}}" role="img" aria-label="{{tile.title}}"></span>
+          <div class="tile-veil"></div>
+          <button class="tile-add {{tile.onClass}}" onClick="{{tile.add}}" aria-label="Añadir al carrito">
+            <sc-if value="{{tile.inCart}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            </sc-if>
+            <sc-if value="{{tile.notInCart}}" hint-placeholder-val="{{true}}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+            </sc-if>
+          </button>
+          <span class="tile-name">{{tile.title}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; justify-content: center; margin-top: 22px;">
+      <button class="btn btn-ghost">Cargar más fotografías</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tag: 'todas', cart: ['a'] };
+  }
+
+  renderVals() {
+    const photos = [
+      { id: 'a', cls: 'ph-coast', title: 'dsc02172', cols: 3, rows: 2 },
+      { id: 'b', cls: 'ph-tortoise', title: 'dsc02314', cols: 2, rows: 2 },
+      { id: 'c', cls: 'ph-lava', title: 'dsc02319', cols: 1, rows: 2 },
+      { id: 'd', cls: 'ph-pelican', title: 'dsc02401', cols: 2, rows: 2 },
+      { id: 'e', cls: 'ph-beach', title: 'dsc02455', cols: 2, rows: 2 },
+      { id: 'f', cls: 'ph-lagoon', title: 'dsc02488', cols: 2, rows: 2 },
+    ];
+    const tags = ['todas', 'salida', 'meta', 'podio'];
+
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+      cartCount: this.state.cart.length,
+      hasCart: this.state.cart.length > 0,
+      tags: tags.map((t) => ({
+        label: t,
+        onClass: this.state.tag === t ? 'on' : '',
+        pick: () => this.setState({ tag: t }),
+      })),
+      tiles: photos.map((p) => ({
+        ...p,
+        inCart: this.state.cart.includes(p.id),
+        notInCart: !this.state.cart.includes(p.id),
+        onClass: this.state.cart.includes(p.id) ? 'on' : '',
+        add: () => this.setState({
+          cart: this.state.cart.includes(p.id)
+            ? this.state.cart.filter((x) => x !== p.id)
+            : this.state.cart.concat(p.id),
+        }),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

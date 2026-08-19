@@ -1,0 +1,51 @@
+{
+  "pages": [
+    { "id": "page-sitio", "name": "Sitio público" },
+    { "id": "page-panel", "name": "Panel" },
+    { "id": "page-datos", "name": "Datos y ajustes" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Competencias", "page": "page-sitio", "x": 0, "y": 0, "w": 1280, "h": 900 },
+    { "file": "Competition.dc.html", "title": "Competencia", "page": "page-sitio", "x": 1360, "y": 0, "w": 1280, "h": 900 },
+    { "file": "About.dc.html", "title": "Acerca de", "page": "page-sitio", "x": 2720, "y": 0, "w": 1280, "h": 820 },
+    { "file": "Auth.dc.html", "title": "Entrar / Crear cuenta", "page": "page-sitio", "x": 4080, "y": 0, "w": 1280, "h": 760 },
+    { "file": "NotFound.dc.html", "title": "404", "page": "page-sitio", "x": 5440, "y": 0, "w": 900, "h": 620 },
+
+    { "file": "Dashboard.dc.html", "title": "Dashboard", "page": "page-panel", "x": 0, "y": 0, "w": 1360, "h": 980 },
+    { "file": "Upload.dc.html", "title": "Subir fotografías", "page": "page-panel", "x": 1440, "y": 0, "w": 1360, "h": 820 },
+    { "file": "Photos.dc.html", "title": "Fotografías", "page": "page-panel", "x": 2880, "y": 0, "w": 1360, "h": 860 },
+    { "file": "Orders.dc.html", "title": "Pedidos", "page": "page-panel", "x": 4320, "y": 0, "w": 1360, "h": 860 },
+    { "file": "AdminLogin.dc.html", "title": "Entrada al panel", "page": "page-panel", "x": 5760, "y": 0, "w": 900, "h": 620 },
+
+    { "file": "Customers.dc.html", "title": "Clientes", "page": "page-datos", "x": 0, "y": 0, "w": 1360, "h": 820 },
+    { "file": "Pricing.dc.html", "title": "Precios", "page": "page-datos", "x": 1440, "y": 0, "w": 1360, "h": 800 },
+    { "file": "Logs.dc.html", "title": "Registro", "page": "page-datos", "x": 2880, "y": 0, "w": 1360, "h": 820 }
+  ],
+  "annotations": [
+    {
+      "id": "note-sitio",
+      "page": "page-sitio",
+      "x": 0,
+      "y": -250,
+      "w": 460,
+      "text": "Sitio público — lo que faltaba\n\n· Competencias: filtro por año y el conteo de fotos sobre la portada.\n· Competencia: portada del propio evento y una barra fija con búsqueda, porque 184 fotos no se recorren a ojo.\n· Acerca de: medida editorial y tres frames del portafolio en vez de un retrato que no existe.\n· Entrar: la fotografía a la izquierda y las 2 descargas gratis donde se decide crear la cuenta."
+    },
+    {
+      "id": "note-panel",
+      "page": "page-panel",
+      "x": 0,
+      "y": -270,
+      "w": 470,
+      "text": "Panel\n\nEl dashboard abre con lo que espera a una persona (transferencias por revisar, subidas fallidas) y sólo después con los números del mes.\n\nSubir: zona de arrastre y una cola que dice en qué punto va cada archivo — subiendo, procesando, listo, fallido.\n\nFotografías: la barra de acciones en lote aparece con la selección; publicar 180 borradores es el trabajo real de esta pantalla."
+    },
+    {
+      "id": "note-datos",
+      "page": "page-datos",
+      "x": 0,
+      "y": -250,
+      "w": 460,
+      "text": "Datos y ajustes\n\nClientes: la ficha vive al lado de la tabla, sin segunda pantalla para tres datos y dos interruptores.\n\nPrecios: la tabla «lo que paga el cliente» se recalcula mientras escribes. Hoy refleja lo guardado y dice «guarda para actualizar», que es justo al revés.\n\nRegistro: actividad y descargas juntas, porque se leen juntas cuando algo se ve raro."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-panel" }
+}

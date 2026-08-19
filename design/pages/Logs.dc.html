@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1360px; min-height: 820px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13.5px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+      display: grid; grid-template-columns: 216px minmax(0, 1fr);
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 15px; height: 15px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      border-radius: 999px; padding: 8px 15px; font: inherit; font-size: 11px;
+      letter-spacing: .09em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--ink); }
+
+    .nav a { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r-md); color: var(--muted); font-size: 13px; transition: all .15s var(--ease); }
+    .nav a:hover { color: var(--ink); background: color-mix(in oklab, var(--ink) 5%, transparent); }
+    .nav a.on { background: var(--ink); color: var(--surface); }
+
+    .tab { border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--muted); padding: 8px 2px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .18s var(--ease); }
+    .tab:hover { color: var(--ink); }
+    .tab.on { color: var(--ink); border-bottom-color: var(--accent); }
+
+    .arow { display: grid; grid-template-columns: 128px 118px minmax(0, 1fr) 150px; gap: 12px; align-items: baseline; padding: 9px 10px; border-radius: var(--r-md); transition: background-color .16s var(--ease); }
+    .arow:hover { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+    .drow { display: grid; grid-template-columns: 150px 128px 120px 92px minmax(0, 1fr); gap: 12px; align-items: center; padding: 9px 10px; border-radius: var(--r-md); transition: background-color .16s var(--ease); }
+    .drow:hover { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .act { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 9px; font-size: 10.5px; letter-spacing: .06em; background: color-mix(in oklab, var(--ink) 6%, transparent); color: var(--muted); white-space: nowrap; }
+    .act-money { background: var(--wash); color: var(--accent); }
+    .bar { height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; width: 90px; }
+    .bar span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+    .swap { animation: swap .25s var(--ease) both; }
+    @keyframes swap { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <aside style="border-right: 1px solid var(--border); padding: 18px 14px;">
+    <p class="display" style="margin: 0; font-size: 16px;">José Valdiviezo</p>
+    <p class="eyebrow" style="margin: 3px 0 0;">Admin</p>
+    <nav class="nav" style="margin-top: 22px; display: grid; gap: 2px;">
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"></rect></svg>Dashboard</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="M4 17l5-4 4 3 3-2 4 3"></path></svg>Photos</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path></svg>Orders</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5 20c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5"></path></svg>Customers</a>
+      <a href="#" class="on"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>Activity</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><path d="M6 4v16"></path><path d="M18 4v16"></path><path d="M6 9h12"></path><path d="M6 15h12"></path></svg>Pricing</a>
+    </nav>
+  </aside>
+
+  <main style="padding: 20px 24px 40px; overflow: hidden;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between;">
+      <h1 class="display" style="font-size: 24px; margin: 0;">Registro</h1>
+      <span style="font-size: 12px; color: var(--muted);">Solo lectura · nada de esto se edita ni se borra</span>
+    </div>
+
+    <!-- Two logs that answer different questions — "who changed what" and "who took the
+         files" — as tabs rather than two nav items, because they are read together when
+         something looks wrong. -->
+    <div style="display: flex; gap: 22px; border-bottom: 1px solid var(--border); margin-top: 14px;">
+      <button class="tab {{activityOn}}" onClick="{{showActivity}}">Actividad</button>
+      <button class="tab {{downloadsOn}}" onClick="{{showDownloads}}">Descargas</button>
+    </div>
+
+    <sc-if value="{{isActivity}}" hint-placeholder-val="{{true}}">
+      <section class="panel swap" style="margin-top: 12px; padding: 8px;">
+        <div class="arow" style="padding-bottom: 6px;">
+          <span class="eyebrow">Cuándo</span>
+          <span class="eyebrow">Acción</span>
+          <span class="eyebrow">Objeto</span>
+          <span class="eyebrow">Quién</span>
+        </div>
+        <sc-for list="{{activity}}" as="a" hint-placeholder-count="8">
+          <div class="arow">
+            <span style="color: var(--muted); font-size: 12.5px;">{{a.when}}</span>
+            <span><span class="act {{a.actClass}}">{{a.action}}</span></span>
+            <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{a.target}}</span>
+            <span class="mono" style="color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{a.actor}}</span>
+          </div>
+        </sc-for>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{isDownloads}}" hint-placeholder-val="{{false}}">
+      <section class="panel swap" style="margin-top: 12px; padding: 8px;">
+        <div class="drow" style="padding-bottom: 6px;">
+          <span class="eyebrow">Fotografía</span>
+          <span class="eyebrow">Pedido</span>
+          <span class="eyebrow">Emitido</span>
+          <span class="eyebrow">Usos</span>
+          <span class="eyebrow">Descargas</span>
+        </div>
+        <sc-for list="{{downloads}}" as="d" hint-placeholder-count="6">
+          <div class="drow">
+            <span class="mono">{{d.photo}}</span>
+            <a href="#" class="mono" style="text-decoration: underline;">{{d.order}}</a>
+            <span style="color: var(--muted); font-size: 12.5px;">{{d.issued}}</span>
+            <span style="display: flex; align-items: center; gap: 8px;">
+              <span class="bar"><span style="width: {{d.pct}};"></span></span>
+              <span style="font-size: 12px; color: var(--muted);">{{d.uses}}</span>
+            </span>
+            <span style="color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{d.detail}}</span>
+          </div>
+        </sc-for>
+      </section>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1360,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'activity' };
+  }
+
+  renderVals() {
+    const tab = this.state.tab;
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+
+      isActivity: tab === 'activity',
+      isDownloads: tab === 'downloads',
+      activityOn: tab === 'activity' ? 'on' : '',
+      downloadsOn: tab === 'downloads' ? 'on' : '',
+      showActivity: () => this.setState({ tab: 'activity' }),
+      showDownloads: () => this.setState({ tab: 'downloads' }),
+
+      activity: [
+        { when: 'hoy 18:40', action: 'transfer.approve', actClass: 'act-money', target: 'Pedido #b7742d10 · $3.50', actor: 'jose@valdiviezo.photo' },
+        { when: 'hoy 18:39', action: 'transfer.reject', actClass: 'act-money', target: 'Pedido #c0928fa4 · monto no coincide', actor: 'jose@valdiviezo.photo' },
+        { when: 'hoy 11:02', action: 'photo.publish', actClass: '', target: '48 fotografías — Vuelta al Cajas 2026', actor: 'jose@valdiviezo.photo' },
+        { when: 'ayer 17:05', action: 'settings.save', actClass: '', target: 'Tramo 5+ : $1.60 → $1.50', actor: 'jose@valdiviezo.photo' },
+        { when: 'ayer 16:12', action: 'user.freeDownloads', actClass: '', target: 'ana@correo.com · 0 → 2', actor: 'jose@valdiviezo.photo' },
+        { when: '17 ago 20:31', action: 'photo.delete', actClass: '', target: 'dsc02290 — fuera de foco', actor: 'jose@valdiviezo.photo' },
+        { when: '17 ago 09:14', action: 'user.role', actClass: '', target: 'ayudante@correo.com · cliente → admin', actor: 'jose@valdiviezo.photo' },
+        { when: '16 ago 22:48', action: 'competition.create', actClass: '', target: 'Vuelta al Cajas 2026', actor: 'jose@valdiviezo.photo' },
+      ],
+
+      downloads: [
+        { photo: 'dsc02172', order: '#b7742d10', issued: 'hoy 18:40', uses: '1/5', pct: '20%', detail: 'hoy 18:41 · 186.44.12.9' },
+        { photo: 'dsc02314', order: '#b7742d10', issued: 'hoy 18:40', uses: '0/5', pct: '0%', detail: 'sin descargas todavía' },
+        { photo: 'dsc02488', order: '#41de9007', issued: 'ayer 16:44', uses: '5/5', pct: '100%', detail: 'agotado · último ayer 21:03' },
+        { photo: 'dsc02401', order: '#9f21b4de', issued: '17 ago', uses: '2/5', pct: '40%', detail: '17 ago 19:22 · 190.12.44.7' },
+        { photo: 'dsc02455', order: '#9f21b4de', issued: '17 ago', uses: '1/5', pct: '20%', detail: '17 ago 19:23 · 190.12.44.7' },
+        { photo: 'dsc02319', order: '#33ba7761', issued: '16 ago', uses: '3/5', pct: '60%', detail: 'vence en 4 días' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

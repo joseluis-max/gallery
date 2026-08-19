@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 900px; min-height: 620px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+      border-radius: 999px; padding: 12px 20px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, box-shadow .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0,0,0,.5); }
+    .field {
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: transparent;
+      color: inherit; padding: 10px 12px; font: inherit; width: 100%;
+      transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+    }
+    .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--wash); }
+    .swap { animation: swap .28s var(--ease) both; }
+    @keyframes swap { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <div class="panel" style="width: 380px; padding: 30px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="width: 34px; height: 34px; border-radius: 999px; background: var(--ink); color: var(--surface); display: inline-flex; align-items: center; justify-content: center;">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10" rx="2"></rect><path d="M8 10V7.5a4 4 0 0 1 8 0V10"></path></svg>
+      </span>
+      <div>
+        <p class="display" style="margin: 0; font-size: 17px;">José Valdiviezo</p>
+        <p class="eyebrow" style="margin: 1px 0 0;">Panel de administración</p>
+      </div>
+    </div>
+
+    <!-- Shown only when a signed-in customer lands here. The current page states the same
+         thing in a bordered note; it keeps its own colour so it reads as context, not as
+         an error the person caused. -->
+    <sc-if value="{{isCustomer}}" hint-placeholder-val="{{false}}">
+      <div class="swap" style="margin-top: 18px; display: flex; gap: 9px; align-items: flex-start; padding: 11px 12px; border-radius: var(--r-md); background: var(--wash);">
+        <svg class="icon" style="margin-top: 1px; color: var(--accent);" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 11v5.5"></path><path d="M12 7.8v.2"></path></svg>
+        <span style="font-size: 12.5px;">
+          Iniciaste sesión como <span style="color: var(--ink);">ana@correo.com</span>, que no es una cuenta de administrador.
+          <a href="#" style="display: block; margin-top: 3px; color: var(--accent); text-decoration: underline;">Cerrar sesión</a>
+        </span>
+      </div>
+    </sc-if>
+
+    <div style="display: grid; gap: 13px; margin-top: 20px;">
+      <label style="display: block; font-size: 13px;">
+        Correo
+        <input class="field" style="margin-top: 5px;" type="email" placeholder="jose@…">
+      </label>
+      <label style="display: block; font-size: 13px;">
+        Contraseña
+        <input class="field" style="margin-top: 5px;" type="password" placeholder="••••••••">
+      </label>
+
+      <sc-if value="{{hasError}}" hint-placeholder-val="{{false}}">
+        <p class="swap" style="margin: 0; font-size: 12.5px; color: var(--accent);">Correo o contraseña incorrectos.</p>
+      </sc-if>
+
+      <button class="btn btn-primary" onClick="{{submit}}">Entrar</button>
+    </div>
+
+    <p style="margin: 16px 0 0; font-size: 11.5px; color: var(--muted); display: flex; gap: 7px; align-items: flex-start;">
+      <svg class="icon" style="width: 13px; height: 13px; margin-top: 1px;" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z"></path></svg>
+      Tras cinco intentos fallidos esta cuenta se bloquea unos minutos.
+    </p>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"state":{"editor":"enum","options":["signed-out","wrong-account"],"default":"signed-out","section":"State"},"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":900,"height":620}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { error: false };
+  }
+
+  renderVals() {
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+      isCustomer: (this.props.state ?? 'signed-out') === 'wrong-account',
+      hasError: this.state.error,
+      // Clicking Entrar shows the failure state — the only outcome this prototype can
+      // honestly demonstrate, since there is nothing to sign in to.
+      submit: () => this.setState({ error: true }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1360px; min-height: 800px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13.5px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+      display: grid; grid-template-columns: 216px minmax(0, 1fr);
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 15px; height: 15px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      border-radius: 999px; padding: 8px 15px; font: inherit; font-size: 11px;
+      letter-spacing: .09em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .field { border: 1px solid var(--border-strong); border-radius: var(--r-md); background: transparent; color: inherit; padding: 8px 11px; font: inherit; font-size: 13px; width: 100%; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+    .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--wash); }
+
+    .nav a { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r-md); color: var(--muted); font-size: 13px; transition: all .15s var(--ease); }
+    .nav a:hover { color: var(--ink); background: color-mix(in oklab, var(--ink) 5%, transparent); }
+    .nav a.on { background: var(--ink); color: var(--surface); }
+
+    .trow { display: grid; grid-template-columns: 1fr 1fr 34px; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
+    .trow:last-child { border-bottom: 0; }
+    .prow { display: grid; grid-template-columns: 74px 1fr 1fr 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+    .prow:last-child { border-bottom: 0; }
+    .icon-btn { width: 28px; height: 28px; border-radius: var(--r-md); border: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all .16s var(--ease); }
+    .icon-btn:hover { background: var(--wash); color: var(--accent); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <aside style="border-right: 1px solid var(--border); padding: 18px 14px;">
+    <p class="display" style="margin: 0; font-size: 16px;">José Valdiviezo</p>
+    <p class="eyebrow" style="margin: 3px 0 0;">Admin</p>
+    <nav class="nav" style="margin-top: 22px; display: grid; gap: 2px;">
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"></rect></svg>Dashboard</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="M4 17l5-4 4 3 3-2 4 3"></path></svg>Photos</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path></svg>Orders</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5 20c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5"></path></svg>Customers</a>
+      <a href="#"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>Activity</a>
+      <a href="#" class="on"><svg class="icon" viewBox="0 0 24 24"><path d="M6 4v16"></path><path d="M18 4v16"></path><path d="M6 9h12"></path><path d="M6 15h12"></path></svg>Pricing</a>
+    </nav>
+  </aside>
+
+  <main style="padding: 20px 24px 40px; overflow: hidden;">
+    <h1 class="display" style="font-size: 24px; margin: 0;">Pricing</h1>
+    <p style="margin: 6px 0 0; max-width: 620px; font-size: 12.5px; color: var(--muted);">
+      El descuento por volumen se aplica a <strong style="color: var(--ink);">todo el carrito</strong>: al llegar al umbral,
+      cada fotografía baja a ese precio, no sólo las que pasan del límite.
+    </p>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-top: 18px; align-items: start;">
+
+      <div style="display: grid; gap: 12px;">
+        <section class="panel" style="padding: 16px;">
+          <p class="eyebrow" style="margin: 0;">Precio base</p>
+          <div style="display: flex; align-items: flex-end; gap: 12px; margin-top: 10px;">
+            <label style="flex: 1; font-size: 12.5px;">
+              Por fotografía (centavos)
+              <input class="field" style="margin-top: 5px;" type="number" value="{{base}}" onInput="{{setBase}}">
+            </label>
+            <span class="display" style="font-size: 27px; padding-bottom: 2px;">{{baseMoney}}</span>
+          </div>
+          <p style="margin: 8px 0 0; font-size: 11.5px; color: var(--muted);">
+            Una fotografía con precio propio conserva el suyo y nunca la arrastra un tramo por volumen.
+          </p>
+        </section>
+
+        <section class="panel" style="padding: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <p class="eyebrow" style="margin: 0;">Tramos por volumen</p>
+            <button class="btn btn-ghost" onClick="{{addTier}}">
+              <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              Añadir tramo
+            </button>
+          </div>
+
+          <div class="trow" style="border-bottom-color: var(--border-strong);">
+            <span class="eyebrow">Desde (fotos)</span>
+            <span class="eyebrow">Cada una (centavos)</span>
+            <span></span>
+          </div>
+
+          <sc-for list="{{tiers}}" as="t" hint-placeholder-count="3">
+            <div class="trow">
+              <input class="field" type="number" value="{{t.min}}" onInput="{{t.setMin}}">
+              <input class="field" type="number" value="{{t.price}}" onInput="{{t.setPrice}}">
+              <button class="icon-btn" onClick="{{t.remove}}" aria-label="Quitar tramo">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+              </button>
+            </div>
+          </sc-for>
+
+          <div style="display: flex; align-items: center; gap: 11px; margin-top: 14px;">
+            <button class="btn btn-primary" onClick="{{save}}">Guardar</button>
+            <span style="font-size: 12px; color: var(--muted);">{{saveNote}}</span>
+          </div>
+        </section>
+      </div>
+
+      <!-- The preview updates as you type. On the shipped page it reflects the SAVED
+           settings and says "save to refresh" — which is the wrong way round: the number
+           you want to sanity-check is the one you are about to commit. -->
+      <section class="panel" style="padding: 16px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <p class="eyebrow" style="margin: 0;">Lo que paga el cliente</p>
+          <span style="font-size: 11px; color: var(--accent);">Se actualiza mientras escribes</span>
+        </div>
+
+        <div class="prow" style="border-bottom-color: var(--border-strong); font-size: 11px;">
+          <span class="eyebrow">Fotos</span>
+          <span class="eyebrow">Cada una</span>
+          <span class="eyebrow">Total</span>
+          <span class="eyebrow">Ahorra</span>
+        </div>
+
+        <sc-for list="{{preview}}" as="row" hint-placeholder-count="6">
+          <div class="prow">
+            <span>{{row.qty}}</span>
+            <span>{{row.unit}}</span>
+            <span>{{row.total}}</span>
+            <span style="color: var(--muted);">{{row.saved}}</span>
+          </div>
+        </sc-for>
+
+        <p style="margin: 12px 0 0; font-size: 11.5px; color: var(--muted);">
+          Payphone cobra por transacción, así que un carrito de una sola foto deja bastante menos que uno de tres.
+        </p>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1360,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      base: 200,
+      tiers: [
+        { id: 1, min: 3, price: 175 },
+        { id: 2, min: 5, price: 150 },
+        { id: 3, min: 10, price: 120 },
+      ],
+      saved: false,
+    };
+  }
+
+  unitFor(qty) {
+    const hit = [...this.state.tiers]
+      .filter((t) => qty >= Number(t.min))
+      .sort((a, b) => Number(b.min) - Number(a.min))[0];
+    return hit ? Number(hit.price) : Number(this.state.base);
+  }
+
+  renderVals() {
+    const money = (c) => '$' + (c / 100).toFixed(2);
+    const base = Number(this.state.base) || 0;
+
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+
+      base: this.state.base,
+      baseMoney: money(base),
+      setBase: (e) => this.setState({ base: e.target.value, saved: false }),
+
+      tiers: this.state.tiers.map((t) => ({
+        ...t,
+        setMin: (e) => this.setState({
+          tiers: this.state.tiers.map((x) => (x.id === t.id ? { ...x, min: e.target.value } : x)),
+          saved: false,
+        }),
+        setPrice: (e) => this.setState({
+          tiers: this.state.tiers.map((x) => (x.id === t.id ? { ...x, price: e.target.value } : x)),
+          saved: false,
+        }),
+        remove: () => this.setState({ tiers: this.state.tiers.filter((x) => x.id !== t.id), saved: false }),
+      })),
+
+      // Ids climb from the current length rather than a timestamp — a removed-then-added
+      // row must not reuse an id that is still on screen.
+      addTier: () => this.setState({
+        tiers: this.state.tiers.concat({ id: this.state.tiers.length + 100, min: 20, price: 100 }),
+        saved: false,
+      }),
+      save: () => this.setState({ saved: true }),
+      saveNote: this.state.saved ? 'Guardado. Queda en Activity con tu correo.' : 'Cambios sin guardar',
+
+      preview: [1, 2, 3, 5, 10, 20].map((qty) => {
+        const unit = this.unitFor(qty);
+        const saved = base * qty - unit * qty;
+        return {
+          qty,
+          unit: money(unit),
+          total: money(unit * qty),
+          saved: saved > 0 ? money(saved) : '—',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

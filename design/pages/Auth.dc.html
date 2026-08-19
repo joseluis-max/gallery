@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 760px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+      display: grid; grid-template-columns: minmax(0, 1fr) 520px;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+      border-radius: 999px; padding: 12px 20px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0,0,0,.5); }
+    .field {
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: transparent;
+      color: inherit; padding: 10px 12px; font: inherit; width: 100%;
+      transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+    }
+    .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--wash); }
+    .tab { border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--muted); padding: 9px 2px; cursor: pointer; border-bottom: 2px solid transparent; transition: all .18s var(--ease); }
+    .tab:hover { color: var(--ink); }
+    .tab.on { color: var(--ink); border-bottom-color: var(--accent); }
+    .swap { animation: swap .28s var(--ease) both; }
+    @keyframes swap { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <!-- The photograph is the argument: this is a shop for pictures, and the sign-in screen
+       is the one place the current site shows none. -->
+  <aside style="position: relative; overflow: hidden;">
+    <span class="ph ph-lagoon" role="img" aria-label="Fotografía de José Valdiviezo" style="position: absolute; inset: 0;"></span>
+    <span style="position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,.72), rgba(10,10,10,.1) 60%);"></span>
+    <div style="position: absolute; left: 34px; right: 34px; bottom: 30px; color: #fff;">
+      <p class="display" style="font-size: 26px; margin: 0;">Tus fotografías, cuando las necesites</p>
+      <p style="margin: 8px 0 0; font-size: 13.5px; color: rgba(255,255,255,.82); max-width: 380px;">
+        Con una cuenta guardas tus pedidos y puedes volver a descargar lo que compraste, aunque venza el enlace del correo.
+      </p>
+    </div>
+  </aside>
+
+  <main style="padding: 44px 46px; display: flex; flex-direction: column;">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+
+    <div style="margin: auto 0; max-width: 380px; width: 100%;">
+      <div style="display: flex; gap: 22px; border-bottom: 1px solid var(--border);">
+        <button class="tab {{signInOn}}" onClick="{{showSignIn}}">Iniciar sesión</button>
+        <button class="tab {{registerOn}}" onClick="{{showRegister}}">Crear cuenta</button>
+      </div>
+
+      <div class="swap" style="margin-top: 22px;">
+        <h1 class="display" style="font-size: 25px; margin: 0;">{{title}}</h1>
+        <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--muted);">{{subtitle}}</p>
+
+        <div style="display: grid; gap: 13px; margin-top: 20px;">
+          <sc-if value="{{isRegister}}" hint-placeholder-val="{{false}}">
+            <label style="display: block; font-size: 13px;">
+              Nombre
+              <input class="field" style="margin-top: 5px;" type="text" placeholder="Ana Córdova">
+            </label>
+          </sc-if>
+
+          <label style="display: block; font-size: 13px;">
+            Correo electrónico
+            <input class="field" style="margin-top: 5px;" type="email" placeholder="tu@correo.com">
+          </label>
+
+          <label style="display: block; font-size: 13px;">
+            Contraseña
+            <input class="field" style="margin-top: 5px;" type="password" placeholder="••••••••">
+            <sc-if value="{{isRegister}}" hint-placeholder-val="{{false}}">
+              <span style="display: block; margin-top: 5px; font-size: 11.5px; color: var(--muted);">Mínimo 8 caracteres.</span>
+            </sc-if>
+          </label>
+
+          <button class="btn btn-primary" style="margin-top: 4px;">{{cta}}</button>
+        </div>
+
+        <!-- The two free downloads are the reason to register, so they belong on the
+             register side of this screen rather than only on a photo page. -->
+        <sc-if value="{{isRegister}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 12px 13px; border-radius: var(--r-md); background: var(--wash);">
+            <svg class="icon" style="margin-top: 1px; color: var(--accent);" viewBox="0 0 24 24"><path d="M12 3l2.4 5.3 5.6.6-4.2 3.9 1.2 5.7L12 15.8 6.9 18.5l1.2-5.7L4 8.9l5.6-.6z"></path></svg>
+            <span style="font-size: 13px;">
+              <span style="display: block;">Llévate 2 fotografías gratis</span>
+              <span style="display: block; color: var(--muted); font-size: 12px; margin-top: 2px;">Se aplican al crear la cuenta, en la fotografía que elijas.</span>
+            </span>
+          </div>
+        </sc-if>
+
+        <p style="margin: 16px 0 0; font-size: 13px; color: var(--muted);">
+          {{switchPrompt}}
+          <a href="#" onClick="{{toggle}}" style="color: var(--accent); text-decoration: underline; cursor: pointer;">{{switchAction}}</a>
+        </p>
+      </div>
+    </div>
+
+    <p style="margin: 0; font-size: 11.5px; color: var(--muted);">Comprar no requiere cuenta — también puedes pagar como invitado.</p>
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"mode":{"editor":"enum","options":["signin","register"],"default":"signin","section":"State"},"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: null };
+  }
+
+  mode() {
+    return this.state.mode ?? this.props.mode ?? 'signin';
+  }
+
+  renderVals() {
+    const isRegister = this.mode() === 'register';
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+
+      isRegister,
+      signInOn: isRegister ? '' : 'on',
+      registerOn: isRegister ? 'on' : '',
+      showSignIn: () => this.setState({ mode: 'signin' }),
+      showRegister: () => this.setState({ mode: 'register' }),
+      toggle: () => this.setState({ mode: isRegister ? 'signin' : 'register' }),
+
+      title: isRegister ? 'Crear cuenta' : 'Iniciar sesión',
+      subtitle: isRegister
+        ? 'Guarda tus pedidos y recupera tus descargas cuando quieras.'
+        : 'Entra para ver tus pedidos y volver a descargar tus fotografías.',
+      cta: isRegister ? 'Crear cuenta' : 'Iniciar sesión',
+      switchPrompt: isRegister ? '¿Ya tienes cuenta?' : '¿Aún no tienes cuenta?',
+      switchAction: isRegister ? 'Inicia sesión' : 'Crear una',
+    };
+  }
+}
+</script>
+</body>
+</html>

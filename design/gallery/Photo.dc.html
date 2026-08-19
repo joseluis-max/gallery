@@ -1,0 +1,272 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 900px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+      border-radius: 999px; padding: 12px 20px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0,0,0,.5); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); background: transparent; }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .btn-accent { background: var(--accent); color: var(--accent-ink); }
+    .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .chip-ink { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+
+    /* Zoom is the point of this page, so the cursor says so and the controls only appear
+       when the pointer is on the photograph. */
+    .stage { position: relative; border-radius: var(--r-lg); overflow: hidden; background: color-mix(in oklab, var(--ink) 5%, transparent); cursor: zoom-in; }
+    .stage .ph { width: 100%; height: 460px; }
+    .stage .tools { position: absolute; right: 12px; top: 12px; display: flex; gap: 7px; opacity: 0; transform: translateY(-4px); transition: all .22s var(--ease); }
+    .stage:hover .tools { opacity: 1; transform: none; }
+    .tool { width: 34px; height: 34px; border-radius: 999px; background: rgba(255,255,255,.92); color: #0a0a0a; border: 0; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .15s var(--ease); }
+    .tool:hover { transform: scale(1.06); }
+    .stage-hint { position: absolute; left: 12px; bottom: 11px; display: inline-flex; align-items: center; gap: 6px; background: rgba(10,10,10,.6); color: #fff; border-radius: 999px; padding: 4px 11px; font-size: 11px; backdrop-filter: blur(4px); opacity: 0; transition: opacity .22s var(--ease); }
+    .stage:hover .stage-hint { opacity: 1; }
+    .wm {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><text x='110' y='112' font-family='Georgia,serif' font-size='17' fill='rgba(255,255,255,0.28)' text-anchor='middle' transform='rotate(-30 110 110)'>© José Valdiviezo</text></svg>");
+    }
+
+    .spec { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+    .spec:last-child { border-bottom: 0; }
+    .strip { border-radius: var(--r-md); overflow: hidden; cursor: pointer; position: relative; }
+    .strip .ph { width: 100%; height: 78px; opacity: .82; transition: transform .4s var(--ease), opacity .2s var(--ease); }
+    .strip:hover .ph { transform: scale(1.05); opacity: 1; }
+    .strip.on { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px 26px; border-bottom: 1px solid var(--border);">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+    <nav style="display: flex; align-items: center; gap: 20px; font-size: 13px;">
+      <a href="#" class="navlink">Competencias</a>
+      <a href="#" class="navlink">Portafolio</a>
+      <a href="#" class="navlink" style="display: inline-flex; gap: 7px; align-items: center;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+        Carrito
+      </a>
+      <a href="#" class="navlink">Mi cuenta</a>
+    </nav>
+  </header>
+
+  <div style="max-width: 1220px; margin: 0 auto; padding: 16px 26px 44px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <a href="#" class="navlink" style="font-size: 11px; letter-spacing: .12em; text-transform: uppercase; display: inline-flex; gap: 6px; align-items: center;">
+        <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
+        Volver a la galería
+      </a>
+
+      <!-- Prev/next through the set you came from. Without them, seeing the next frame
+           means going back to the grid and finding your place again. -->
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);">
+        <span>{{position}}</span>
+        <button class="tool" style="width: 28px; height: 28px; background: transparent; border: 1px solid var(--border-strong); color: inherit;" onClick="{{prev}}" aria-label="Anterior">
+          <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg>
+        </button>
+        <button class="tool" style="width: 28px; height: 28px; background: transparent; border: 1px solid var(--border-strong); color: inherit;" onClick="{{next}}" aria-label="Siguiente">
+          <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 24px; margin-top: 12px; align-items: start;">
+
+      <div>
+        <div class="stage" onClick="{{openZoom}}">
+          <span class="ph {{current.cls}}" role="img" aria-label="{{current.title}}"></span>
+          <span class="wm"></span>
+          <div class="tools">
+            <button class="tool" aria-label="Ampliar">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path><path d="M11 8.5v5"></path><path d="M8.5 11h5"></path></svg>
+            </button>
+            <button class="tool" aria-label="Compartir">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="17" cy="6" r="2.6"></circle><circle cx="7" cy="12" r="2.6"></circle><circle cx="17" cy="18" r="2.6"></circle><path d="M9.3 10.8l5.4-3.2"></path><path d="M9.3 13.2l5.4 3.2"></path></svg>
+            </button>
+          </div>
+          <span class="stage-hint">
+            <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path><path d="M11 8.5v5"></path><path d="M8.5 11h5"></path></svg>
+            Clic para ver en grande
+          </span>
+        </div>
+
+        <div style="margin-top: 12px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <p class="eyebrow" style="margin: 0;">Más de esta competencia</p>
+            <a href="#" style="font-size: 11.5px; color: var(--muted);">Ver las 184 →</a>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 8px;">
+            <sc-for list="{{strip}}" as="s" hint-placeholder-count="6">
+              <span class="strip {{s.onClass}}" onClick="{{s.pick}}">
+                <span class="ph {{s.cls}}" role="img" aria-label="{{s.title}}"></span>
+              </span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <aside style="position: sticky; top: 18px; display: grid; gap: 12px;">
+        <div>
+          <h1 class="display" style="font-size: 27px; margin: 0;">{{current.title}}</h1>
+          <div style="display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap;">
+            <span class="chip chip-ink">Vuelta al Cajas 2026</span>
+            <span class="chip">{{current.tag}}</span>
+          </div>
+        </div>
+
+        <div class="panel" style="padding: 16px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <span class="display" style="font-size: 30px;">$2.00</span>
+            <span style="font-size: 11.5px; color: var(--muted);">$1.75 llevando 3</span>
+          </div>
+
+          <button class="btn {{cartClass}}" style="margin-top: 13px;" onClick="{{toggleCart}}">
+            <sc-if value="{{inCart}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+              En el carrito — quitar
+            </sc-if>
+            <sc-if value="{{notInCart}}" hint-placeholder-val="{{true}}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+              Añadir al carrito
+            </sc-if>
+          </button>
+
+          <a href="#" style="display: flex; gap: 8px; align-items: flex-start; margin-top: 11px; padding: 10px 11px; border-radius: var(--r-md); background: var(--wash); font-size: 12.5px;">
+            <svg class="icon" style="width: 14px; height: 14px; margin-top: 1px; color: var(--accent);" viewBox="0 0 24 24"><path d="M12 3l2.4 5.3 5.6.6-4.2 3.9 1.2 5.7L12 15.8 6.9 18.5l1.2-5.7L4 8.9l5.6-.6z"></path></svg>
+            <span>Crea una cuenta y llévate <strong>2 fotografías gratis</strong> →</span>
+          </a>
+
+          <ul style="list-style: none; margin: 13px 0 0; padding: 13px 0 0; border-top: 1px solid var(--border); display: grid; gap: 7px; font-size: 11.5px; color: var(--muted);">
+            <li style="display: flex; align-items: center; gap: 8px;">
+              <svg class="icon" style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"></rect><path d="M4 17l5-4 4 3 3-2 4 3"></path></svg>
+              Original 6000×4000, sin marca de agua
+            </li>
+            <li style="display: flex; align-items: center; gap: 8px;">
+              <svg class="icon" style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24"><path d="M12 4v10"></path><path d="M8 11l4 4 4-4"></path><path d="M5 19h14"></path></svg>
+              Descarga inmediata tras el pago
+            </li>
+          </ul>
+        </div>
+
+        <div class="panel" style="padding: 14px 16px;">
+          <p class="eyebrow" style="margin: 0 0 6px;">Captura</p>
+          <sc-for list="{{specs}}" as="s" hint-placeholder-count="6">
+            <div class="spec">
+              <span style="color: var(--muted);">{{s.k}}</span>
+              <span>{{s.v}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { index: 0, cart: [] };
+  }
+
+  photos() {
+    return [
+      { id: 'lagoon', cls: 'ph-lagoon', title: 'dsc02488', tag: 'paisaje' },
+      { id: 'coast', cls: 'ph-coast', title: 'dsc02172', tag: 'paisaje' },
+      { id: 'tortoise', cls: 'ph-tortoise', title: 'dsc02314', tag: 'fauna' },
+      { id: 'lava', cls: 'ph-lava', title: 'dsc02319', tag: 'paisaje' },
+      { id: 'pelican', cls: 'ph-pelican', title: 'dsc02401', tag: 'fauna' },
+      { id: 'beach', cls: 'ph-beach', title: 'dsc02455', tag: 'costa' },
+    ];
+  }
+
+  renderVals() {
+    const list = this.photos();
+    const i = this.state.index;
+    const current = list[i];
+
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+
+      current,
+      position: (i + 1) + ' de 184',
+      prev: () => this.setState({ index: (i - 1 + list.length) % list.length }),
+      next: () => this.setState({ index: (i + 1) % list.length }),
+      openZoom: () => this.setState({ index: i }),
+
+      strip: list.map((p, n) => ({
+        ...p,
+        onClass: n === i ? 'on' : '',
+        pick: () => this.setState({ index: n }),
+      })),
+
+      inCart: this.state.cart.includes(current.id),
+      notInCart: !this.state.cart.includes(current.id),
+      cartClass: this.state.cart.includes(current.id) ? 'btn-ghost' : 'btn-primary',
+      toggleCart: () => this.setState({
+        cart: this.state.cart.includes(current.id)
+          ? this.state.cart.filter((x) => x !== current.id)
+          : this.state.cart.concat(current.id),
+      }),
+
+      specs: [
+        { k: 'Cámara', v: 'Sony ILCE-7M3' },
+        { k: 'Lente', v: 'FE 28-70mm F3.5-5.6' },
+        { k: 'ISO', v: '100' },
+        { k: 'Apertura', v: 'f/5' },
+        { k: 'Obturación', v: '1/400 s' },
+        { k: 'Ubicación', v: 'Cajas, Azuay' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

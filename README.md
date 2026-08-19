@@ -753,6 +753,48 @@ Cloud Run revision. The Mailgun sending domain lives in `cloudbuild.yaml` as
 `_MAILGUN_DOMAIN`; override it for a one-off deploy with
 `--substitutions=_MAILGUN_DOMAIN=<domain>`.
 
+**A push to `main` also deploys.** The Cloud Build trigger
+`rmgpgab-valdiviezo-gallery-us-east1-joseluis-max-gallery--mamuc` (region `global`,
+created from the Cloud Run console's "Set up continuous deployment") watches
+`joseluis-max/gallery` and runs the same `cloudbuild.yaml` on every push to `main`, so
+the command above and a `git push` are two entrances to one pipeline.
+
+It did not start that way, and the reason is worth keeping. The console wizard generates
+its **own inline** build config rather than using the repo's, and that generated config
+builds with a plain `docker build -t ... . -f Dockerfile` — no `--build-arg`. There is no
+way to add one through the wizard. So its first and only run died in `astro build` with
+
+```
+[EnvInvalidVariables] - PUBLIC_SITE_URL is missing
+```
+
+`PUBLIC_SITE_URL` is a `client` astro:env variable and therefore has to exist at image
+build time (see the bullet below); with no build arg, `ENV PUBLIC_SITE_URL=$PUBLIC_SITE_URL`
+resolves to the empty string, and astro:env counts empty as absent — `validatePublicVariables`
+is literally `loadedEnv[key] === "" ? void 0 : loadedEnv[key]`. Hence *missing* rather than
+*invalid*, for a variable the Dockerfile does set.
+
+The fix was to point the trigger at this repo's config instead of its generated one:
+
+```bash
+gcloud beta builds triggers export rmgpgab-valdiviezo-gallery-us-east1-joseluis-max-gallery--mamuc   --region=global --destination=trigger.yaml
+# replace the whole inline `build:` block with `filename: cloudbuild.yaml`,
+# and DELETE the trigger-level `substitutions:` block, then:
+gcloud beta builds triggers import --source=trigger.yaml --region=global
+```
+
+Two traps in that edit. `gcloud builds triggers update github --build-config=...` returns a
+bare `INVALID_ARGUMENT` while an inline `build` is still attached — export/import is the
+path that works. And the wizard's trigger-level substitutions (`_AR_HOSTNAME`,
+`_SERVICE_NAME`, `_DEPLOY_REGION`, ...) must be removed: `cloudbuild.yaml` never references
+them, and Cloud Build rejects unmatched substitutions unless the config opts into
+`substitutionOption: ALLOW_LOOSE`, which this one deliberately does not.
+
+Because the trigger now runs `cloudbuild.yaml`, its `--set-env-vars` and `--set-secrets` are
+the **complete** runtime configuration — both flags replace rather than merge. Anything set
+on a revision by hand or from the console is erased by the next push. Change runtime
+configuration in `cloudbuild.yaml`, or it will not survive.
+
 **One-time, before the first deploy that includes email** — the rollout fails without it:
 
 ```bash
