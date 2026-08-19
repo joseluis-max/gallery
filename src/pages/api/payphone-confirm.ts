@@ -198,6 +198,7 @@ async function fulfil(
     siteUrl: getPublicSiteUrl(),
     ttlDays: downloadConfig.ttlDays,
     maxUses: downloadConfig.maxUses,
-    emailer: createEmailer(),
+    // Passed uncalled on purpose — see `emailer` in FulfilOrderParams.
+    emailer: createEmailer,
   });
 }

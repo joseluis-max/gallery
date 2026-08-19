@@ -7,6 +7,13 @@
  */
 @theme {
   --color-surface: #faf9f8;
+  /*
+   * The surface a panel sits ON, one step up from the page. Introduced with the redesign:
+   * every `.panel` used to be transparent, so a card and the page behind it were the same
+   * colour and the border did all the work. Lifting panels is what lets borders get
+   * quieter (see --color-border) without the layout going flat.
+   */
+  --color-raised: #ffffff;
   --color-ink: #0a0a0a;
   --color-ink-muted: #6b6864;
   /*
@@ -23,6 +30,20 @@
   /* Warm terracotta accent — echoes the lava rock / warm-light palette of the work. */
   --color-accent: #b5502e;
   --color-accent-ink: #ffffff;
+  /*
+   * A 10% tint of the accent, for the surfaces that carry state rather than action —
+   * a focus ring, the amount plate on the transfer page, an "in review" pill. Derived
+   * with color-mix rather than hard-coded so it follows the accent through both themes
+   * and stays correct if the accent is ever re-tuned.
+   */
+  --color-accent-wash: color-mix(in oklab, var(--color-accent) 10%, transparent);
+
+  /*
+   * One easing curve for the whole product. Slightly overshooting the standard ease-out,
+   * which is what makes a hover or a panel swap feel deliberate rather than mechanical;
+   * durations stay per-component (150ms interface, 300ms panel, 500ms photo).
+   */
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.3, 1);
 
   /*
    * The admin charts' single data hue. Same terracotta family as --color-accent, but a
@@ -42,12 +63,18 @@
 
 [data-theme="dark"] {
   --color-surface: #0a0a0a;
+  /* Not pure black-on-black: a panel has to separate from the page without a brighter
+     border, which is the same job #ffffff does over #faf9f8 in the light theme. */
+  --color-raised: #131211;
   --color-ink: #f5f5f4;
   --color-ink-muted: #a3a09b;
   --color-border: #1f1d1b;
   --color-border-strong: #302d2a;
   --color-accent: #d97a52;
   --color-accent-ink: #0a0a0a;
+  /* Heavier than the light theme's 10%: the same tint over a near-black surface reads as
+     nothing at all. */
+  --color-accent-wash: color-mix(in oklab, var(--color-accent) 18%, transparent);
   --color-data: #c96a42;
   --color-data-wash: #c96a4229;
 }
@@ -89,6 +116,13 @@
   .panel {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
+    background-color: var(--color-raised);
+    transition: border-color 0.18s var(--ease-soft);
+  }
+  /* Only for panels that are themselves links or buttons — `hover:border-ink` on a static
+     card would promise an interaction that isn't there. */
+  .panel-interactive:hover {
+    border-color: var(--color-border-strong);
   }
 
   /*
@@ -105,7 +139,22 @@
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-md);
     background-color: transparent;
-    padding: 0.375rem 0.5rem;
+    padding: 0.5rem 0.65rem;
+    transition:
+      border-color 0.15s var(--ease-soft),
+      box-shadow 0.15s var(--ease-soft);
+  }
+  /*
+   * Replaces the generic focus outline on form controls specifically. Same job — say
+   * unmistakably which control has focus — but a ring drawn from the field's own border
+   * plus an accent wash sits inside the layout instead of an outline that overlaps
+   * whatever is next to it. More specific than the `input:focus-visible` rule below, so
+   * it wins for `.field` and that rule still covers everything else.
+   */
+  .field:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-wash);
   }
 
   /*
@@ -121,11 +170,59 @@
 
   /* Pill: tag filters, status badges, small toggles. */
   .chip {
+    /* inline-flex, not the default inline: a chip with an icon beside its label used to
+       stack the two, because an inline box lays a block-level <svg> out on its own line. */
+    display: inline-flex;
+    align-items: center;
     border: 1px solid var(--color-border);
     border-radius: 9999px;
     padding: 0.25rem 0.75rem;
     font-size: 0.75rem;
     line-height: 1rem;
+    white-space: nowrap;
+    transition:
+      border-color 0.18s var(--ease-soft),
+      color 0.18s var(--ease-soft),
+      background-color 0.18s var(--ease-soft);
+  }
+
+  /*
+   * State, not action: "in review", "paid", "rejected". Deliberately not a `.chip` —
+   * a chip is something you click, and a reader who has learned that shouldn't have to
+   * re-test it on every status label.
+   */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background-color: var(--color-accent-wash);
+    color: var(--color-accent);
+  }
+  /* Terminal states go ink-on-surface — the accent means "still open". */
+  .status-pill-done {
+    background-color: var(--color-ink);
+    color: var(--color-surface);
+  }
+
+  /* Progress toward a volume tier. A rule and a fill, so "how far am I" is one glance
+     rather than a sentence of arithmetic. */
+  .meter {
+    height: 4px;
+    border-radius: 9999px;
+    background-color: var(--color-border);
+    overflow: hidden;
+  }
+  .meter > span {
+    display: block;
+    height: 100%;
+    border-radius: 9999px;
+    background-color: var(--color-accent);
+    transition: width 0.45s var(--ease-soft);
   }
 
   /* inline-flex + gap so a `<Icon />` can sit beside the label without every call site
@@ -141,13 +238,42 @@
     line-height: 1.25rem;
     text-transform: uppercase;
     letter-spacing: 0.1em;
+    transition:
+      transform 0.15s var(--ease-soft),
+      background-color 0.18s var(--ease-soft),
+      color 0.18s var(--ease-soft),
+      border-color 0.18s var(--ease-soft),
+      box-shadow 0.18s var(--ease-soft);
+  }
+  /* A press that moves. One pixel is enough to make a button feel like a button, and it
+     costs nothing on a page that is otherwise still. */
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
   }
   .btn-primary {
     background-color: var(--color-ink);
     color: var(--color-surface);
   }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.5);
+  }
   .btn-ghost {
-    border: 1px solid var(--color-ink);
+    border: 1px solid var(--color-border-strong);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--color-ink);
+  }
+  /*
+   * The free-download action. Accent-filled rather than ink-filled so it reads as the
+   * generous option beside a paid one — the only place in the product where accent is a
+   * button fill rather than an emphasis.
+   */
+  .btn-accent {
+    background-color: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+  .btn-accent:hover:not(:disabled) {
+    box-shadow: 0 8px 18px -8px var(--color-accent);
   }
   .btn:disabled {
     opacity: 0.4;
@@ -188,7 +314,31 @@
   }
 }
 
+/*
+ * The whole site scales with the viewport, from one line.
+ *
+ * Everything downstream — Tailwind's spacing scale, `text-*`, and the `max-w-*` page
+ * shells — is expressed in `rem`, so on a 1760px monitor a 16px root left the layout
+ * marooned in the middle of the screen with small type and ~370px of dead gutter each
+ * side. Widening the shells alone would have fixed the gutter and left the text tiny;
+ * this fixes both, proportionally, and keeps the design's internal ratios intact.
+ *
+ * Below 1280px nothing changes at all: laptops, tablets and phones keep the exact 16px
+ * baseline everything was designed against, and the growth is linear from there to a hard
+ * 20px stop at 2200px so a very large display doesn't turn into a poster.
+ *
+ * Two details worth not "simplifying" later:
+ *
+ * 1. **`rem`, not `px`, for the floor and the ceiling.** At the root, `rem` resolves
+ *    against the browser's *initial* font size — which is the reader's own preference.
+ *    Writing `16px` here would silently override someone who has set their default to 20px
+ *    for a reason. This way the whole scale rides on top of their setting instead.
+ * 2. **Tailwind's breakpoints are unaffected.** Font-relative units inside a media query
+ *    also resolve against that initial size, never the root's computed one, so `md:` and
+ *    friends still break exactly where they always did.
+ */
 html {
+  font-size: clamp(1rem, calc(1rem + (100vw - 1280px) * 0.00435), 1.25rem);
   background-color: var(--color-surface);
   color: var(--color-ink);
 }

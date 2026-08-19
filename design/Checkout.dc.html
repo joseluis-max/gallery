@@ -1,0 +1,319 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 860px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 11px 20px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease), opacity .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0, 0, 0, .5); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); background: transparent; }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .field {
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: transparent;
+      color: inherit; padding: 10px 12px; font: inherit; width: 100%;
+      transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+    }
+    .field::placeholder { color: color-mix(in oklab, var(--muted) 70%, transparent); }
+    .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--wash); }
+
+    /* Method cards. The selected one is stated three ways — ring, filled radio, tinted
+       wash — because on a payment screen "which one am I on" must never be a guess. */
+    .method {
+      display: block; text-align: left; width: 100%; cursor: pointer; font: inherit; color: inherit;
+      border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised);
+      padding: 14px 15px; transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background-color .2s var(--ease), transform .2s var(--ease);
+    }
+    .method:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+    .method.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--wash); background: color-mix(in oklab, var(--accent) 4%, var(--raised)); }
+    .radio { width: 15px; height: 15px; border-radius: 999px; border: 1.5px solid var(--border-strong); flex: none; position: relative; transition: border-color .2s var(--ease); }
+    .method.on .radio { border-color: var(--accent); }
+    .radio::after { content: ""; position: absolute; inset: 3px; border-radius: 999px; background: var(--accent); transform: scale(0); transition: transform .2s var(--ease); }
+    .method.on .radio::after { transform: scale(1); }
+
+    /* Steps: three dots and two rules. Cheap to render, and it answers "how much longer". */
+    .step { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .step-dot { width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--border-strong); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
+    .step.done .step-dot { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+    .step.now { color: var(--ink); }
+    .step.now .step-dot { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px var(--wash); }
+    .rule { flex: 1; height: 1px; background: var(--border); }
+
+    .line { display: flex; gap: 11px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
+    .thumb { width: 42px; height: 42px; border-radius: var(--r-md); flex: none; }
+    .swap { animation: swap .28s var(--ease) both; }
+    @keyframes swap { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+    .trust { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); }
+
+    /* Photo fills. The filenames live here as literal url("…") text so the runtime's
+       image resolution can see them — a src bound through a {{hole}} never carries the
+       literal name into the source, and would resolve to nothing at all. */
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border);">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+    <!-- Checkout deliberately drops the full nav: one way out (back to cart), nothing
+         else to click away onto mid-payment. -->
+    <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
+      Volver al carrito
+    </a>
+  </header>
+
+  <div style="max-width: 1120px; margin: 0 auto; padding: 28px 32px 56px;">
+
+    <div style="display: flex; align-items: center; gap: 12px; max-width: 470px;">
+      <span class="step done"><span class="step-dot"><svg class="icon" style="width: 11px; height: 11px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>Carrito</span>
+      <span class="rule"></span>
+      <span class="step now"><span class="step-dot">2</span>Pago</span>
+      <span class="rule"></span>
+      <span class="step"><span class="step-dot">3</span>Descargas</span>
+    </div>
+
+    <h1 class="display" style="font-size: 30px; margin: 20px 0 0;">Pagar</h1>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 28px; margin-top: 20px; align-items: start;">
+
+      <!-- LEFT: the decision, then the form for it. -->
+      <div>
+        <p class="eyebrow" style="margin: 0 0 9px;">Cómo quieres pagar</p>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+          <button class="method {{cardOn}}" onClick="{{pickCard}}">
+            <span style="display: flex; align-items: center; gap: 10px;">
+              <span class="radio"></span>
+              <svg class="icon" style="width: 18px; height: 18px; color: var(--accent);" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 9.5h19"></path><path d="M6 14.5h4"></path></svg>
+              <span style="font-size: 13.5px;">Tarjeta de crédito o débito</span>
+            </span>
+            <span style="display: block; margin: 7px 0 0 25px; font-size: 12px; color: var(--muted);">Pago inmediato. Recibes tus descargas al instante.</span>
+          </button>
+
+          <button class="method {{transferOn}}" onClick="{{pickTransfer}}">
+            <span style="display: flex; align-items: center; gap: 10px;">
+              <span class="radio"></span>
+              <svg class="icon" style="width: 18px; height: 18px; color: var(--accent);" viewBox="0 0 24 24"><path d="M3.5 9.5L12 4.5l8.5 5"></path><path d="M5.5 9.5v8"></path><path d="M18.5 9.5v8"></path><path d="M9.5 9.5v8"></path><path d="M14.5 9.5v8"></path><path d="M3 19.5h18"></path></svg>
+              <span style="font-size: 13.5px;">Transferencia bancaria</span>
+            </span>
+            <span style="display: block; margin: 7px 0 0 25px; font-size: 12px; color: var(--muted);">Banco Pichincha. Subes el comprobante y activamos tus descargas.</span>
+          </button>
+        </div>
+
+        <!-- CARD -->
+        <sc-if value="{{isCard}}" hint-placeholder-val="{{true}}">
+          <div class="panel swap" style="margin-top: 14px; padding: 18px 18px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+              <p class="eyebrow" style="margin: 0;">Datos de contacto</p>
+              <span class="trust">
+                <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10" rx="2"></rect><path d="M8 10V7.5a4 4 0 0 1 8 0V10"></path></svg>
+                Pago procesado por Payphone
+              </span>
+            </div>
+
+            <label style="display: block; margin-top: 12px; font-size: 13px;">
+              Correo electrónico
+              <input class="field" style="margin-top: 6px;" type="email" value="{{email}}" onInput="{{setEmail}}" placeholder="tu@correo.com">
+            </label>
+            <p style="margin: 7px 0 0; font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: flex-start;">
+              <svg class="icon" style="width: 13px; height: 13px; margin-top: 2px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 11v5.5"></path><path d="M12 7.8v.2"></path></svg>
+              Aquí enviamos los enlaces de descarga. Es la única forma de recibir tus fotografías.
+            </p>
+
+            <sc-if value="{{emailBad}}" hint-placeholder-val="{{false}}">
+              <p style="margin: 9px 0 0; font-size: 12px; color: var(--accent);">Ingresa un correo electrónico válido.</p>
+            </sc-if>
+
+            <button class="btn btn-primary swap" style="width: 100%; margin-top: 14px; opacity: {{continueOpacity}};" onClick="{{submitEmail}}">
+              {{continueLabel}}
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </button>
+
+            <sc-if value="{{widgetOpen}}" hint-placeholder-val="{{false}}">
+              <div class="swap" style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <p class="eyebrow" style="margin: 0;">Formulario de pago</p>
+                  <span style="font-size: 11.5px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center;">
+                    <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+                    Vence en 9:41
+                  </span>
+                </div>
+                <!-- Placeholder for Payphone's Cajita: it renders itself, so the design's
+                     job is only to reserve the space and frame it. -->
+                <div style="margin-top: 10px; height: 132px; border: 1px dashed var(--border-strong); border-radius: var(--r-md); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; gap: 8px;">
+                  <svg class="icon" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 9.5h19"></path></svg>
+                  Cajita de Payphone
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- TRANSFER -->
+        <sc-if value="{{isTransfer}}" hint-placeholder-val="{{false}}">
+          <div class="panel swap" style="margin-top: 14px; padding: 18px;">
+            <p class="eyebrow" style="margin: 0;">Cómo funciona</p>
+            <ol style="margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 12px;">
+              <sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+                <li style="display: flex; gap: 11px; align-items: flex-start;">
+                  <span style="width: 21px; height: 21px; flex: none; border-radius: 999px; background: var(--wash); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 11px;">{{s.n}}</span>
+                  <span>
+                    <span style="display: block; font-size: 13.5px;">{{s.title}}</span>
+                    <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">{{s.body}}</span>
+                  </span>
+                </li>
+              </sc-for>
+            </ol>
+            <a href="#" class="btn btn-primary" style="width: 100%; margin-top: 16px;">
+              Ver datos de la cuenta
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </a>
+            <p style="margin: 10px 0 0; font-size: 11.5px; color: var(--muted); text-align: center;">Las transferencias se revisan a mano, normalmente dentro de 24 horas.</p>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- RIGHT: what you're paying for. Thumbnails added — three filenames in a column
+           told the buyer nothing about which photographs they had chosen. -->
+      <aside class="panel" style="padding: 16px 16px 18px; position: sticky; top: 20px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <p class="eyebrow" style="margin: 0;">Resumen del pedido</p>
+          <a href="#" style="font-size: 11.5px; color: var(--muted);">Editar</a>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <sc-for list="{{items}}" as="it" hint-placeholder-count="3">
+            <div class="line">
+              <span class="thumb ph {{it.cls}}" role="img" aria-label="{{it.title}}"></span>
+              <span style="flex: 1;">
+                <span style="display: block; font-size: 13.5px;">{{it.title}}</span>
+                <span style="display: block; font-size: 11.5px; color: var(--muted);">Archivo digital · original</span>
+              </span>
+              <span style="font-size: 13.5px;">{{it.price}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 11px;">
+          <span>Subtotal</span><span>$6.00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 12.5px; color: var(--accent); margin-top: 5px;">
+          <span style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M4 13l7-9v7h9l-7 9v-7z"></path></svg>
+            Descuento por volumen
+          </span>
+          <span>−$0.75</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--border-strong);">
+          <span class="display" style="font-size: 18px;">Total</span>
+          <span class="display" style="font-size: 22px;">$5.25</span>
+        </div>
+
+        <div style="margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border); display: grid; gap: 8px;">
+          <span class="trust">
+            <svg class="icon" style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+            Enlaces válidos 7 días, hasta 5 descargas
+          </span>
+          <span class="trust">
+            <svg class="icon" style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24"><path d="M4 7h16v12H4z"></path><path d="M4 7l8 6 8-6"></path></svg>
+            Reenviamos los enlaces cuando los pierdas
+          </span>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { method: 'card', email: '', touched: false, widget: false };
+  }
+
+  valid() {
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(this.state.email.trim());
+  }
+
+  renderVals() {
+    const isCard = this.state.method === 'card';
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+
+      isCard,
+      isTransfer: !isCard,
+      cardOn: isCard ? 'on' : '',
+      transferOn: isCard ? '' : 'on',
+      pickCard: () => this.setState({ method: 'card' }),
+      pickTransfer: () => this.setState({ method: 'transfer' }),
+
+      email: this.state.email,
+      setEmail: (e) => this.setState({ email: e.target.value }),
+      emailBad: this.state.touched && !this.valid(),
+      // Dimmed rather than disabled: a disabled button gives no feedback on why, so it
+      // stays clickable and answers with the validation line instead.
+      continueOpacity: this.valid() ? '1' : '.55',
+      continueLabel: this.state.widget ? 'Continuar' : 'Continuar al pago',
+      widgetOpen: this.state.widget,
+      submitEmail: () => this.setState({ touched: true, widget: this.valid() }),
+
+      steps: [
+        { n: '1', title: 'Transfiere $5.25 exactos', body: 'Banco Pichincha · cuenta de ahorro 2208996600' },
+        { n: '2', title: 'Sube tu comprobante', body: 'Captura o PDF, desde tu banca móvil' },
+        { n: '3', title: 'Activamos tus descargas', body: 'Te escribimos al confirmar el depósito' },
+      ],
+      items: [
+        { cls: 'ph-lava', title: 'dsc02319', price: '$1.75' },
+        { cls: 'ph-tortoise', title: 'dsc02314', price: '$1.75' },
+        { cls: 'ph-coast', title: 'dsc02172', price: '$1.75' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

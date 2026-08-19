@@ -1,0 +1,338 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 860px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 10px 18px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, color .18s, border-color .18s, box-shadow .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0, 0, 0, .5); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); background: transparent; }
+    .btn-ghost:hover { border-color: var(--ink); }
+
+    /* One status plate, four tints. The colour is the fastest thing a returning buyer
+       reads, so it carries the state before any word does. */
+    .plate { border-radius: var(--r-lg); padding: 16px 17px; display: flex; gap: 13px; align-items: flex-start; border: 1px solid; }
+    .plate .badge { width: 34px; height: 34px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+    .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 11px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+
+    .dl { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .dl:last-child { border-bottom: 0; }
+    .dl .ph { width: 46px; height: 46px; border-radius: var(--r-md); flex: none; }
+    .dl .go { opacity: .82; transition: opacity .18s var(--ease), transform .18s var(--ease); }
+    .dl:hover .go { opacity: 1; transform: translateX(2px); }
+
+    /* Timeline: a rail with three beats. `now` breathes so an unfinished order looks
+       alive rather than stuck. */
+    .beat { display: flex; gap: 12px; align-items: flex-start; padding-bottom: 15px; position: relative; }
+    .beat:last-child { padding-bottom: 0; }
+    .beat::before { content: ""; position: absolute; left: 11px; top: 24px; bottom: 0; width: 1px; background: var(--border); }
+    .beat:last-child::before { display: none; }
+    .beat .dot { width: 23px; height: 23px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--raised); display: inline-flex; align-items: center; justify-content: center; flex: none; z-index: 1; color: var(--muted); }
+    .beat.done .dot { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+    .beat.now .dot { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px var(--wash); animation: breathe 2.4s var(--ease) infinite; }
+    @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 3px var(--wash); } 50% { box-shadow: 0 0 0 6px transparent; } }
+    .swap { animation: swap .3s var(--ease) both; }
+    @keyframes swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* Photo fills. The filenames live here as literal url("…") text so the runtime's
+       image resolution can see them — a src bound through a {{hole}} never carries the
+       literal name into the source, and would resolve to nothing at all. */
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border);">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+    <nav style="display: flex; align-items: center; gap: 20px; font-size: 13px;">
+      <a href="#" class="navlink">Competencias</a>
+      <a href="#" class="navlink">Portafolio</a>
+      <a href="#" class="navlink">Carrito</a>
+      <a href="#" class="navlink" style="color: var(--ink);">Mi cuenta</a>
+    </nav>
+  </header>
+
+  <div style="max-width: 1000px; margin: 0 auto; padding: 26px 32px 56px;">
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <div>
+        <p class="eyebrow" style="margin: 0;">Pedido</p>
+        <h1 class="display" style="font-size: 28px; margin: 3px 0 0; display: flex; align-items: baseline; gap: 10px;">
+          <span class="mono" style="font-size: 24px;">#a1f30c92</span>
+          <span style="font-size: 13px; color: var(--muted); font-family: inherit;">19 de agosto, 2026</span>
+        </h1>
+      </div>
+      <span class="status-pill" style="background: {{pillBg}}; color: {{pillInk}};">
+        <span style="width: 6px; height: 6px; border-radius: 999px; background: currentColor;"></span>
+        {{statusLabel}}
+      </span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; margin-top: 20px; align-items: start;">
+
+      <div style="display: grid; gap: 14px;">
+
+        <!-- The state plate. Same slot, four messages — a buyer coming back to this page
+             should never have to work out which of them applies to them. -->
+        <div class="plate swap" style="background: {{plateBg}}; border-color: {{plateBorder}};">
+          <span class="badge" style="background: {{badgeBg}}; color: {{badgeInk}};">
+            <sc-if value="{{isReview}}" hint-placeholder-val="{{true}}">
+              <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+            </sc-if>
+            <sc-if value="{{isRejected}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 8v5"></path><path d="M12 16v.2"></path></svg>
+            </sc-if>
+            <sc-if value="{{isPaid}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            </sc-if>
+            <sc-if value="{{isPending}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 9.5h19"></path></svg>
+            </sc-if>
+          </span>
+          <div style="flex: 1;">
+            <p class="display" style="margin: 0; font-size: 17px;">{{plateTitle}}</p>
+            <p style="margin: 5px 0 0; font-size: 13px; color: var(--muted); max-width: 480px;">{{plateBody}}</p>
+
+            <sc-if value="{{showActions}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; gap: 9px; margin-top: 13px; flex-wrap: wrap;">
+                <a href="#" class="btn btn-primary">{{primaryAction}}</a>
+                <a href="#" class="btn btn-ghost">{{secondaryAction}}</a>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- Downloads, only when they exist. -->
+        <sc-if value="{{isPaid}}" hint-placeholder-val="{{false}}">
+          <section class="panel swap" style="padding: 15px 17px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between;">
+              <p class="eyebrow" style="margin: 0;">Tus descargas</p>
+              <button class="btn btn-ghost" style="padding: 6px 13px; font-size: 11px;">
+                <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M12 4v10"></path><path d="M8 11l4 4 4-4"></path><path d="M5 19h14"></path></svg>
+                Descargar todas
+              </button>
+            </div>
+            <div style="margin-top: 6px;">
+              <sc-for list="{{items}}" as="it" hint-placeholder-count="3">
+                <div class="dl">
+                  <span class="ph {{it.cls}}" role="img" aria-label="{{it.title}}"></span>
+                  <span style="flex: 1;">
+                    <span style="display: block; font-size: 13.5px;">{{it.title}}</span>
+                    <span style="display: block; font-size: 11.5px; color: var(--muted);">JPEG · 6000×4000 · 24 MB</span>
+                  </span>
+                  <a href="#" class="btn btn-ghost go" style="padding: 7px 14px; font-size: 11px;">
+                    <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M12 4v10"></path><path d="M8 11l4 4 4-4"></path><path d="M5 19h14"></path></svg>
+                    Descargar
+                  </a>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin: 11px 0 0; font-size: 11.5px; color: var(--muted); display: flex; gap: 7px; align-items: center;">
+              <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+              Cada enlace vale 7 días y hasta 5 descargas. Vuelve aquí cuando quieras y se genera uno nuevo.
+            </p>
+          </section>
+        </sc-if>
+
+        <section class="panel" style="padding: 15px 17px;">
+          <p class="eyebrow" style="margin: 0;">Seguimiento</p>
+          <div style="margin-top: 13px;">
+            <sc-for list="{{beats}}" as="b" hint-placeholder-count="3">
+              <div class="beat {{b.cls}}">
+                <span class="dot">
+                  <sc-if value="{{b.isDone}}" hint-placeholder-val="{{true}}">
+                    <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+                  </sc-if>
+                  <sc-if value="{{b.notDone}}" hint-placeholder-val="{{false}}">
+                    <span style="width: 5px; height: 5px; border-radius: 999px; background: currentColor;"></span>
+                  </sc-if>
+                </span>
+                <span style="padding-top: 2px;">
+                  <span style="display: block; font-size: 13.5px;">{{b.title}}</span>
+                  <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 1px;">{{b.meta}}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+
+      <aside class="panel" style="padding: 16px; position: sticky; top: 20px;">
+        <p class="eyebrow" style="margin: 0;">Detalle</p>
+        <div style="margin-top: 10px;">
+          <sc-for list="{{items}}" as="it" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 11px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+              <span class="ph {{it.cls}}" role="img" aria-label="{{it.title}}" style="width: 38px; height: 38px; border-radius: var(--r-md);"></span>
+              <span style="flex: 1; font-size: 13px;">{{it.title}}</span>
+              <span style="font-size: 13px;">$1.75</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px;">
+          <span class="display" style="font-size: 16px;">Total</span>
+          <span class="display" style="font-size: 20px;">$5.25</span>
+        </div>
+
+        <div style="margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 7px; font-size: 12px; color: var(--muted);">
+          <span style="display: flex; justify-content: space-between;"><span>Método</span><span style="color: var(--ink);">{{method}}</span></span>
+          <span style="display: flex; justify-content: space-between;"><span>Correo</span><span style="color: var(--ink);">a•••@correo.com</span></span>
+        </div>
+
+        <a href="#" class="btn btn-ghost" style="width: 100%; margin-top: 13px; padding: 8px 14px; font-size: 11px;">
+          <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M4 7h16v12H4z"></path><path d="M4 7l8 6 8-6"></path></svg>
+          Reenviar por correo
+        </a>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"state":{"editor":"enum","options":["review","paid","rejected","pending"],"default":"review","section":"State"},"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const state = this.props.state ?? 'review';
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const accent = this.props.accent ?? '#b5502e';
+
+    const copy = {
+      pending: {
+        label: 'Pendiente de pago',
+        title: 'Este pedido está esperando el pago',
+        body: 'Puedes pagarlo con tarjeta o por transferencia bancaria. Tus fotografías quedan reservadas hasta entonces.',
+        actions: ['Completar el pago', 'Pagar por transferencia'],
+        method: '—',
+      },
+      review: {
+        label: 'Comprobante en revisión',
+        title: 'Recibimos tu comprobante',
+        body: 'Lo estamos verificando a mano, normalmente en menos de 24 horas. Te escribimos en cuanto confirmemos el pago y tus descargas aparecerán aquí.',
+        actions: null,
+        method: 'Transferencia',
+      },
+      rejected: {
+        label: 'No verificado',
+        title: 'No pudimos verificar tu transferencia',
+        body: 'Motivo: el comprobante es de $2.00 y este pedido es de $5.25. Sube el comprobante correcto o escríbenos y lo revisamos contigo.',
+        actions: ['Subir otro comprobante', 'Pagar con tarjeta'],
+        method: 'Transferencia',
+      },
+      paid: {
+        label: 'Pagado',
+        title: 'Tus fotografías están listas',
+        body: 'También enviamos los enlaces a tu correo. Puedes volver a esta página cuando quieras.',
+        actions: null,
+        method: 'Transferencia',
+      },
+    }[state];
+
+    // Muted plate for the two waiting states, accent for a problem, ink for success —
+    // so "needs you" and "done" never look the same at a glance.
+    const tint = {
+      pending: { bg: dark ? '#17161400' : '#00000000', border: 'var(--border)', badge: 'var(--wash)', badgeInk: accent },
+      review: { bg: 'var(--wash)', border: 'color-mix(in oklab, ' + accent + ' 30%, transparent)', badge: 'color-mix(in oklab, ' + accent + ' 18%, transparent)', badgeInk: accent },
+      rejected: { bg: 'var(--wash)', border: 'color-mix(in oklab, ' + accent + ' 45%, transparent)', badge: accent, badgeInk: 'var(--accent-ink)' },
+      paid: { bg: 'transparent', border: 'var(--border-strong)', badge: 'var(--ink)', badgeInk: 'var(--surface)' },
+    }[state];
+
+    const beats = [
+      { title: 'Pedido creado', meta: '19 ago · 14:02', done: true },
+      {
+        title: state === 'pending' ? 'Esperando el pago' : 'Comprobante subido',
+        meta: state === 'pending' ? 'Sin comprobante todavía' : '19 ago · 14:11 · comprobante-pichincha.jpg',
+        done: state !== 'pending',
+        now: state === 'review',
+      },
+      {
+        title: state === 'rejected' ? 'Revisión: no verificada' : 'Descargas activadas',
+        meta: state === 'paid' ? '19 ago · 18:40 · aprobado por José' : state === 'rejected' ? '19 ago · 18:40 · monto no coincide' : 'Al confirmar el depósito',
+        done: state === 'paid',
+        now: state === 'rejected',
+      },
+    ];
+
+    return {
+      themeClass: dark ? 'dark' : '',
+      accent,
+      statusLabel: copy.label,
+      plateTitle: copy.title,
+      plateBody: copy.body,
+      plateBg: tint.bg,
+      plateBorder: tint.border,
+      badgeBg: tint.badge,
+      badgeInk: tint.badgeInk,
+      pillBg: state === 'paid' ? 'var(--ink)' : 'var(--wash)',
+      pillInk: state === 'paid' ? 'var(--surface)' : accent,
+      method: copy.method,
+
+      isPending: state === 'pending',
+      isReview: state === 'review',
+      isRejected: state === 'rejected',
+      isPaid: state === 'paid',
+
+      showActions: Boolean(copy.actions),
+      primaryAction: copy.actions ? copy.actions[0] : '',
+      secondaryAction: copy.actions ? copy.actions[1] : '',
+
+      beats: beats.map((b) => ({
+        ...b,
+        cls: b.done ? 'done' : b.now ? 'now' : '',
+        isDone: Boolean(b.done),
+        notDone: !b.done,
+      })),
+
+      items: [
+        { cls: 'ph-lava', title: 'dsc02319' },
+        { cls: 'ph-tortoise', title: 'dsc02314' },
+        { cls: 'ph-coast', title: 'dsc02172' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

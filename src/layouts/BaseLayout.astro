@@ -107,7 +107,13 @@ const alternates = LOCALES.map((locale) => ({
       and both revert to closed on navigation with no close-on-navigate code at all.
     */}
     <slot name="header">
-      <header class="flex items-center justify-between gap-4 px-6 py-6 md:px-12">
+      {/*
+        Sticky, and translucent over a blur: on a gallery that scrolls for pages, the cart
+        and the way back out should never be a scroll-to-top away. `supports` guards the
+        blur so a browser without backdrop-filter gets a solid bar rather than text over
+        photographs.
+      */}
+      <header class="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-border bg-surface/85 px-6 py-4 backdrop-blur-md supports-[not(backdrop-filter:blur(0))]:bg-surface md:px-12">
         <a href={`/${lang}/`} class="font-display text-lg tracking-wide">José Valdiviezo</a>
 
         {/* Desktop */}
@@ -127,19 +133,50 @@ const alternates = LOCALES.map((locale) => ({
             </div>
           </details>
 
-          <a href={`/${lang}/portfolio`} class="hover:text-ink">{t.nav.portfolio}</a>
-          <a href={`/${lang}/about`} class="hover:text-ink">{t.nav.about}</a>
-          <a href={`/${lang}/cart`} class="hover:text-ink">
-            {t.nav.cart}<span data-cart-count hidden={cartCount === 0}> ({cartCount})</span>
+          <a href={`/${lang}/portfolio`} class="transition-colors hover:text-ink">{t.nav.portfolio}</a>
+          <a href={`/${lang}/about`} class="transition-colors hover:text-ink">{t.nav.about}</a>
+          {/* Icons on the two nav items that are *actions* rather than places — the rest
+              stay text, so the icons mean something instead of decorating everything. */}
+          <a href={`/${lang}/cart`} class="inline-flex items-center gap-2 transition-colors hover:text-ink">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6" />
+              <circle cx="10" cy="20" r="1" />
+              <circle cx="18" cy="20" r="1" />
+            </svg>
+            {t.nav.cart}
+            <span
+              data-cart-count
+              hidden={cartCount === 0}
+              class="inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] leading-[1.15rem] tracking-normal text-accent-ink"
+            >
+              {cartCount}
+            </span>
           </a>
-          <a href={`/${lang}/account`} class="hover:text-ink">{sessionUser ? t.nav.account : t.nav.signIn}</a>
+          <a href={`/${lang}/account`} class="inline-flex items-center gap-2 transition-colors hover:text-ink">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.2" />
+              <path d="M5 20c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5" />
+            </svg>
+            {sessionUser ? t.nav.account : t.nav.signIn}
+          </a>
           <ThemeToggle />
         </nav>
 
         {/* Mobile: five links plus a theme toggle don't fit 375px, so they collapse. */}
         <div class="flex items-center gap-4 text-sm text-ink-muted md:hidden">
-          <a href={`/${lang}/cart`} class="hover:text-ink">
-            {t.nav.cart}<span data-cart-count hidden={cartCount === 0}> ({cartCount})</span>
+          <a href={`/${lang}/cart`} class="inline-flex items-center gap-2 hover:text-ink">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6" />
+              <circle cx="10" cy="20" r="1" />
+              <circle cx="18" cy="20" r="1" />
+            </svg>
+            <span
+              data-cart-count
+              hidden={cartCount === 0}
+              class="inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] leading-[1.15rem] text-accent-ink"
+            >
+              {cartCount}
+            </span>
           </a>
           <details data-mobile-menu>
             <summary class="cursor-pointer list-none px-1 text-lg" aria-label={t.nav.menu}>☰</summary>

@@ -11,8 +11,28 @@ export interface Dictionary {
     close: string;
     viewAll: string;
   };
-  home: { heroTitle: string; heroSubtitle: string; featuredTitle: string; viewGallery: string; recentCompetitions: string };
-  gallery: { title: string; allTags: string; empty: string; addToCart: string; removeFromCart: string };
+  home: {
+    heroTitle: string;
+    heroSubtitle: string;
+    heroBody: string;
+    featuredTitle: string;
+    viewGallery: string;
+    recentCompetitions: string;
+    /** Three plain facts under the hero. Not marketing — the questions a first-time
+     *  visitor actually has before scrolling into the photographs. */
+    trustInstant: string;
+    trustMethods: string;
+    trustOriginal: string;
+  };
+  gallery: {
+    title: string;
+    allTags: string;
+    empty: string;
+    addToCart: string;
+    removeFromCart: string;
+    searchPlaceholder: string;
+    searchNoResults: string;
+  };
   competitions: {
     title: string;
     intro: string;
@@ -47,6 +67,12 @@ export interface Dictionary {
     volumeDiscount: string;
     /** Contains `{count}` and `{price}` placeholders. */
     nextTier: string;
+    /** Contains `{count}` and `{qty}` placeholders — the label under the tier meter. */
+    tierProgress: string;
+    keepShopping: string;
+    trustInstant: string;
+    /** Contains `{days}` and `{uses}` placeholders. */
+    trustLinks: string;
   };
   checkout: {
     title: string;
@@ -63,6 +89,17 @@ export interface Dictionary {
     emailLabel: string;
     emailHint: string;
     emailContinue: string;
+    /** The three beats of buying, shown above the page so "how much longer" is answerable
+     *  without guessing. */
+    steps: { cart: string; payment: string; downloads: string };
+    contactSection: string;
+    /** Names the gateway on the panel that collects the card — the reassurance a buyer
+     *  looks for before typing one. */
+    securedBy: string;
+    summaryEdit: string;
+    /** Contains `{days}` and `{uses}` placeholders. */
+    trustLinks: string;
+    trustResend: string;
     errors: Record<'WIDGET_UNAVAILABLE' | 'INVALID_EMAIL' | 'UNKNOWN', string>;
   };
   /** Direct bank transfer: the method chooser on the checkout page, the transfer page
@@ -135,6 +172,22 @@ export interface Dictionary {
     emailedTo: string;
     /** Shown instead of `emailedTo` when the order carries no address to send to. */
     noEmail: string;
+    /** The three-beat trail down the order page. A transfer sits in `pending` for hours,
+     *  so "what has happened so far" is the question this page has to answer. */
+    tracking: {
+      title: string;
+      created: string;
+      receiptUploaded: string;
+      awaitingPayment: string;
+      noReceiptYet: string;
+      released: string;
+      pendingRelease: string;
+      rejected: string;
+    };
+    /** Labels the payment method on a paid order. */
+    methodLabel: string;
+    methodCard: string;
+    methodTransfer: string;
   };
   /** Copy for the order-confirmation email. It lives in the dictionary rather than beside
    *  the sender so there is one translation home for the whole product; lib/orderEmail.ts
@@ -191,6 +244,12 @@ export interface Dictionary {
     savedPassword: string;
     orders: string;
     noOrders: string;
+    /** The standing free-download balance, promoted out of the photo page so it is
+     *  something an account holder can see and spend. Contains a `{count}` placeholder. */
+    freeBalance: string;
+    freeBalanceHint: string;
+    freeBalanceSpent: string;
+    chooseFree: string;
     orderNumber: string;
     date: string;
     status: string;
@@ -229,9 +288,13 @@ export const es: Dictionary = {
   home: {
     heroTitle: 'José Valdiviezo',
     heroSubtitle: 'Fotografía deportiva — Cuenca, Ecuador',
+    heroBody: 'Cada competencia se publica como su propia galería, para que quienes corrieron puedan encontrarse.',
     featuredTitle: 'Selección destacada',
     viewGallery: 'Ver todas las fotografías',
     recentCompetitions: 'Competencias recientes',
+    trustInstant: 'Descarga inmediata',
+    trustMethods: 'Tarjeta o transferencia',
+    trustOriginal: 'Archivo original, sin marca de agua',
   },
   gallery: {
     title: 'Galería',
@@ -239,6 +302,8 @@ export const es: Dictionary = {
     empty: 'Aún no hay fotografías publicadas.',
     addToCart: 'Añadir al carrito',
     removeFromCart: 'Quitar del carrito',
+    searchPlaceholder: 'Buscar por nombre de archivo',
+    searchNoResults: 'Ninguna fotografía coincide con esa búsqueda.',
   },
   competitions: {
     title: 'Competencias',
@@ -285,6 +350,10 @@ export const es: Dictionary = {
     unavailable: '{count} artículo(s) ya no están disponibles y se omitieron.',
     volumeDiscount: 'Descuento por volumen — {price} por foto',
     nextTier: 'Agrega {count} foto(s) más y todas cuestan {price} cada una.',
+    tierProgress: '{count} de {qty} fotografías',
+    keepShopping: 'Seguir viendo fotografías',
+    trustInstant: 'Descarga inmediata tras el pago',
+    trustLinks: 'Enlaces válidos {days} día(s) y hasta {uses} descargas',
   },
   checkout: {
     title: 'Pagar',
@@ -298,6 +367,12 @@ export const es: Dictionary = {
     emailLabel: 'Correo electrónico',
     emailHint: 'Te enviaremos aquí los enlaces de descarga. Revísalo bien: es la única forma de recibir tus fotografías.',
     emailContinue: 'Continuar',
+    steps: { cart: 'Carrito', payment: 'Pago', downloads: 'Descargas' },
+    contactSection: 'Datos de contacto',
+    securedBy: 'Pago procesado por Payphone',
+    summaryEdit: 'Editar',
+    trustLinks: 'Enlaces válidos {days} día(s), hasta {uses} descargas',
+    trustResend: 'Te los reenviamos cuando los pierdas',
     errors: {
       WIDGET_UNAVAILABLE: 'No pudimos cargar el formulario de pago. Revisa tu conexión y vuelve a intentarlo.',
       INVALID_EMAIL: 'Ingresa un correo electrónico válido.',
@@ -360,6 +435,19 @@ export const es: Dictionary = {
     downloadsValidity: 'Cada enlace es válido por {days} día(s) y hasta {uses} descargas. Vuelve a esta página cuando quieras y se generará uno nuevo.',
     emailedTo: 'También enviamos {count} enlace(s) de descarga a {email}.',
     noEmail: 'Este pedido no tiene un correo asociado, así que descarga tus archivos desde aquí.',
+    tracking: {
+      title: 'Seguimiento',
+      created: 'Pedido creado',
+      receiptUploaded: 'Comprobante subido',
+      awaitingPayment: 'Esperando el pago',
+      noReceiptYet: 'Todavía sin comprobante',
+      released: 'Descargas activadas',
+      pendingRelease: 'Al confirmar el pago',
+      rejected: 'No pudimos verificar el comprobante',
+    },
+    methodLabel: 'Método de pago',
+    methodCard: 'Tarjeta',
+    methodTransfer: 'Transferencia bancaria',
   },
   email: {
     subject: 'Tu pedido #{order} — José Valdiviezo',
@@ -404,6 +492,10 @@ export const es: Dictionary = {
     savedPassword: 'Contraseña actualizada.',
     orders: 'Mis pedidos',
     noOrders: 'Todavía no tienes pedidos.',
+    freeBalance: 'Te quedan {count} descarga(s) gratuita(s)',
+    freeBalanceHint: 'Se usan en cualquier fotografía, sin caducidad.',
+    freeBalanceSpent: 'Ya usaste tus descargas gratuitas.',
+    chooseFree: 'Elegir una foto',
     orderNumber: 'Pedido',
     date: 'Fecha',
     status: 'Estado',

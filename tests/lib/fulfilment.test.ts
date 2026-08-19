@@ -40,7 +40,7 @@ function params(overrides: Record<string, unknown> = {}) {
     siteUrl: 'https://josevaldiviezo.test',
     ttlDays: 7,
     maxUses: 5,
-    emailer: { send: sendMock },
+    emailer: () => ({ send: sendMock }),
     ...overrides,
   };
 }

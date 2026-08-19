@@ -36,7 +36,10 @@ const sessionUser = await Astro.session?.get('user');
     <ThemeScript />
   </head>
   <body class="min-h-screen bg-surface text-ink font-body antialiased">
-    <div class="grid min-h-screen grid-cols-[220px_1fr]">
+    <!-- `14rem`, not the 220px it replaces: the root font size is fluid above 1280px (see
+         global.css), so a fixed-pixel column would be the one thing on the page that does
+         not grow with its own nav labels. -->
+    <div class="grid min-h-screen grid-cols-[14rem_1fr]">
       <aside class="border-r border-border px-5 py-6">
         <a href="/admin" class="font-display text-lg">José Valdiviezo</a>
         <p class="mt-1 text-xs uppercase tracking-widest text-ink-muted">Admin</p>

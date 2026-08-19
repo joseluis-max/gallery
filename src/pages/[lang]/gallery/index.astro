@@ -37,10 +37,33 @@ const items: GridItem[] = photos.map((photo) => {
 ---
 
 <BaseLayout title={`${t.gallery.title} — José Valdiviezo`} description={t.about.body} lang={lang}>
-  <div class="px-6 pb-6 pt-12 md:px-12">
-    <h1 class="font-display text-3xl">{t.gallery.title}</h1>
+  <div class="px-6 pb-5 pt-9 md:px-12" data-gallery data-no-results={t.gallery.searchNoResults}>
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h1 class="font-display text-3xl">{t.gallery.title}</h1>
 
-    <nav class="mt-6 flex flex-wrap gap-2 text-xs uppercase tracking-widest" aria-label="Filter by tag">
+      {/*
+        Filters narrow by *subject*; this narrows by name, which is what somebody looking
+        for one frame out of three hundred actually has. Client-side on purpose: every
+        published photograph is already in this document, so filtering is instant and
+        needs no round trip — and with JavaScript off the field simply isn't there while
+        the tag links keep working.
+      */}
+      <label class="inline-flex min-w-[16rem] items-center gap-2 rounded-full border border-border-strong px-3.5 py-2 transition-colors focus-within:border-accent">
+        <svg class="h-4 w-4 shrink-0 text-ink-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M16 16l4 4" />
+        </svg>
+        <input
+          data-gallery-search
+          type="search"
+          placeholder={t.gallery.searchPlaceholder}
+          aria-label={t.gallery.searchPlaceholder}
+          class="w-full border-0 bg-transparent p-0 text-sm outline-none placeholder:text-ink-muted/70"
+        />
+      </label>
+    </div>
+
+    <nav class="mt-5 flex flex-wrap gap-2 text-xs uppercase tracking-widest" aria-label="Filter by tag">
       <a
         href={`/${lang}/gallery`}
         class={`chip py-1.5 ${!activeTag ? 'border-ink bg-ink text-surface' : 'text-ink-muted hover:text-ink'}`}
@@ -68,5 +91,34 @@ const items: GridItem[] = photos.map((photo) => {
         <p class="px-4 text-ink-muted">{t.gallery.empty}</p>
       )
     }
+    <p data-gallery-empty hidden class="px-4 py-10 text-center text-sm text-ink-muted"></p>
   </div>
 </BaseLayout>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-gallery]');
+    const input = root?.querySelector<HTMLInputElement>('[data-gallery-search]');
+    if (!root || !input || input.dataset.bound === 'true') return;
+    input.dataset.bound = 'true';
+
+    const emptyEl = document.querySelector<HTMLElement>('[data-gallery-empty]')!;
+    const tiles = Array.from(document.querySelectorAll<HTMLElement>('[data-photo-title]'));
+
+    input.addEventListener('input', () => {
+      const needle = input.value.trim().toLowerCase();
+      let shown = 0;
+
+      for (const tile of tiles) {
+        // `hidden` rather than display:none — the tile carries grid-span utility classes,
+        // and the dense grid re-packs around whatever is left without a layout pass.
+        const match = !needle || tile.dataset.photoTitle!.includes(needle);
+        tile.hidden = !match;
+        if (match) shown++;
+      }
+
+      emptyEl.textContent = root.dataset.noResults!;
+      emptyEl.hidden = shown > 0 || tiles.length === 0;
+    });
+  });
+</script>

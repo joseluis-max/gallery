@@ -59,9 +59,48 @@ const items: GridItem[] = featured.map((photo) => {
 ---
 
 <BaseLayout title={`${t.home.heroTitle} — ${t.home.heroSubtitle}`} description={t.about.body} lang={lang}>
-  <section class="px-6 py-20 text-center md:px-12 md:py-32">
-    <h1 class="font-display text-4xl tracking-tight md:text-6xl">{t.home.heroTitle}</h1>
-    <p class="mt-4 text-lg text-ink-muted">{t.home.heroSubtitle}</p>
+  {/* Half the vertical air it used to carry, and it now says what the site is *for*
+      before the photographs start: a visitor who arrived looking for their race number
+      should not have to infer that from a mosaic. */}
+  <section class="px-6 py-16 text-center md:px-12 md:py-20">
+    <p class="text-[11px] uppercase tracking-[0.14em] text-ink-muted">{t.home.heroSubtitle}</p>
+    <h1 class="mt-3 font-display text-4xl tracking-tight md:text-6xl">{t.home.heroTitle}</h1>
+    <p class="mx-auto mt-4 max-w-lg text-ink-muted">{t.home.heroBody}</p>
+
+    <div class="mt-7 flex flex-wrap items-center justify-center gap-2.5">
+      <a href={`/${lang}/gallery`} class="btn btn-primary px-6 py-3">
+        {t.home.viewGallery}
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h13" />
+          <path d="M13 6l6 6-6 6" />
+        </svg>
+      </a>
+      <a href={`/${lang}/competitions`} class="btn btn-ghost px-6 py-3">{t.nav.competitions}</a>
+    </div>
+
+    <ul class="mt-8 flex flex-wrap items-center justify-center gap-x-7 gap-y-2 text-xs text-ink-muted">
+      <li class="flex items-center gap-2">
+        <svg class="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4v10" />
+          <path d="M8 11l4 4 4-4" />
+          <path d="M5 19h14" />
+        </svg>
+        {t.home.trustInstant}
+      </li>
+      <li class="flex items-center gap-2">
+        <svg class="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M3 10h18" />
+        </svg>
+        {t.home.trustMethods}
+      </li>
+      <li class="flex items-center gap-2">
+        <svg class="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z" />
+        </svg>
+        {t.home.trustOriginal}
+      </li>
+    </ul>
   </section>
 
   {
@@ -82,7 +121,7 @@ const items: GridItem[] = featured.map((photo) => {
       homepage would advertise that there's nothing to see. */}
   {
     competitionCards.length > 0 && (
-      <section class="mx-auto max-w-6xl px-6 pb-24 md:px-12">
+      <section class="mx-auto max-w-7xl px-6 pb-24 md:px-12">
         <div class="flex items-baseline justify-between">
           <h2 class="font-display text-2xl">{t.home.recentCompetitions}</h2>
           <a href={`/${lang}/competitions`} class="text-sm uppercase tracking-widest text-accent hover:underline">

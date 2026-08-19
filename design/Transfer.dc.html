@@ -1,0 +1,340 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 900px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+    .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 13.5px; letter-spacing: .01em; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 11px 20px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease), opacity .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0, 0, 0, .5); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); background: transparent; }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .field {
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: transparent;
+      color: inherit; padding: 10px 12px; font: inherit; width: 100%;
+      transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+    }
+    .field::placeholder { color: color-mix(in oklab, var(--muted) 70%, transparent); }
+    .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--wash); }
+
+    /* Account rows: the value is the product here, so it is set in mono at full contrast
+       and the copy control lives on the row rather than in a corner. */
+    .arow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+    .arow:last-child { border-bottom: 0; }
+    .copy {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 10px; font-size: 11px; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--muted); background: transparent; cursor: pointer;
+      font-family: inherit; transition: all .18s var(--ease);
+    }
+    .copy:hover { border-color: var(--ink); color: var(--ink); }
+    .copy.done { border-color: var(--accent); color: var(--accent); background: var(--wash); }
+
+    /* The one row nobody may mistype gets a tinted plate and a bigger figure. */
+    .amount { background: var(--wash); border: 1px solid color-mix(in oklab, var(--accent) 28%, transparent); border-radius: var(--r-md); padding: 12px 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+    .drop {
+      border: 1.5px dashed var(--border-strong); border-radius: var(--r-lg); padding: 26px 18px;
+      text-align: center; cursor: pointer; background: transparent;
+      transition: border-color .2s var(--ease), background-color .2s var(--ease), transform .2s var(--ease);
+      width: 100%; font: inherit; color: inherit; display: block;
+    }
+    .drop:hover { border-color: var(--accent); background: var(--wash); }
+    .drop.has { border-style: solid; border-color: var(--accent); background: var(--wash); text-align: left; padding: 13px; }
+    .pulse { animation: pulse 1.6s var(--ease) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    .swap { animation: swap .3s var(--ease) both; }
+    @keyframes swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .spin { animation: spin .8s linear infinite; transform-origin: 12px 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Photo fills. The filenames live here as literal url("…") text so the runtime's
+       image resolution can see them — a src bound through a {{hole}} never carries the
+       literal name into the source, and would resolve to nothing at all. */
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border);">
+    <a href="#" class="display" style="font-size: 18px;">José Valdiviezo</a>
+    <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
+      Prefiero pagar con tarjeta
+    </a>
+  </header>
+
+  <div style="max-width: 1120px; margin: 0 auto; padding: 26px 32px 56px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="width: 30px; height: 30px; border-radius: 999px; background: var(--wash); color: var(--accent); display: inline-flex; align-items: center; justify-content: center;">
+        <svg class="icon" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><path d="M3.5 9.5L12 4.5l8.5 5"></path><path d="M5.5 9.5v8"></path><path d="M18.5 9.5v8"></path><path d="M9.5 9.5v8"></path><path d="M14.5 9.5v8"></path><path d="M3 19.5h18"></path></svg>
+      </span>
+      <h1 class="display" style="font-size: 28px; margin: 0;">Transferencia bancaria</h1>
+    </div>
+    <p style="margin: 8px 0 0; color: var(--muted); max-width: 560px; font-size: 13.5px;">
+      Transfiere el monto exacto a la cuenta y sube el comprobante. Revisamos cada transferencia a mano y activamos tus descargas al confirmar el depósito.
+    </p>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 22px; align-items: start;">
+
+      <!-- LEFT: where the money goes. -->
+      <section class="panel" style="padding: 18px;">
+        <p class="eyebrow" style="margin: 0;">Datos de la cuenta</p>
+
+        <div class="amount" style="margin-top: 12px;">
+          <span>
+            <span class="eyebrow" style="display: block;">Monto exacto</span>
+            <span class="display" style="font-size: 27px; color: var(--accent);">$5.25</span>
+          </span>
+          <button class="copy {{amountDone}}" onClick="{{copyAmount}}">
+            <sc-if value="{{amountCopied}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            </sc-if>
+            <sc-if value="{{amountNotCopied}}" hint-placeholder-val="{{true}}">
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path></svg>
+            </sc-if>
+            {{amountLabel}}
+          </button>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <sc-for list="{{rows}}" as="row" hint-placeholder-count="5">
+            <div class="arow">
+              <span style="font-size: 12.5px; color: var(--muted);">{{row.label}}</span>
+              <span style="display: flex; align-items: center; gap: 9px;">
+                <span class="mono">{{row.value}}</span>
+                <sc-if value="{{row.copyable}}" hint-placeholder-val="{{true}}">
+                  <button class="copy {{row.doneClass}}" onClick="{{row.copy}}">
+                    <sc-if value="{{row.copied}}" hint-placeholder-val="{{false}}">
+                      <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+                    </sc-if>
+                    <sc-if value="{{row.notCopied}}" hint-placeholder-val="{{true}}">
+                      <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path></svg>
+                    </sc-if>
+                    {{row.label2}}
+                  </button>
+                </sc-if>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="margin-top: 14px; padding: 11px 12px; border-radius: var(--r-md); background: color-mix(in oklab, var(--ink) 4%, transparent); display: flex; gap: 9px; align-items: flex-start;">
+          <svg class="icon" style="width: 14px; height: 14px; margin-top: 2px; color: var(--muted);" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 11v5.5"></path><path d="M12 7.8v.2"></path></svg>
+          <p style="margin: 0; font-size: 12.5px; color: var(--muted);">
+            En el concepto de la transferencia escribe <span class="mono" style="color: var(--ink);">#a1f30c92</span> — así encontramos tu pago más rápido.
+          </p>
+        </div>
+      </section>
+
+      <!-- RIGHT: what you send back. -->
+      <section>
+        <sc-if value="{{formOpen}}" hint-placeholder-val="{{true}}">
+          <div class="panel swap" style="padding: 18px;">
+            <p class="eyebrow" style="margin: 0;">Sube tu comprobante</p>
+
+            <button class="drop {{dropClass}}" style="margin-top: 12px;" onClick="{{pickFile}}">
+              <sc-if value="{{noFile}}" hint-placeholder-val="{{true}}">
+                <span style="display: block;">
+                  <svg class="icon" style="width: 26px; height: 26px; color: var(--accent); margin-bottom: 8px;" viewBox="0 0 24 24"><path d="M12 16V5"></path><path d="M8 9l4-4 4 4"></path><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+                  <span style="display: block; font-size: 13.5px;">Arrastra el comprobante o haz clic para elegirlo</span>
+                  <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 4px;">JPG, PNG, HEIC o PDF · hasta 10 MB</span>
+                </span>
+              </sc-if>
+              <sc-if value="{{hasFile}}" hint-placeholder-val="{{false}}">
+                <span style="display: flex; align-items: center; gap: 11px;">
+                  <span style="width: 38px; height: 38px; border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; color: var(--accent);">
+                    <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"></rect><path d="M8 9h8"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+                  </span>
+                  <span style="flex: 1; text-align: left;">
+                    <span style="display: block; font-size: 13.5px;">comprobante-pichincha.jpg</span>
+                    <span style="display: block; font-size: 11.5px; color: var(--muted);">412 KB · listo para enviar</span>
+                  </span>
+                  <span class="copy" onClick="{{clearFile}}">Cambiar</span>
+                </span>
+              </sc-if>
+            </button>
+
+            <label style="display: block; margin-top: 14px; font-size: 13px;">
+              Correo electrónico
+              <input class="field" style="margin-top: 6px;" type="email" value="{{email}}" onInput="{{setEmail}}" placeholder="tu@correo.com">
+            </label>
+            <p style="margin: 6px 0 0; font-size: 11.5px; color: var(--muted);">Aquí te avisamos cuando verifiquemos el pago.</p>
+
+            <label style="display: block; margin-top: 12px; font-size: 13px;">
+              Número de documento <span style="color: var(--muted);">(opcional)</span>
+              <input class="field" style="margin-top: 6px;" type="text" placeholder="Ej. 000123456789">
+            </label>
+
+            <button class="btn btn-primary" style="width: 100%; margin-top: 16px; opacity: {{sendOpacity}};" onClick="{{send}}">
+              <sc-if value="{{sending}}" hint-placeholder-val="{{false}}">
+                <svg class="icon spin" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5" style="opacity:.9"></path></svg>
+                Enviando…
+              </sc-if>
+              <sc-if value="{{notSending}}" hint-placeholder-val="{{true}}">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M4.5 12l15-7-5 15-3-6z"></path></svg>
+                Enviar comprobante
+              </sc-if>
+            </button>
+
+            <p style="margin: 10px 0 0; font-size: 11.5px; color: var(--muted); text-align: center; display: flex; gap: 6px; justify-content: center; align-items: center;">
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+              Revisado a mano, normalmente en menos de 24 horas
+            </p>
+          </div>
+        </sc-if>
+
+        <!-- Submitted: the same panel becomes the receipt of what just happened, so the
+             page never dead-ends on an empty form. -->
+        <sc-if value="{{sent}}" hint-placeholder-val="{{false}}">
+          <div class="panel swap" style="padding: 22px; text-align: center; border-color: color-mix(in oklab, var(--accent) 35%, transparent);">
+            <span style="width: 42px; height: 42px; border-radius: 999px; background: var(--wash); color: var(--accent); display: inline-flex; align-items: center; justify-content: center;">
+              <svg class="icon" style="width: 22px; height: 22px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            </span>
+            <h2 class="display" style="font-size: 20px; margin: 12px 0 0;">Comprobante recibido</h2>
+            <p style="margin: 8px auto 0; font-size: 13px; color: var(--muted); max-width: 330px;">
+              Lo estamos verificando. Te escribimos a <span style="color: var(--ink);">{{emailShown}}</span> en cuanto confirmemos el pago, y tus descargas aparecerán en tu pedido.
+            </p>
+            <div style="display: flex; gap: 9px; justify-content: center; margin-top: 16px;">
+              <a href="#" class="btn btn-primary">Ver mi pedido</a>
+              <button class="btn btn-ghost" onClick="{{reset}}">Subir otro</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Order recap stays visible on both states: it is the number being paid. -->
+        <div class="panel" style="margin-top: 12px; padding: 14px 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <p class="eyebrow" style="margin: 0;">Pedido #a1f30c92</p>
+            <span style="font-size: 12.5px;">3 fotografías · $5.25</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 10px;">
+            <sc-for list="{{thumbs}}" as="t" hint-placeholder-count="3">
+              <span class="ph {{t.cls}}" role="img" aria-label="{{t.title}}" style="width: 52px; height: 52px; border-radius: var(--r-md);"></span>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { copied: null, file: false, email: 'ana@correo.com', sending: false, sent: false };
+  }
+
+  copy(key) {
+    this.setState({ copied: key });
+    // Reverting after 1.5s is the whole feedback loop — a check that never goes back
+    // reads as a permanent state rather than an acknowledgement.
+    setTimeout(() => this.setState({ copied: null }), 1500);
+  }
+
+  renderVals() {
+    const rows = [
+      { key: 'bank', label: 'Banco', value: 'Banco Pichincha', copyable: false },
+      { key: 'type', label: 'Tipo de cuenta', value: 'Ahorro transaccional', copyable: false },
+      { key: 'num', label: 'Número de cuenta', value: '2208996600', copyable: true },
+      { key: 'holder', label: 'Titular', value: 'José Luis Valdiviezo Peña', copyable: false },
+      { key: 'id', label: 'Cédula', value: '0150454320', copyable: true },
+    ];
+
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+
+      amountCopied: this.state.copied === 'amount',
+      amountNotCopied: this.state.copied !== 'amount',
+      amountDone: this.state.copied === 'amount' ? 'done' : '',
+      amountLabel: this.state.copied === 'amount' ? 'Copiado' : 'Copiar',
+      copyAmount: () => this.copy('amount'),
+
+      rows: rows.map((r) => ({
+        ...r,
+        copied: this.state.copied === r.key,
+        notCopied: this.state.copied !== r.key,
+        doneClass: this.state.copied === r.key ? 'done' : '',
+        label2: this.state.copied === r.key ? 'Copiado' : 'Copiar',
+        copy: () => this.copy(r.key),
+      })),
+
+      hasFile: this.state.file,
+      noFile: !this.state.file,
+      dropClass: this.state.file ? 'has' : '',
+      pickFile: () => this.setState({ file: true }),
+      clearFile: () => this.setState({ file: false }),
+
+      email: this.state.email,
+      emailShown: this.state.email || 'tu correo',
+      setEmail: (e) => this.setState({ email: e.target.value }),
+
+      sending: this.state.sending,
+      notSending: !this.state.sending,
+      sendOpacity: this.state.file ? '1' : '.55',
+      send: () => {
+        if (!this.state.file || this.state.sending) return;
+        this.setState({ sending: true });
+        setTimeout(() => this.setState({ sending: false, sent: true }), 900);
+      },
+      sent: this.state.sent,
+      formOpen: !this.state.sent,
+      reset: () => this.setState({ sent: false, file: false }),
+
+      thumbs: [
+        { cls: 'ph-lava', title: 'dsc02319' },
+        { cls: 'ph-tortoise', title: 'dsc02314' },
+        { cls: 'ph-coast', title: 'dsc02172' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

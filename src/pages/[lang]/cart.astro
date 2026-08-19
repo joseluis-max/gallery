@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { buildCartView } from '../../lib/cartView';
-import { createStorage, getDbConfig } from '../../lib/config';
+import { createStorage, getDbConfig, getDownloadConfig } from '../../lib/config';
 import { getDb } from '../../lib/db';
 import { getDictionary, type Locale } from '../../lib/i18n';
 
@@ -16,11 +16,14 @@ const db = await getDb(getDbConfig());
 const view = await buildCartView(db, createStorage(), cart, lang, t.cart.digitalFile);
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+const { ttlDays, maxUses } = getDownloadConfig();
+const trustLinks = t.cart.trustLinks.replace('{days}', String(ttlDays)).replace('{uses}', String(maxUses));
 ---
 
 <BaseLayout title={`${t.cart.title} — José Valdiviezo`} lang={lang}>
   <div
-    class="mx-auto max-w-2xl px-6 py-16"
+    class="mx-auto max-w-5xl px-6 py-10"
     data-cart-page
     data-lang={lang}
     data-copy={JSON.stringify({
@@ -28,10 +31,20 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       total: t.cart.total,
       volumeDiscount: t.cart.volumeDiscount,
       nextTier: t.cart.nextTier,
+      tierProgress: t.cart.tierProgress,
       remove: t.cart.remove,
     })}
   >
-    <h1 class="font-display text-2xl">{t.cart.title}</h1>
+    <div class="flex flex-wrap items-baseline justify-between gap-3">
+      <h1 class="font-display text-2xl">{t.cart.title}</h1>
+      <a href={`/${lang}/gallery`} class="inline-flex items-center gap-2 text-xs text-ink-muted transition-colors hover:text-ink">
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 12H6" />
+          <path d="M11 6l-6 6 6 6" />
+        </svg>
+        {t.cart.keepShopping}
+      </a>
+    </div>
 
     {
       view.unavailableCount > 0 && (
@@ -39,57 +52,140 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       )
     }
 
-    <p data-cart-empty hidden={view.lines.length > 0} class="mt-8 text-ink-muted">{t.cart.empty}</p>
+    <div data-cart-empty hidden={view.lines.length > 0} class="panel mt-6 px-6 py-14 text-center">
+      <svg class="mx-auto h-7 w-7 text-ink-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6" />
+        <circle cx="10" cy="20" r="1" />
+        <circle cx="18" cy="20" r="1" />
+      </svg>
+      <p class="mt-3 text-sm text-ink-muted">{t.cart.empty}</p>
+      <a href={`/${lang}/gallery`} class="btn btn-ghost mt-4">{t.nav.allPhotographs}</a>
+    </div>
 
-    <ul data-cart-lines hidden={view.lines.length === 0} class="mt-8 divide-y divide-border border-y border-border">
+    {/* Two rails once there is anything to buy: the photographs on the left, the money on
+        the right where it stays in view while lines are removed. */}
+    <div class="mt-6 grid items-start gap-6 md:grid-cols-[1.5fr_1fr]">
+      <section data-cart-lines hidden={view.lines.length === 0} class="panel px-4">
+        <ul class="divide-y divide-border">
       {
         view.lines.map((line) => (
-          <li class="flex items-center gap-4 py-4" data-cart-line data-line-id={line.lineId}>
-            <picture class="frame h-20 w-20 shrink-0 bg-border">
+          <li class="group flex items-center gap-3.5 py-3" data-cart-line data-line-id={line.lineId}>
+            <picture class="frame h-16 w-16 shrink-0 bg-border">
               <source srcset={line.webpUrl} type="image/webp" />
               <img src={line.jpegUrl} alt={line.title} class="h-full w-full object-cover" />
             </picture>
             {/* No quantity control: a digital file has no quantity. Buying the same
                 photograph twice delivers the same single download token, so the cart
                 dedupes on add instead of counting. */}
-            <div class="flex-1">
-              <p>{line.title}</p>
-              <p class="text-sm text-ink-muted">{line.detail}</p>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm">{line.title}</p>
+              <p class="text-xs text-ink-muted">{line.detail}</p>
             </div>
-            <p data-line-price>{money(line.priceCents)}</p>
-            <button type="button" data-remove class="text-ink-muted hover:text-accent" aria-label={t.cart.remove}>
-              &times;
+            <p data-line-price class="text-sm">{money(line.priceCents)}</p>
+            {/* Hidden until the row is hovered or the button is focused — a permanent ×
+                on every line reads as a row of warnings, but it must stay reachable by
+                keyboard, which is what focus-visible covers. */}
+            <button
+              type="button"
+              data-remove
+              class="rounded-md p-1.5 text-ink-muted opacity-0 transition-opacity hover:bg-accent-wash hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+              aria-label={t.cart.remove}
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 6l12 12" />
+                <path d="M18 6L6 18" />
+              </svg>
             </button>
           </li>
         ))
       }
-    </ul>
+        </ul>
+      </section>
 
-    <div data-cart-summary hidden={view.lines.length === 0} class="mt-6 space-y-2">
-      <div data-discount-row hidden={view.savingsCents === 0} class="flex items-center justify-between text-sm text-ink-muted">
-        <span data-discount-label>{t.cart.volumeDiscount.replace('{price}', money(view.unitPriceCents))}</span>
-        <span data-savings>−{money(view.savingsCents)}</span>
-      </div>
-      <div class="flex items-center justify-between">
-        <span class="font-display text-xl">{t.cart.total}</span>
-        <span data-cart-total class="font-display text-xl">{money(view.totalCents)}</span>
-      </div>
-      <p data-next-tier hidden={!view.nextTier} class="panel p-3 text-sm text-ink-muted">
-        {
-          view.nextTier
-            ? t.cart.nextTier
-                .replace('{count}', String(view.nextTier.photosAway))
-                .replace('{price}', money(view.nextTier.unitPriceCents))
-            : ''
-        }
-      </p>
+      {/* The whole rail comes and goes together. Hiding only the summary left an empty
+          cart advertising "add 3 more photos and they drop to $1.75" against a meter
+          reading 0 of 3 — a nudge about a discount on nothing. */}
+      <aside data-cart-aside hidden={view.lines.length === 0} class="md:sticky md:top-24">
+        <div data-cart-summary hidden={view.lines.length === 0} class="panel p-4">
+          <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
+
+          <div data-discount-row hidden={view.savingsCents === 0} class="mt-3 flex items-center justify-between gap-3 text-sm text-accent">
+            <span data-discount-label class="flex items-center gap-2">
+              <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 13l7-9v7h9l-7 9v-7z" />
+              </svg>
+              {t.cart.volumeDiscount.replace('{price}', money(view.unitPriceCents))}
+            </span>
+            <span data-savings>−{money(view.savingsCents)}</span>
+          </div>
+
+          <div class="mt-3 flex items-baseline justify-between border-t border-border-strong pt-3">
+            <span class="font-display text-base">{t.cart.total}</span>
+            <span data-cart-total class="font-display text-xl">{money(view.totalCents)}</span>
+          </div>
+
+          <button type="button" data-checkout hidden={view.lines.length === 0} class="btn btn-primary mt-4 w-full py-3">
+            {t.cart.checkout}
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h13" />
+              <path d="M13 6l6 6-6 6" />
+            </svg>
+          </button>
+          <p class="mt-2.5 text-center text-[11px] text-ink-muted">{t.transfer.methodCard} · {t.transfer.methodTransfer}</p>
+        </div>
+
+        {/*
+          The tier nudge, promoted from a sentence in a box to something you can finish.
+          The text node lives in its own child because the script rewrites it on every
+          re-render — writing to the container would delete the meter with it.
+        */}
+        <div data-next-tier hidden={!view.nextTier} class="panel mt-3 border-accent/30 p-3.5">
+          <p data-next-tier-text class="text-xs">
+            {
+              view.nextTier
+                ? t.cart.nextTier
+                    .replace('{count}', String(view.nextTier.photosAway))
+                    .replace('{price}', money(view.nextTier.unitPriceCents))
+                : ''
+            }
+          </p>
+          <div class="meter mt-2.5">
+            <span
+              data-tier-meter
+              style={`width: ${view.nextTier ? Math.round((view.lines.length / view.nextTier.minQty) * 100) : 100}%`}
+            ></span>
+          </div>
+          <p data-tier-progress class="mt-1.5 text-[11px] text-ink-muted">
+            {
+              view.nextTier
+                ? t.cart.tierProgress
+                    .replace('{count}', String(view.lines.length))
+                    .replace('{qty}', String(view.nextTier.minQty))
+                : ''
+            }
+          </p>
+        </div>
+
+        <ul class="mt-3 grid gap-2 px-1 text-[11px] text-ink-muted">
+          <li class="flex items-center gap-2">
+            <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 4v10" />
+              <path d="M8 11l4 4 4-4" />
+              <path d="M5 19h14" />
+            </svg>
+            {t.cart.trustInstant}
+          </li>
+          <li class="flex items-center gap-2">
+            <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z" />
+            </svg>
+            {trustLinks}
+          </li>
+        </ul>
+
+        <p data-cart-error hidden class="mt-3 text-sm text-accent"></p>
+      </aside>
     </div>
-
-    <button type="button" data-checkout hidden={view.lines.length === 0} class="btn btn-primary mt-8 w-full py-3">
-      {t.cart.checkout}
-    </button>
-
-    <p data-cart-error hidden class="mt-4 text-sm text-accent"></p>
   </div>
 </BaseLayout>
 
@@ -107,6 +203,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     const listEl = root.querySelector<HTMLElement>('[data-cart-lines]')!;
     const emptyEl = root.querySelector<HTMLElement>('[data-cart-empty]')!;
     const summaryEl = root.querySelector<HTMLElement>('[data-cart-summary]')!;
+    const asideEl = root.querySelector<HTMLElement>('[data-cart-aside]')!;
     const checkoutBtn = root.querySelector<HTMLButtonElement>('[data-checkout]')!;
     const errorEl = root.querySelector<HTMLElement>('[data-cart-error]')!;
 
@@ -125,7 +222,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       totalCents: number;
       unitPriceCents: number;
       savingsCents: number;
-      nextTier?: { unitPriceCents: number; photosAway: number };
+      nextTier?: { minQty: number; unitPriceCents: number; photosAway: number };
     }) {
       const keep = new Set(view.lines.map((line) => line.lineId));
       for (const li of root!.querySelectorAll<HTMLElement>('[data-cart-line]')) {
@@ -140,6 +237,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       const isEmpty = view.lines.length === 0;
       listEl.hidden = isEmpty;
       summaryEl.hidden = isEmpty;
+      asideEl.hidden = isEmpty;
       checkoutBtn.hidden = isEmpty;
       emptyEl.hidden = !isEmpty;
 
@@ -158,9 +256,16 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       const tierEl = root!.querySelector<HTMLElement>('[data-next-tier]')!;
       tierEl.hidden = !view.nextTier;
       if (view.nextTier) {
-        tierEl.textContent = copy.nextTier
+        // Writes into the child nodes, never into `tierEl` itself — its textContent used
+        // to be replaced wholesale, which would now delete the meter along with the text.
+        root!.querySelector<HTMLElement>('[data-next-tier-text]')!.textContent = copy.nextTier
           .replace('{count}', String(view.nextTier.photosAway))
           .replace('{price}', money(view.nextTier.unitPriceCents));
+        root!.querySelector<HTMLElement>('[data-tier-meter]')!.style.width =
+          `${Math.round((view.lines.length / view.nextTier.minQty) * 100)}%`;
+        root!.querySelector<HTMLElement>('[data-tier-progress]')!.textContent = copy.tierProgress
+          .replace('{count}', String(view.lines.length))
+          .replace('{qty}', String(view.nextTier.minQty));
       }
     }
 

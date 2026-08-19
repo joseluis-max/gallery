@@ -30,7 +30,13 @@ export interface FulfilOrderParams {
   siteUrl: string;
   ttlDays: number;
   maxUses: number;
-  emailer: EmailProvider;
+  /** A factory, not a provider. `createEmailer()` throws when the Mailgun variables are
+   *  missing or malformed, and evaluating it at the call site meant that throw landed
+   *  *before* `markOrderPaid` — so a mail misconfiguration became a buyer charged against
+   *  an order still marked `pending`, with no tokens and nothing to collect. Building it
+   *  lazily, inside the same try/catch as the send, keeps a broken email setup costing
+   *  exactly the email and nothing else. */
+  emailer: () => EmailProvider;
 }
 
 export interface FulfilOrderResult {
@@ -88,7 +94,7 @@ export async function fulfilOrder(db: Db, params: FulfilOrderParams): Promise<Fu
   // outage bubble up would file it under "fulfilment failed" beside a Mongo write error,
   // and those two want very different responses from whoever reads the log.
   try {
-    await params.emailer.send({ to: email, ...message });
+    await params.emailer().send({ to: email, ...message });
     return { paid, emailed: true };
   } catch (err) {
     console.error('fulfilOrder: order fulfilled but the confirmation email did not send', paid._id.toString(), err);

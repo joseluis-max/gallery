@@ -11,10 +11,11 @@
 //      buyer could complete a payment we have no way to resolve on the way back.
 import { ObjectId } from 'mongodb';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getDbConfig, getPayphoneConfig } from '../../../lib/config';
+import { createStorage, getDbConfig, getDownloadConfig, getPayphoneConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
 import { canViewOrder, getOrderById } from '../../../lib/orders';
+import { buildOrderThumbs } from '../../../lib/orderThumbs';
 import { createPaymentAttempt } from '../../../lib/payments';
 import { newClientTransactionId, PAYPHONE_FORM_LIFETIME_MS, splitAmountForIva } from '../../../lib/payphone';
 
@@ -71,6 +72,20 @@ Astro.response.headers.set('Cache-Control', 'no-store');
 const payphone = getPayphoneConfig();
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+// Thumbnails for the summary. Three filenames in a column told the buyer nothing about
+// which photographs they had picked; a missing one degrades to no image (see
+// lib/orderThumbs.ts) rather than breaking the page they are about to pay on.
+const thumbs = await buildOrderThumbs(db, createStorage(), order);
+
+// Shown as "3 fotografías × $1.75" only when every line really is the same price — with
+// volume tiers they normally are, but a per-photo price override would make that sentence
+// a lie, and then the line simply isn't drawn.
+const unitPrices = new Set(order.items.map((item) => item.unitPriceCents));
+const uniformUnitPrice = unitPrices.size === 1 ? [...unitPrices][0] : null;
+
+const { ttlDays, maxUses } = getDownloadConfig();
+const trustLinks = t.checkout.trustLinks.replace('{days}', String(ttlDays)).replace('{uses}', String(maxUses));
+
 // A signed-in buyer already has an address on the order. A guest does not, and Payphone —
 // unlike Stripe's hosted form — does not guarantee one comes back with the payment, so the
 // widget stays locked until they give us one. The download links are the entire
@@ -92,7 +107,7 @@ const widgetConfig = {
 
 <BaseLayout title={`${t.checkout.title} — José Valdiviezo`} lang={lang}>
   <div
-    class="mx-auto max-w-5xl px-6 py-16"
+    class="mx-auto max-w-6xl px-6 py-10"
     data-checkout-page
     data-order-id={order._id.toString()}
     data-has-email={knownEmail ? 'true' : 'false'}
@@ -107,7 +122,30 @@ const widgetConfig = {
       UNKNOWN: t.checkout.errors.UNKNOWN,
     })}
   >
-    <h1 class="font-display text-2xl">{t.checkout.title}</h1>
+    {/* Three beats, two rules. The buyer arrives here from the cart with no idea whether
+        this is the last screen — this says it is nearly over, and costs one row. */}
+    <ol class="flex max-w-md items-center gap-3 text-[11px] uppercase tracking-widest text-ink-muted">
+      <li class="flex items-center gap-2">
+        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-ink bg-ink text-surface">
+          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+          </svg>
+        </span>
+        {t.checkout.steps.cart}
+      </li>
+      <li class="h-px flex-1 bg-border" aria-hidden="true"></li>
+      <li class="flex items-center gap-2 text-ink" aria-current="step">
+        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent text-[10px] text-accent shadow-[0_0_0_3px_var(--color-accent-wash)]">2</span>
+        {t.checkout.steps.payment}
+      </li>
+      <li class="h-px flex-1 bg-border" aria-hidden="true"></li>
+      <li class="flex items-center gap-2">
+        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border-strong text-[10px]">3</span>
+        {t.checkout.steps.downloads}
+      </li>
+    </ol>
+
+    <h1 class="mt-5 font-display text-2xl">{t.checkout.title}</h1>
 
     {/*
       Two rails: paying on the left, what you're paying for on the right, which is the
@@ -119,32 +157,78 @@ const widgetConfig = {
       rather than being written second. Stacked on a phone that puts the order above the
       payment form, where it belongs; the usual objection to ordering columns this way
       (a keyboard tab order that jumps across the page) doesn't apply, because the
-      summary holds nothing focusable.
+      summary holds nothing focusable except one link.
     */}
-    <div class="mt-8 grid gap-10 md:grid-cols-[1.35fr_1fr]">
-      <section class="md:sticky md:top-8 md:col-start-2 md:row-start-1 md:self-start">
-        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
-        <ul class="mt-3 divide-y divide-border border-y border-border">
+    <div class="mt-5 grid gap-7 md:grid-cols-[1.45fr_1fr]">
+      <section class="panel p-4 md:sticky md:top-24 md:col-start-2 md:row-start-1 md:self-start">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
+          <a href={`/${lang}/cart`} class="text-xs text-ink-muted underline transition-colors hover:text-ink">
+            {t.checkout.summaryEdit}
+          </a>
+        </div>
+
+        <ul class="mt-2 divide-y divide-border">
           {
-            order.items.map((item) => (
-              <li class="flex items-center justify-between gap-4 py-4">
-                <div>
-                  <p>{item.photoTitle}</p>
-                  <p class="text-sm text-ink-muted">{t.cart.digitalFile}</p>
-                </div>
-                <p class="shrink-0">{money(item.totalCents)}</p>
-              </li>
-            ))
+            order.items.map((item) => {
+              const thumb = thumbs[item.photoId.toString()];
+              return (
+                <li class="flex items-center gap-3 py-2.5">
+                  {thumb ? (
+                    <picture class="frame h-11 w-11 shrink-0 bg-border">
+                      <source srcset={thumb.webpUrl} type="image/webp" />
+                      <img src={thumb.jpegUrl} alt={item.photoTitle} class="h-full w-full object-cover" />
+                    </picture>
+                  ) : (
+                    <span class="frame h-11 w-11 shrink-0 bg-border" aria-hidden="true" />
+                  )}
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm">{item.photoTitle}</span>
+                    <span class="block text-xs text-ink-muted">{t.cart.digitalFile}</span>
+                  </span>
+                  <span class="shrink-0 text-sm">{money(item.totalCents)}</span>
+                </li>
+              );
+            })
           }
         </ul>
-        <div class="mt-4 flex justify-between font-display text-lg">
-          <span>{t.checkout.total}</span>
-          <span>{money(order.totalCents)}</span>
+
+        {
+          uniformUnitPrice !== null && order.items.length > 1 && (
+            <p class="mt-3 flex justify-between text-xs text-ink-muted">
+              <span>
+                {order.items.length} × {money(uniformUnitPrice)}
+              </span>
+              <span>{money(order.subtotalCents)}</span>
+            </p>
+          )
+        }
+
+        <div class="mt-3 flex items-baseline justify-between border-t border-border-strong pt-3">
+          <span class="font-display text-base">{t.checkout.total}</span>
+          <span class="font-display text-xl">{money(order.totalCents)}</span>
         </div>
+
+        <ul class="mt-4 grid gap-2 border-t border-border pt-3 text-xs text-ink-muted">
+          <li class="flex items-center gap-2">
+            <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+            {trustLinks}
+          </li>
+          <li class="flex items-center gap-2">
+            <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 7h16v12H4z" />
+              <path d="M4 7l8 6 8-6" />
+            </svg>
+            {t.checkout.trustResend}
+          </li>
+        </ul>
       </section>
 
       <section class="md:col-start-1 md:row-start-1">
-        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.transfer.methodTitle}</h2>
+        <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.transfer.methodTitle}</h2>
 
         {/*
           Two methods, and the choice is expressed as a link rather than a tab or a radio
@@ -152,38 +236,85 @@ const widgetConfig = {
           checkout/[orderId]/transfer.astro — so a buyer choosing it must actually leave
           this page, and pretending otherwise would only hide that the card panel below is
           already live and already holds a Payphone attempt.
+
+          The selected state is drawn three ways (ring, filled radio, tinted panel): on a
+          payment screen, "which one am I on" must never be a judgement call.
         */}
-        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-          <div aria-current="true" class="panel border-ink p-4">
-            <p class="text-sm">{t.transfer.methodCard}</p>
-            <p class="mt-1 text-xs text-ink-muted">{t.transfer.methodCardHint}</p>
+        <div class="mt-2 grid gap-2.5 sm:grid-cols-2">
+          <div
+            aria-current="true"
+            class="panel border-accent bg-accent-wash p-3.5 shadow-[0_0_0_3px_var(--color-accent-wash)]"
+          >
+            <p class="flex items-center gap-2.5 text-sm">
+              <span class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-accent">
+                <span class="h-2 w-2 rounded-full bg-accent"></span>
+              </span>
+              <svg class="h-[18px] w-[18px] shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+                <path d="M2.5 9.5h19" />
+                <path d="M6 14.5h4" />
+              </svg>
+              {t.transfer.methodCard}
+            </p>
+            <p class="mt-1.5 pl-[26px] text-xs text-ink-muted">{t.transfer.methodCardHint}</p>
           </div>
-          <a href={`/${lang}/checkout/${order._id.toString()}/transfer`} class="panel p-4 hover:border-ink">
-            <p class="text-sm">{t.transfer.methodTransfer}</p>
-            <p class="mt-1 text-xs text-ink-muted">{t.transfer.methodTransferHint}</p>
+
+          <a
+            href={`/${lang}/checkout/${order._id.toString()}/transfer`}
+            class="panel panel-interactive p-3.5 transition-transform hover:-translate-y-px"
+          >
+            <p class="flex items-center gap-2.5 text-sm">
+              <span class="inline-flex h-4 w-4 shrink-0 rounded-full border-[1.5px] border-border-strong"></span>
+              <svg class="h-[18px] w-[18px] shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3.5 9.5L12 4.5l8.5 5" />
+                <path d="M5.5 9.5v8M9.5 9.5v8M14.5 9.5v8M18.5 9.5v8" />
+                <path d="M3 19.5h18" />
+              </svg>
+              {t.transfer.methodTransfer}
+            </p>
+            <p class="mt-1.5 pl-[26px] text-xs text-ink-muted">{t.transfer.methodTransferHint}</p>
           </a>
         </div>
 
-        <h2 class="mt-10 text-sm uppercase tracking-widest text-ink-muted">{t.checkout.paymentSection}</h2>
+        {/* One panel for the whole card flow — the email gate used to be a separate box
+            that vanished, which made the page jump and left the widget floating loose. */}
+        <div class="panel mt-3 p-4">
+          <div class="flex items-baseline justify-between gap-4">
+            <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.checkout.paymentSection}</h2>
+            <span class="flex items-center gap-1.5 text-xs text-ink-muted">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4.5" y="10" width="15" height="10" rx="2" />
+                <path d="M8 10V7.5a4 4 0 0 1 8 0V10" />
+              </svg>
+              {t.checkout.securedBy}
+            </span>
+          </div>
 
-        <div data-email-gate hidden={knownEmail !== ''} class="panel mt-3 p-4">
-          <label class="block text-sm" for="checkout-email">{t.checkout.emailLabel}</label>
-          <input id="checkout-email" data-email-input type="email" required autocomplete="email" class="field mt-2 w-full" />
-          <p class="mt-2 text-sm text-ink-muted">{t.checkout.emailHint}</p>
-          <button type="button" data-email-submit class="btn btn-primary mt-4 w-full py-3">{t.checkout.emailContinue}</button>
-        </div>
+          <div data-email-gate hidden={knownEmail !== ''} class="mt-3">
+            <label class="block text-sm" for="checkout-email">{t.checkout.emailLabel}</label>
+            <input id="checkout-email" data-email-input type="email" required autocomplete="email" class="field mt-1.5 w-full" />
+            <p class="mt-2 text-xs text-ink-muted">{t.checkout.emailHint}</p>
+            <button type="button" data-email-submit class="btn btn-primary mt-3 w-full py-3">
+              {t.checkout.emailContinue}
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h13" />
+                <path d="M13 6l6 6-6 6" />
+              </svg>
+            </button>
+          </div>
 
-        <p data-checkout-status hidden={knownEmail === ''} class="mt-6 text-sm text-ink-muted">{t.checkout.loading}</p>
-        <p data-checkout-error hidden class="mt-4 text-sm text-accent"></p>
+          <p data-checkout-status hidden={knownEmail === ''} class="mt-3 text-sm text-ink-muted">{t.checkout.loading}</p>
+          <p data-checkout-error hidden class="mt-3 text-sm text-accent"></p>
 
-        <!-- The widget's required render target. -->
-        <div id="pp-button" class="mt-6"></div>
+          <!-- The widget's required render target. -->
+          <div id="pp-button" class="mt-3"></div>
 
-        <div data-expired-panel hidden class="panel mt-6 p-4">
-          <p class="text-sm text-ink-muted">{t.checkout.expired}</p>
-          <!-- A reload is exactly right: it mints a fresh clientTransactionId and a fresh
-               attempt, which is what "start again" has to mean here. -->
-          <button type="button" data-restart class="btn btn-primary mt-4 w-full py-3">{t.checkout.startAgain}</button>
+          <div data-expired-panel hidden class="mt-3 rounded-md border border-border-strong p-3">
+            <p class="text-sm text-ink-muted">{t.checkout.expired}</p>
+            <!-- A reload is exactly right: it mints a fresh clientTransactionId and a fresh
+                 attempt, which is what "start again" has to mean here. -->
+            <button type="button" data-restart class="btn btn-primary mt-3 w-full py-3">{t.checkout.startAgain}</button>
+          </div>
         </div>
       </section>
     </div>

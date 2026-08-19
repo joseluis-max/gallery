@@ -43,7 +43,9 @@ const {
   is stretched to fill the tile with an absolute overlay instead, so this keeps the whole
   photo clickable everywhere except the small corner the button occupies.
 */}
-<div class={`group relative overflow-hidden bg-border ${tileClass}`} data-reveal>
+{/* `data-photo-title` is what the gallery's search field filters on — lower-cased here so
+    the filter is a plain `includes` rather than a per-keystroke case fold over every tile. */}
+<div class={`group relative overflow-hidden bg-border ${tileClass}`} data-reveal data-photo-title={title.toLowerCase()}>
   <a href={href} class="absolute inset-0 block">
     <img
       src={lqip}
@@ -66,6 +68,20 @@ const {
   </a>
 
   <PhotoWatermark scale="tile" />
+
+  {/*
+    Hover only, and `pointer-events-none` throughout so the stretched anchor underneath
+    still takes every click. The veil is what makes the title legible over a bright
+    photograph without dimming the grid at rest.
+  */}
+  <div
+    class="pointer-events-none absolute inset-x-0 bottom-0 z-[5] bg-gradient-to-t from-black/55 to-transparent pt-8 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+    aria-hidden="true"
+  >
+    <p class="translate-y-1 px-3 pb-2.5 text-xs text-white transition-transform duration-200 group-hover:translate-y-0">
+      {title}
+    </p>
+  </div>
 
   <button
     type="button"
@@ -154,8 +170,11 @@ const {
   }
 
   function updateHeaderCount(count: number) {
+    // The bare number, not " (3)" — the header renders this inside a pill now, and the
+    // parentheses were punctuation for a text-only link that no longer exists. Server
+    // render (BaseLayout) and this client update have to agree on the format.
     for (const el of document.querySelectorAll<HTMLElement>('[data-cart-count]')) {
-      el.textContent = count > 0 ? ` (${count})` : '';
+      el.textContent = count > 0 ? String(count) : '';
       el.hidden = count === 0;
     }
   }

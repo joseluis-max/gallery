@@ -2,10 +2,11 @@
 import { ObjectId } from 'mongodb';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { findLatestTransferForOrder } from '../../../lib/bankTransfer';
-import { getDbConfig, getDownloadConfig } from '../../../lib/config';
+import { createStorage, getDbConfig, getDownloadConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
 import { canViewOrder, getOrderById } from '../../../lib/orders';
+import { buildOrderThumbs } from '../../../lib/orderThumbs';
 
 const lang = Astro.params.lang as Locale;
 const t = getDictionary(lang);
@@ -82,20 +83,64 @@ const paymentNotice = paymentParam === 'declined' ? t.order.declined : paymentPa
 const latestTransfer = order.status === 'pending' ? await findLatestTransferForOrder(db, order._id) : null;
 const transferInReview = latestTransfer?.status === 'in-review';
 const transferRejected = latestTransfer?.status === 'rejected';
+
+const thumbs = await buildOrderThumbs(db, createStorage(), order);
+
+const dateFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * The three beats of an order, derived from what actually happened rather than stored.
+ *
+ * A card payment passes all three within seconds and this reads as a receipt; a transfer
+ * sits on beat two for hours, which is the case the trail exists for — "we have your
+ * receipt, nobody has looked at it yet" is a different thing from "waiting for payment",
+ * and the page had no way to say either before.
+ */
+const paidAt = order.history.find((entry) => entry.status === 'paid')?.at;
+const tracking = [
+  { title: t.order.tracking.created, meta: dateFmt.format(new Date(order.createdAt)), done: true, now: false },
+  {
+    title: latestTransfer ? t.order.tracking.receiptUploaded : t.order.tracking.awaitingPayment,
+    meta: latestTransfer ? dateFmt.format(new Date(latestTransfer.submittedAt)) : t.order.tracking.noReceiptYet,
+    done: Boolean(latestTransfer) || order.status === 'paid',
+    now: transferInReview,
+  },
+  {
+    title: transferRejected ? t.order.tracking.rejected : t.order.tracking.released,
+    meta: paidAt ? dateFmt.format(new Date(paidAt)) : t.order.tracking.pendingRelease,
+    done: order.status === 'paid',
+    now: transferRejected,
+  },
+];
+
+const paymentMethodLabel =
+  order.payment?.method === 'transfer' ? t.order.methodTransfer : order.payment ? t.order.methodCard : null;
 ---
 
 <BaseLayout title={`${lang === 'es' ? 'Pedido' : 'Order'} #${order._id.toString()} — José Valdiviezo`} lang={lang}>
-  <div class="mx-auto max-w-2xl px-6 py-16">
-    <h1 class="font-display text-2xl">
-      {lang === 'es' ? 'Pedido' : 'Order'} #{order._id.toString().slice(-8)}
-    </h1>
-    <p class="mt-2 text-sm uppercase tracking-widest text-accent">{t.account.statuses[order.status]}</p>
+  <div class="mx-auto max-w-3xl px-6 py-10">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-[10px] uppercase tracking-widest text-ink-muted">{lang === 'es' ? 'Pedido' : 'Order'}</p>
+        <h1 class="mt-0.5 font-display text-2xl">
+          <span class="font-mono text-xl">#{order._id.toString().slice(-8)}</span>
+        </h1>
+      </div>
+      {/* Ink for a finished order, accent for one still in motion — the colour answers
+          "is anything expected of me" before the words are read. */}
+      <span class={`status-pill ${order.status === 'paid' ? 'status-pill-done' : ''}`}>
+        <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>
+        {transferInReview ? t.transfer.inReviewTitle : t.account.statuses[order.status]}
+      </span>
+    </div>
 
-    {paymentNotice && <p class="panel mt-6 p-4 text-sm text-accent">{paymentNotice}</p>}
+    {paymentNotice && <p class="panel mt-5 p-4 text-sm text-accent">{paymentNotice}</p>}
 
+    {/* One plate, four messages. A buyer coming back to this page should never have to
+        work out which of them applies to them. */}
     {
-      order.status === 'pending' && !transferInReview && (
-        <p class="mt-6 text-ink-muted">
+      order.status === 'pending' && !transferInReview && !transferRejected && (
+        <p class="mt-5 text-sm text-ink-muted">
           {lang === 'es'
             ? 'Estamos esperando la confirmación del pago. Esta página se actualizará automáticamente una vez confirmado.'
             : "We're waiting on payment confirmation. This page will reflect it once confirmed."}
@@ -109,72 +154,149 @@ const transferRejected = latestTransfer?.status === 'rejected';
         // uploaded a receipt is not waiting on a gateway, they are waiting on a person, and
         // telling them the page will update "automatically" would be a promise about a
         // review that happens on someone else's schedule.
-        <section class="panel mt-6 p-4">
-          <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.inReviewTitle}</h2>
-          <p class="mt-2 text-sm text-ink-muted">{t.transfer.inReview}</p>
+        <section class="panel mt-5 flex items-start gap-3 border-accent/30 bg-accent-wash p-4">
+          <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 7.5V12l3 2" />
+            </svg>
+          </span>
+          <div>
+            <h2 class="font-display text-base">{t.transfer.inReviewTitle}</h2>
+            <p class="mt-1 text-sm text-ink-muted">{t.transfer.inReview}</p>
+          </div>
         </section>
       )
     }
 
     {
       transferRejected && (
-        <section class="panel mt-6 border-accent p-4">
-          <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.rejectedTitle}</h2>
-          {latestTransfer?.rejectionReason && (
-            <p class="mt-2 text-sm">{t.transfer.rejected.replace('{reason}', latestTransfer.rejectionReason)}</p>
-          )}
+        <section class="panel mt-5 flex items-start gap-3 border-accent p-4">
+          <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 8v5" />
+              <path d="M12 16v.2" />
+            </svg>
+          </span>
+          <div>
+            <h2 class="font-display text-base">{t.transfer.rejectedTitle}</h2>
+            {latestTransfer?.rejectionReason && (
+              <p class="mt-1 text-sm text-ink-muted">
+                {t.transfer.rejected.replace('{reason}', latestTransfer.rejectionReason)}
+              </p>
+            )}
+          </div>
         </section>
       )
     }
 
     {
       order.status === 'pending' && order.kind === 'purchase' && !transferInReview && (
-        <div class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
           {/* The recovery path for an abandoned payment. `data-astro-reload` is required,
               not decorative: a soft navigation would not re-evaluate Payphone's CDN module,
               so the widget on the other side would have nothing to render with. */}
-          <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="btn btn-primary inline-block px-6 py-3">
+          <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="btn btn-primary px-6 py-3">
             {t.order.completePayment}
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h13" />
+              <path d="M13 6l6 6-6 6" />
+            </svg>
           </a>
-          <a href={`/${lang}/checkout/${order._id.toString()}/transfer`} class="text-sm underline">
+          <a href={`/${lang}/checkout/${order._id.toString()}/transfer`} class="text-sm underline transition-colors hover:text-accent">
             {transferRejected ? t.transfer.tryAgain : t.transfer.payByTransfer}
           </a>
         </div>
       )
     }
 
-    <ul class="mt-8 divide-y divide-border border-y border-border">
-      {
-        order.items.map((item) => (
-          <li class="flex items-center justify-between py-4">
-            <div>
-              <p>{item.photoTitle}</p>
-              <p class="text-sm text-ink-muted">{lang === 'es' ? 'Archivo digital' : 'Digital download'}</p>
-            </div>
-            <p>${(item.totalCents / 100).toFixed(2)}</p>
-          </li>
-        ))
-      }
-    </ul>
+    <section class="panel mt-5 p-4">
+      <ul class="divide-y divide-border">
+        {
+          order.items.map((item) => {
+            const thumb = thumbs[item.photoId.toString()];
+            return (
+              <li class="flex items-center gap-3 py-2.5">
+                {thumb ? (
+                  <picture class="frame h-11 w-11 shrink-0 bg-border">
+                    <source srcset={thumb.webpUrl} type="image/webp" />
+                    <img src={thumb.jpegUrl} alt={item.photoTitle} class="h-full w-full object-cover" />
+                  </picture>
+                ) : (
+                  <span class="frame h-11 w-11 shrink-0 bg-border" aria-hidden="true" />
+                )}
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm">{item.photoTitle}</span>
+                  <span class="block text-xs text-ink-muted">{t.cart.digitalFile}</span>
+                </span>
+                <span class="shrink-0 text-sm">${(item.totalCents / 100).toFixed(2)}</span>
+              </li>
+            );
+          })
+        }
+      </ul>
 
-    <div class="mt-4 flex justify-between text-sm text-ink-muted">
-      <span>{lang === 'es' ? 'Subtotal' : 'Subtotal'}</span>
-      <span>${(order.subtotalCents / 100).toFixed(2)}</span>
-    </div>
-    <div class="mt-2 flex justify-between font-display text-lg">
-      <span>{lang === 'es' ? 'Total' : 'Total'}</span>
-      <span>${(order.totalCents / 100).toFixed(2)}</span>
-    </div>
+      <div class="mt-3 flex items-baseline justify-between border-t border-border-strong pt-3">
+        <span class="font-display text-base">{t.checkout.total}</span>
+        <span class="font-display text-xl">${(order.totalCents / 100).toFixed(2)}</span>
+      </div>
+
+      {
+        paymentMethodLabel && (
+          <p class="mt-3 flex justify-between border-t border-border pt-3 text-xs text-ink-muted">
+            <span>{t.order.methodLabel}</span>
+            <span class="text-ink">{paymentMethodLabel}</span>
+          </p>
+        )
+      }
+    </section>
+
+    {/* The trail. Cheap on a card order (three ticks), and the whole answer on a transfer
+        that has been sitting with a human since yesterday. */}
+    <section class="panel mt-4 p-4">
+      <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.order.tracking.title}</h2>
+      <ol class="mt-3">
+        {
+          tracking.map((beat, i) => (
+            <li class="relative flex gap-3 pb-4 last:pb-0">
+              {i < tracking.length - 1 && <span class="absolute left-[11px] top-6 bottom-0 w-px bg-border" aria-hidden="true"></span>}
+              <span
+                class={`relative z-10 inline-flex h-[23px] w-[23px] shrink-0 items-center justify-center rounded-full border ${
+                  beat.done
+                    ? 'border-ink bg-ink text-surface'
+                    : beat.now
+                      ? 'border-accent bg-raised text-accent shadow-[0_0_0_3px_var(--color-accent-wash)]'
+                      : 'border-border-strong bg-raised text-ink-muted'
+                }`}
+              >
+                {beat.done ? (
+                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M5 12.5l4.5 4.5L19 7.5" />
+                  </svg>
+                ) : (
+                  <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>
+                )}
+              </span>
+              <span class="pt-0.5">
+                <span class="block text-sm">{beat.title}</span>
+                <span class="block text-xs text-ink-muted">{beat.meta}</span>
+              </span>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
 
     {
       order.status === 'paid' && digitalItemCount > 0 && (
-        <section class="mt-12">
-          <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.order.downloadsTitle}</h2>
+        <section class="panel mt-4 p-4">
+          <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.order.downloadsTitle}</h2>
 
-          <ul class="mt-4 divide-y divide-border border-y border-border">
+          <ul class="mt-2 divide-y divide-border">
             {order.items.map((item) => (
-              <li class="flex items-center justify-between gap-4 py-3">
-                <span>{item.photoTitle}</span>
+              <li class="group flex items-center justify-between gap-4 py-2.5">
+                <span class="text-sm">{item.photoTitle}</span>
                 {/*
                  * data-astro-reload, not decoration: ClientRouter would otherwise try to
                  * swap this in as a page. The endpoint answers with a redirect to a
@@ -185,16 +307,21 @@ const transferRejected = latestTransfer?.status === 'rejected';
                 <a
                   href={`/api/order-download/${order._id.toString()}/${item.photoId.toString()}`}
                   data-astro-reload
-                  class="btn btn-ghost shrink-0 px-4 py-2"
+                  class="btn btn-ghost shrink-0 px-4 py-2 text-xs transition-transform group-hover:translate-x-0.5"
                 >
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 4v10" />
+                    <path d="M8 11l4 4 4-4" />
+                    <path d="M5 19h14" />
+                  </svg>
                   {t.order.download}
                 </a>
               </li>
             ))}
           </ul>
 
-          <p class="mt-4 text-xs text-ink-muted">{downloadsValidity}</p>
-          <p class="mt-2 text-xs text-ink-muted">{emailNotice}</p>
+          <p class="mt-3 border-t border-border pt-3 text-xs text-ink-muted">{downloadsValidity}</p>
+          <p class="mt-1.5 text-xs text-ink-muted">{emailNotice}</p>
         </section>
       )
     }

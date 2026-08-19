@@ -41,21 +41,31 @@ const signInHref = `/${lang}/account/login?next=${encodeURIComponent(Astro.url.p
   data-lang={lang}
   data-order-id={ownedOrderId}
   data-owned={String(owned)}
-  class="space-y-4"
+  class="panel space-y-3 p-4"
 >
-  {!owned && <p class="font-display text-2xl">${(digitalPriceCents / 100).toFixed(2)}</p>}
+  {!owned && <p class="font-display text-3xl">${(digitalPriceCents / 100).toFixed(2)}</p>}
 
   {
     owned ? (
       <>
         <p class="font-display text-xl">{t.detail.alreadyYours}</p>
         <button type="button" data-redownload class="btn btn-primary w-full py-3">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 4v10" />
+            <path d="M8 11l4 4 4-4" />
+            <path d="M5 19h14" />
+          </svg>
           {t.detail.downloadAgain}
         </button>
       </>
     ) : signedIn && hasCredits ? (
       <>
-        <button type="button" data-claim-free class="btn btn-primary w-full py-3">
+        {/* Accent-filled, not ink: this is the generous option sitting above a paid one,
+            and the two must not look like the same button twice. */}
+        <button type="button" data-claim-free class="btn btn-accent w-full py-3">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l2.4 5.3 5.6.6-4.2 3.9 1.2 5.7L12 15.8 6.9 18.5l1.2-5.7L4 8.9l5.6-.6z" />
+          </svg>
           {t.detail.downloadFree.replace('{remaining}', String(freeDownloadsRemaining))}
         </button>
         <button type="button" data-add-to-cart class="btn btn-ghost w-full py-3">
@@ -65,20 +75,49 @@ const signInHref = `/${lang}/account/login?next=${encodeURIComponent(Astro.url.p
     ) : (
       <>
         <button type="button" data-add-to-cart class="btn btn-primary w-full py-3">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6" />
+            <circle cx="10" cy="20" r="1" />
+            <circle cx="18" cy="20" r="1" />
+          </svg>
           {t.detail.buyDigital}
         </button>
         {signedIn ? (
           <p class="text-sm text-ink-muted">{t.detail.freeUsedUp}</p>
         ) : (
-          <p class="text-sm text-ink-muted">
-            <a href={signInHref} class="underline hover:text-ink">
-              {t.detail.freeSignedOut} &rarr;
-            </a>
-          </p>
+          <a
+            href={signInHref}
+            class="flex items-start gap-2 rounded-md bg-accent-wash p-3 text-sm transition-colors hover:text-accent"
+          >
+            <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l2.4 5.3 5.6.6-4.2 3.9 1.2 5.7L12 15.8 6.9 18.5l1.2-5.7L4 8.9l5.6-.6z" />
+            </svg>
+            <span>{t.detail.freeSignedOut} &rarr;</span>
+          </a>
         )}
       </>
     )
   }
+
+  {/* What you actually receive, stated where the decision is made rather than discovered
+      after paying. */}
+  <ul class="space-y-1.5 border-t border-border pt-3 text-xs text-ink-muted">
+    <li class="flex items-center gap-2">
+      <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3.5" y="5" width="17" height="14" rx="2" />
+        <path d="M4 17l5-4 4 3 3-2 4 3" />
+      </svg>
+      {t.home.trustOriginal}
+    </li>
+    <li class="flex items-center gap-2">
+      <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 4v10" />
+        <path d="M8 11l4 4 4-4" />
+        <path d="M5 19h14" />
+      </svg>
+      {t.home.trustInstant}
+    </li>
+  </ul>
 
   <p data-buy-error hidden class="text-sm text-accent"></p>
 </div>

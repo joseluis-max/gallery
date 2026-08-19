@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-sm: 4px; --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 900px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--raised); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 9px 18px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent;
+      cursor: pointer; white-space: nowrap;
+      transition: transform .15s var(--ease), background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--ink); color: var(--surface); }
+    .btn-primary:hover { box-shadow: 0 8px 18px -8px rgba(0, 0, 0, .5); }
+    .btn-ghost { border-color: var(--border-strong); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--ink); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 11px; font-size: 11px; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); cursor: pointer; background: transparent;
+      font-family: inherit; transition: all .18s var(--ease);
+    }
+    .chip:hover { border-color: var(--ink); color: var(--ink); }
+    .chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+
+    /* Mosaic tile: the whole design leans on this one hover — image lifts, veil clears,
+       the add control slides in. One deliberate motion beat instead of many. */
+    .tile { position: relative; overflow: hidden; border-radius: var(--r-md); background: var(--border); cursor: pointer; }
+    .tile .ph { width: 100%; height: 100%; transition: transform .5s var(--ease); }
+    .tile:hover .ph { transform: scale(1.04); }
+    .tile-veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,.55), rgba(10,10,10,0) 55%); opacity: 0; transition: opacity .25s var(--ease); }
+    .tile:hover .tile-veil { opacity: 1; }
+    .tile-meta { position: absolute; left: 12px; bottom: 11px; color: #fff; font-size: 12px; letter-spacing: .02em; opacity: 0; transform: translateY(4px); transition: all .25s var(--ease); }
+    .tile:hover .tile-meta { opacity: 1; transform: none; }
+    .tile-add {
+      position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+      background: rgba(255,255,255,.92); color: #0a0a0a; border: 0; opacity: 0; transform: scale(.85);
+      transition: all .2s var(--ease);
+    }
+    .tile:hover .tile-add, .tile-add.on { opacity: 1; transform: none; }
+    .tile-add:hover { background: #fff; }
+    .tile-add.on { background: var(--accent); color: var(--accent-ink); }
+    .tile-price { position: absolute; right: 12px; bottom: 11px; color: #fff; font-size: 12px; opacity: 0; transition: opacity .25s var(--ease); }
+    .tile:hover .tile-price { opacity: 1; }
+
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 10px; letter-spacing: 0; transition: transform .2s var(--ease); }
+    .count.bump { transform: scale(1.25); }
+    .rise { animation: rise .45s var(--ease) both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* Photo fills. The filenames live here as literal url("…") text so the runtime's
+       image resolution can see them — a src bound through a {{hole}} never carries the
+       literal name into the source, and would resolve to nothing at all. */
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <!-- Header: unchanged information architecture, tighter rhythm (24px gutter, 18px band)
+       and icons on the two links that are actions rather than places. -->
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: color-mix(in oklab, var(--surface) 88%, transparent); backdrop-filter: blur(8px); z-index: 20;">
+    <a href="#" class="display" style="font-size: 19px; letter-spacing: .01em;">José Valdiviezo</a>
+    <nav style="display: flex; align-items: center; gap: 22px; font-size: 13px;">
+      <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 5px;">
+        Competencias
+        <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg>
+      </a>
+      <a href="#" class="navlink">Portafolio</a>
+      <a href="#" class="navlink">Acerca de</a>
+      <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 7px;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+        Carrito
+        <sc-if value="{{hasCart}}" hint-placeholder-val="{{true}}">
+          <span class="count {{bumpClass}}">{{cartCount}}</span>
+        </sc-if>
+      </a>
+      <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 6px;">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5 20c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5"></path></svg>
+        Iniciar sesión
+      </a>
+      <button class="chip" onClick="{{toggleTheme}}" style="cursor: pointer;">
+        <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"></path></svg>
+        {{themeLabel}}
+      </button>
+    </nav>
+  </header>
+
+  <!-- Hero: 96px of air instead of 160, and the subtitle now carries a real fact
+       (how many competitions are up) rather than repeating the tagline. -->
+  <section style="padding: 76px 32px 44px; text-align: center;" class="rise">
+    <p class="eyebrow">Fotografía deportiva — Cuenca, Ecuador</p>
+    <h1 class="display" style="font-size: 62px; line-height: 1.02; margin: 14px 0 0;">José Valdiviezo</h1>
+    <p style="margin: 16px auto 0; max-width: 520px; color: var(--muted); font-size: 15px;">
+      Cada competencia se publica como su propia galería, para que quienes corrieron puedan encontrarse.
+    </p>
+    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 26px;">
+      <a href="#" class="btn btn-primary">
+        Ver fotografías
+        <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+      </a>
+      <a href="#" class="btn btn-ghost">Competencias</a>
+    </div>
+    <div style="display: flex; gap: 24px; justify-content: center; margin-top: 28px; font-size: 12px; color: var(--muted);">
+      <span style="display: inline-flex; align-items: center; gap: 6px;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z"></path></svg>
+        Descarga inmediata
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px;">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 10h18"></path></svg>
+        Tarjeta o transferencia
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 4v10"></path><path d="M8 11l4 4 4-4"></path><path d="M5 19h14"></path></svg>
+        Archivo original, sin marca de agua
+      </span>
+    </div>
+  </section>
+
+  <!-- The mosaic keeps its 1–2px editorial gaps; what changes is that every tile now
+       carries its own add-to-cart, so buying never requires opening the photo first. -->
+  <section style="padding: 0 8px;">
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 132px; gap: 4px;">
+      <sc-for list="{{tiles}}" as="tile" hint-placeholder-count="6">
+        <div class="tile" style="grid-column: span {{tile.cols}}; grid-row: span {{tile.rows}};">
+          <span class="ph {{tile.cls}}" role="img" aria-label="{{tile.title}}"></span>
+          <div class="tile-veil"></div>
+          <button class="tile-add {{tile.onClass}}" onClick="{{tile.add}}" aria-label="Añadir al carrito">
+            <sc-if value="{{tile.inCart}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            </sc-if>
+            <sc-if value="{{tile.notInCart}}" hint-placeholder-val="{{true}}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+            </sc-if>
+          </button>
+          <span class="tile-meta">{{tile.title}}</span>
+          <span class="tile-price">$1.75</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- Competitions: cards instead of a bare list, so the strip reads as somewhere to go. -->
+  <section style="padding: 44px 32px 8px;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between;">
+      <h2 class="display" style="font-size: 22px; margin: 0;">Competencias recientes</h2>
+      <a href="#" style="font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 5px;">
+        Ver todas
+        <svg class="icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+      </a>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px;">
+      <sc-for list="{{competitions}}" as="c" hint-placeholder-count="3">
+        <a href="#" class="panel" style="overflow: hidden; display: block; transition: border-color .2s var(--ease), transform .2s var(--ease);">
+          <div style="height: 108px; overflow: hidden;">
+            <span class="ph {{c.cls}}" role="img" aria-label="{{c.name}}" style="width: 100%; height: 100%;"></span>
+          </div>
+          <div style="padding: 12px 14px 14px;">
+            <p style="margin: 0; font-size: 14px;">{{c.name}}</p>
+            <p style="margin: 4px 0 0; font-size: 12px; color: var(--muted);">{{c.meta}}</p>
+          </div>
+        </a>
+      </sc-for>
+    </div>
+  </section>
+
+  <footer style="margin-top: 40px; padding: 20px 32px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 12px; color: var(--muted);">
+    <span>© 2026 José Valdiviezo — Cuenca, Ecuador</span>
+    <span style="display: flex; gap: 16px;"><a href="#" class="navlink">Español</a><a href="#" class="navlink">English</a></span>
+  </footer>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // `theme` starts from the prop so the tweak chip drives it, but the header toggle
+    // writes state — the prototype has to behave like the real toggle, not just preview.
+    this.state = { theme: null, cart: [], bump: false };
+  }
+
+  theme() {
+    return this.state.theme ?? this.props.theme ?? 'light';
+  }
+
+  toggle(id) {
+    const cart = this.state.cart.includes(id)
+      ? this.state.cart.filter((x) => x !== id)
+      : this.state.cart.concat(id);
+    this.setState({ cart, bump: true });
+    setTimeout(() => this.setState({ bump: false }), 200);
+  }
+
+  renderVals() {
+    const photos = [
+      { id: 'coast', title: 'dsc02172', cols: 3, rows: 3 },
+      { id: 'tortoise', title: 'dsc02314', cols: 2, rows: 2 },
+      { id: 'lava', title: 'dsc02319', cols: 1, rows: 2 },
+      { id: 'pelican', title: 'dsc02401', cols: 2, rows: 1 },
+      { id: 'beach', title: 'dsc02455', cols: 1, rows: 1 },
+      { id: 'lagoon', title: 'dsc02488', cols: 3, rows: 2 },
+    ];
+
+    return {
+      themeClass: this.theme() === 'dark' ? 'dark' : '',
+      themeLabel: this.theme() === 'dark' ? 'Dark' : 'Light',
+      accent: this.props.accent ?? '#b5502e',
+      toggleTheme: () => this.setState({ theme: this.theme() === 'dark' ? 'light' : 'dark' }),
+      cartCount: this.state.cart.length,
+      hasCart: this.state.cart.length > 0,
+      bumpClass: this.state.bump ? 'bump' : '',
+      tiles: photos.map((p) => ({
+        ...p,
+        cls: 'ph-' + p.id,
+        inCart: this.state.cart.includes(p.id),
+        notInCart: !this.state.cart.includes(p.id),
+        onClass: this.state.cart.includes(p.id) ? 'on' : '',
+        add: () => this.toggle(p.id),
+      })),
+      competitions: [
+        { cls: 'ph-lagoon', name: 'Vuelta al Cajas 2026', meta: '184 fotografías · 12 de julio' },
+        { cls: 'ph-tortoise', name: 'Maratón de Cuenca', meta: '312 fotografías · 28 de junio' },
+        { cls: 'ph-beach', name: 'Triatlón Yaguarcocha', meta: '96 fotografías · 5 de junio' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

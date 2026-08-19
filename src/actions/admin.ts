@@ -814,7 +814,8 @@ export const admin = {
         siteUrl: getPublicSiteUrl(),
         ttlDays: downloadConfig.ttlDays,
         maxUses: downloadConfig.maxUses,
-        emailer: createEmailer(),
+        // Passed uncalled on purpose — see `emailer` in FulfilOrderParams.
+        emailer: createEmailer,
       });
 
       // A null `closed` means someone else closed this row between the check above and

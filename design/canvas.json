@@ -1,0 +1,74 @@
+{
+  "pages": [
+    { "id": "page-buy", "name": "Compra y cuenta" },
+    { "id": "page-public", "name": "Sitio público" },
+    { "id": "page-admin", "name": "Admin" },
+    { "id": "page-system", "name": "Sistema" }
+  ],
+  "artboards": [
+    { "file": "Cart.dc.html", "title": "Carrito", "page": "page-buy", "x": 0, "y": 0, "w": 1280, "h": 820 },
+    { "file": "Checkout.dc.html", "title": "Pagar", "page": "page-buy", "x": 1360, "y": 0, "w": 1280, "h": 860 },
+    { "file": "Transfer.dc.html", "title": "Transferencia", "page": "page-buy", "x": 2720, "y": 0, "w": 1280, "h": 900 },
+    { "file": "Order.dc.html", "title": "Pedido", "page": "page-buy", "x": 4080, "y": 0, "w": 1280, "h": 860 },
+    { "file": "Account.dc.html", "title": "Mi cuenta", "page": "page-buy", "x": 5440, "y": 0, "w": 1280, "h": 820 },
+
+    { "file": "Main.dc.html", "title": "Inicio", "page": "page-public", "x": 0, "y": 0, "w": 1280, "h": 1180 },
+    { "file": "Gallery.dc.html", "title": "Galería", "page": "page-public", "x": 1360, "y": 0, "w": 1280, "h": 900 },
+    { "file": "Photo.dc.html", "title": "Fotografía", "page": "page-public", "x": 2720, "y": 0, "w": 1280, "h": 880 },
+
+    { "file": "Admin.dc.html", "title": "Revisión de transferencias", "page": "page-admin", "x": 0, "y": 0, "w": 1360, "h": 880 },
+
+    { "file": "System.dc.html", "title": "Sistema de diseño", "page": "page-system", "x": 0, "y": 0, "w": 1180, "h": 900 }
+  ],
+  "annotations": [
+    {
+      "id": "note-checkout",
+      "page": "page-buy",
+      "x": 1360,
+      "y": -250,
+      "w": 420,
+      "text": "Pagar — lo que cambió\n\n· Pasos arriba: el comprador sabe cuánto le falta.\n· El método es una decisión con radio + anillo, no dos cajas iguales.\n· Miniaturas en el resumen: tres nombres de archivo no dicen qué compraste.\n· Correo y pago en un solo panel, sin puerta previa."
+    },
+    {
+      "id": "note-transfer",
+      "page": "page-buy",
+      "x": 2720,
+      "y": -250,
+      "w": 420,
+      "text": "Transferencia — dos columnas\n\nIzquierda: a dónde va el dinero. El monto exacto va en placa de acento porque es el dato que no se puede equivocar; número de cuenta, cédula y monto se copian con un clic.\n\nDerecha: lo que devuelves. Zona de arrastre, y al enviar el mismo panel se convierte en el acuse."
+    },
+    {
+      "id": "note-order",
+      "page": "page-buy",
+      "x": 4080,
+      "y": -250,
+      "w": 420,
+      "text": "Pedido — cuatro estados en un solo lugar\n\nCambia el estado con la ficha «state» arriba del tablero: pendiente, en revisión, rechazado y pagado. La placa de color y la línea de seguimiento responden al estado."
+    },
+    {
+      "id": "note-public",
+      "page": "page-public",
+      "x": 0,
+      "y": -250,
+      "w": 420,
+      "text": "Sitio público\n\nMismos tokens de la tienda (Iowan Old Style, terracota, bordes de 1px). Lo nuevo es que cada foto se añade al carrito desde el mosaico, y la galería tiene búsqueda: en una competencia de 300 fotos es lo primero que busca un corredor."
+    },
+    {
+      "id": "note-admin",
+      "page": "page-admin",
+      "x": 0,
+      "y": -270,
+      "w": 460,
+      "text": "Revisión de transferencias\n\nLa decisión es comparar dos números, así que están lado a lado y grandes. El comprobante se ve sin salir de la pantalla, y el motivo de rechazo es obligatorio porque es el correo que recibe el cliente.\n\nAprobar y Rechazar funcionan en este prototipo."
+    },
+    {
+      "id": "note-system",
+      "page": "page-system",
+      "x": 0,
+      "y": -250,
+      "w": 420,
+      "text": "Sistema\n\nNada aquí es nuevo: son los tokens de src/styles/global.css puestos en una hoja. Cambia «accent» o «theme» en cualquier tablero y todas las pantallas responden igual que la tienda real."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-buy" }
+}

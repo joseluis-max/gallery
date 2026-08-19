@@ -15,10 +15,11 @@
 import { ObjectId } from 'mongodb';
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import { BANK_ACCOUNT, findLatestTransferForOrder } from '../../../../lib/bankTransfer';
-import { getDbConfig } from '../../../../lib/config';
+import { createStorage, getDbConfig } from '../../../../lib/config';
 import { getDb } from '../../../../lib/db';
 import { getDictionary, type Locale } from '../../../../lib/i18n';
 import { canViewOrder, getOrderById } from '../../../../lib/orders';
+import { buildOrderThumbs } from '../../../../lib/orderThumbs';
 
 export const prerender = false;
 
@@ -66,22 +67,27 @@ const total = money(order.totalCents);
 const orderNumber = order._id.toString().slice(-8);
 const knownEmail = order.customer.email || '';
 
+const thumbs = await buildOrderThumbs(db, createStorage(), order);
+
 /** Every row of the account panel. Built as data so the copy button, the label and the
  *  value can't drift apart, and so `copyable` is a property of the row rather than a
- *  judgement call repeated per row in the markup. */
+ *  judgement call repeated per row in the markup.
+ *
+ *  The amount is NOT in this list any more: it is the one value that must match to the
+ *  cent, and a wrong figure means a transfer nobody can approve — so it gets its own
+ *  plate above the table rather than a row that looks like all the others. */
 const accountRows = [
   { label: t.transfer.bank, value: BANK_ACCOUNT.bank, copyable: false },
   { label: t.transfer.accountType, value: BANK_ACCOUNT.accountType[lang], copyable: false },
   { label: t.transfer.accountNumber, value: BANK_ACCOUNT.accountNumber, copyable: true },
   { label: t.transfer.holder, value: BANK_ACCOUNT.holder, copyable: false },
   { label: t.transfer.idNumber, value: BANK_ACCOUNT.idNumber, copyable: true },
-  { label: t.transfer.amount, value: total, copyable: true },
 ];
 ---
 
 <BaseLayout title={`${t.transfer.title} — José Valdiviezo`} lang={lang}>
   <div
-    class="mx-auto max-w-5xl px-6 py-16"
+    class="mx-auto max-w-6xl px-6 py-10"
     data-transfer-page
     data-order-id={order._id.toString()}
     data-lang={lang}
@@ -93,37 +99,65 @@ const accountRows = [
       ...t.transfer.errors,
     })}
   >
-    <h1 class="font-display text-2xl">{t.transfer.title}</h1>
-    <p class="mt-3 max-w-2xl text-ink-muted">{t.transfer.intro.replace('{amount}', total)}</p>
+    <div class="flex items-center gap-3">
+      <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-accent-wash text-accent">
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 9.5L12 4.5l8.5 5" />
+          <path d="M5.5 9.5v8M9.5 9.5v8M14.5 9.5v8M18.5 9.5v8" />
+          <path d="M3 19.5h18" />
+        </svg>
+      </span>
+      <h1 class="font-display text-2xl">{t.transfer.title}</h1>
+    </div>
+    <p class="mt-2 max-w-2xl text-sm text-ink-muted">{t.transfer.intro.replace('{amount}', total)}</p>
 
-    <div class="mt-8 grid gap-10 md:grid-cols-[1.35fr_1fr]">
+    <div class="mt-6 grid gap-7 md:grid-cols-[1.15fr_1fr]">
       {/* Same two-rail shape as the card checkout — what you're paying for on the right,
           what you do about it on the left — so switching methods doesn't relayout the page
           under the buyer. */}
-      <section class="md:sticky md:top-8 md:col-start-2 md:row-start-1 md:self-start">
-        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
-        <ul class="mt-3 divide-y divide-border border-y border-border">
+      <section class="panel p-4 md:sticky md:top-24 md:col-start-2 md:row-start-1 md:self-start">
+        <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
+        <ul class="mt-2 divide-y divide-border">
           {
-            order.items.map((item) => (
-              <li class="flex items-center justify-between gap-4 py-4">
-                <div>
-                  <p>{item.photoTitle}</p>
-                  <p class="text-sm text-ink-muted">{t.cart.digitalFile}</p>
-                </div>
-                <p class="shrink-0">{money(item.totalCents)}</p>
-              </li>
-            ))
+            order.items.map((item) => {
+              const thumb = thumbs[item.photoId.toString()];
+              return (
+                <li class="flex items-center gap-3 py-2.5">
+                  {thumb ? (
+                    <picture class="frame h-11 w-11 shrink-0 bg-border">
+                      <source srcset={thumb.webpUrl} type="image/webp" />
+                      <img src={thumb.jpegUrl} alt={item.photoTitle} class="h-full w-full object-cover" />
+                    </picture>
+                  ) : (
+                    <span class="frame h-11 w-11 shrink-0 bg-border" aria-hidden="true" />
+                  )}
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm">{item.photoTitle}</span>
+                    <span class="block text-xs text-ink-muted">{t.cart.digitalFile}</span>
+                  </span>
+                  <span class="shrink-0 text-sm">{money(item.totalCents)}</span>
+                </li>
+              );
+            })
           }
         </ul>
-        <div class="mt-4 flex justify-between font-display text-lg">
-          <span>{t.checkout.total}</span>
-          <span>{total}</span>
+        <div class="mt-3 flex items-baseline justify-between border-t border-border-strong pt-3">
+          <span class="font-display text-base">{t.checkout.total}</span>
+          <span class="font-display text-xl">{total}</span>
         </div>
 
         {/* A reload, because the card page renders a widget from a remote module that a
             soft navigation would not re-evaluate — the same reason the order page marks
             its "complete payment" link. */}
-        <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="mt-6 inline-block text-sm underline">
+        <a
+          href={`/${lang}/checkout/${order._id.toString()}`}
+          data-astro-reload
+          class="mt-4 inline-flex items-center gap-2 text-xs text-ink-muted transition-colors hover:text-ink"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 12H6" />
+            <path d="M11 6l-6 6 6 6" />
+          </svg>
           {t.transfer.payByCard}
         </a>
       </section>
@@ -131,46 +165,91 @@ const accountRows = [
       <section class="md:col-start-1 md:row-start-1">
         {
           inReview && (
-            <div class="panel mb-8 p-4">
-              <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.inReviewTitle}</h2>
-              <p class="mt-2 text-sm text-ink-muted">{t.transfer.inReview}</p>
+            <div class="panel mb-4 flex items-start gap-3 border-accent/30 bg-accent-wash p-4">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5" />
+                <path d="M12 7.5V12l3 2" />
+              </svg>
+              <div>
+                <h2 class="text-[11px] uppercase tracking-widest text-accent">{t.transfer.inReviewTitle}</h2>
+                <p class="mt-1 text-sm text-ink-muted">{t.transfer.inReview}</p>
+              </div>
             </div>
           )
         }
 
         {
           rejected && (
-            <div class="panel mb-8 border-accent p-4">
-              <h2 class="text-sm uppercase tracking-widest text-accent">{t.transfer.rejectedTitle}</h2>
-              {latest?.rejectionReason && (
-                <p class="mt-2 text-sm">{t.transfer.rejected.replace('{reason}', latest.rejectionReason)}</p>
-              )}
+            <div class="panel mb-4 flex items-start gap-3 border-accent p-4">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5" />
+                <path d="M12 8v5" />
+                <path d="M12 16v.2" />
+              </svg>
+              <div>
+                <h2 class="text-[11px] uppercase tracking-widest text-accent">{t.transfer.rejectedTitle}</h2>
+                {latest?.rejectionReason && (
+                  <p class="mt-1 text-sm">{t.transfer.rejected.replace('{reason}', latest.rejectionReason)}</p>
+                )}
+              </div>
             </div>
           )
         }
 
-        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.transfer.accountTitle}</h2>
-        <dl class="mt-3 divide-y divide-border border-y border-border">
-          {
-            accountRows.map((row) => (
-              <div class="flex items-center justify-between gap-4 py-3">
-                <dt class="text-sm text-ink-muted">{row.label}</dt>
-                <dd class="flex items-center gap-3">
-                  <span class="font-mono">{row.value}</span>
-                  {row.copyable && (
-                    <button type="button" data-copy-value={row.value} class="chip shrink-0 text-xs hover:border-ink">
-                      {t.transfer.copy}
-                    </button>
-                  )}
-                </dd>
-              </div>
-            ))
-          }
-        </dl>
-        <p class="mt-3 text-sm text-ink-muted">{t.transfer.conceptHint.replace('{order}', `#${orderNumber}`)}</p>
+        <section class="panel p-4">
+          <h2 class="text-[11px] uppercase tracking-widest text-ink-muted">{t.transfer.accountTitle}</h2>
 
-        <h2 class="mt-10 text-sm uppercase tracking-widest text-ink-muted">{t.transfer.uploadTitle}</h2>
-        <form data-transfer-form class="panel mt-3 space-y-4 p-4">
+          {/* The figure that must match to the cent, on its own plate. Everything else on
+              this page can be re-read from the bank's app; a wrong amount is a transfer
+              nobody can approve. */}
+          <div class="mt-3 flex items-center justify-between gap-4 rounded-md border border-accent/30 bg-accent-wash px-3.5 py-3">
+            <span>
+              <span class="block text-[10px] uppercase tracking-widest text-ink-muted">{t.transfer.amount}</span>
+              <span class="font-display text-2xl text-accent">{total}</span>
+            </span>
+            <button type="button" data-copy-value={total} class="chip shrink-0 gap-1.5 text-xs hover:border-ink">
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+              </svg>
+              {t.transfer.copy}
+            </button>
+          </div>
+
+          <dl class="mt-1 divide-y divide-border">
+            {
+              accountRows.map((row) => (
+                <div class="flex items-center justify-between gap-4 py-2.5">
+                  <dt class="text-xs text-ink-muted">{row.label}</dt>
+                  <dd class="flex items-center gap-2.5">
+                    <span class="font-mono text-sm">{row.value}</span>
+                    {row.copyable && (
+                      <button type="button" data-copy-value={row.value} class="chip shrink-0 gap-1.5 text-xs hover:border-ink">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <rect x="9" y="9" width="11" height="11" rx="2" />
+                          <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+                        </svg>
+                        {t.transfer.copy}
+                      </button>
+                    )}
+                  </dd>
+                </div>
+              ))
+            }
+          </dl>
+
+          <p class="mt-3 flex items-start gap-2 rounded-md bg-ink/[0.04] px-3 py-2.5 text-xs text-ink-muted">
+            <svg class="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 11v5.5" />
+              <path d="M12 7.8v.2" />
+            </svg>
+            {t.transfer.conceptHint.replace('{order}', `#${orderNumber}`)}
+          </p>
+        </section>
+
+        <h2 class="mt-6 text-[11px] uppercase tracking-widest text-ink-muted">{t.transfer.uploadTitle}</h2>
+        <form data-transfer-form class="panel mt-2 space-y-3.5 p-4">
           <div>
             <label class="block text-sm" for="transfer-email">{t.transfer.emailLabel}</label>
             <input
@@ -190,27 +269,42 @@ const accountRows = [
             {/* The accept list mirrors RECEIPT_TYPES in lib/bankTransfer.ts. It is a
                 convenience for the file picker only — the server re-checks the type, since
                 this attribute is trivially bypassed. */}
+            {/* Styled through `file:` variants rather than replaced by a custom dropzone:
+                the native control is what the form submits and what the script reads, and
+                a bespoke one would mean re-implementing keyboard access and the file name
+                for the sake of a border. */}
             <input
               id="transfer-receipt"
               name="receipt"
               type="file"
               required
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-              class="field mt-2 w-full"
+              class="field mt-1.5 w-full cursor-pointer border-dashed py-2.5 text-sm file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-ink file:px-3.5 file:py-1.5 file:text-[11px] file:uppercase file:tracking-widest file:text-surface hover:border-accent"
             />
-            <p class="mt-2 text-sm text-ink-muted">{t.transfer.uploadHint}</p>
+            <p class="mt-1.5 text-xs text-ink-muted">{t.transfer.uploadHint}</p>
           </div>
 
           <div>
             <label class="block text-sm" for="transfer-reference">{t.transfer.referenceLabel}</label>
-            <input id="transfer-reference" name="reference" type="text" maxlength="120" class="field mt-2 w-full" />
-            <p class="mt-2 text-sm text-ink-muted">{t.transfer.referenceHint}</p>
+            <input id="transfer-reference" name="reference" type="text" maxlength="120" class="field mt-1.5 w-full" />
+            <p class="mt-1.5 text-xs text-ink-muted">{t.transfer.referenceHint}</p>
           </div>
 
           <p data-transfer-error hidden class="text-sm text-accent"></p>
 
-          <button type="submit" data-transfer-submit class="btn btn-primary w-full py-3">{t.transfer.submit}</button>
-          <p class="text-xs text-ink-muted">{t.transfer.reviewNotice}</p>
+          <button type="submit" data-transfer-submit class="btn btn-primary w-full py-3">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4.5 12l15-7-5 15-3-6z" />
+            </svg>
+            {t.transfer.submit}
+          </button>
+          <p class="flex items-center justify-center gap-1.5 text-xs text-ink-muted">
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 7.5V12l3 2" />
+            </svg>
+            {t.transfer.reviewNotice}
+          </p>
         </form>
       </section>
     </div>
