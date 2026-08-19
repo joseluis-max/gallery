@@ -100,9 +100,17 @@ export default defineConfig({
       // client code at all, so the exposure can only ever be one deliberate line in one
       // .astro file rather than an accident of an import.
       PAYPHONE_TOKEN: envField.string({ context: 'server', access: 'secret' }),
-      // Identifies the store, not a credential — and it reaches the browser in the widget
-      // config regardless, same as the GCS prefixes above.
-      PAYPHONE_STORE_ID: envField.string({ context: 'server', access: 'public' }),
+      // Identifies the store, not a credential, and it reaches the browser in the widget
+      // config regardless — but it is `secret` rather than `public` because astro:env
+      // INLINES every public value into the built output. As a public var its value was
+      // frozen at `docker build`, where the real store id does not exist (.dockerignore
+      // excludes .env), so the image shipped the Dockerfile's placeholder and
+      // cloudbuild.yaml's --set-env-vars could not override it — Payphone answered every
+      // prepare call with 404 "La tienda asociada no existe". `secret` is astro:env's only
+      // runtime-resolved access level, so it is how "read this at container start" has to
+      // be spelled; MONGODB_DB_NAME and GCS_BUCKET above are the same shape, and neither
+      // of those is a credential either.
+      PAYPHONE_STORE_ID: envField.string({ context: 'server', access: 'secret' }),
 
       // No ADMIN_PASSWORD_HASH: admin access is a `users` document with role 'admin'
       // (see src/lib/users.ts and `pnpm create-admin`), so there is no admin credential
