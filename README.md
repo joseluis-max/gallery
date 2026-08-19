@@ -89,7 +89,7 @@ croppable corner. It's a CSS background — a determined visitor deletes the ele
 devtools and it's gone, which is why it supplements the burned-in mark instead of
 replacing it. The mark's text comes from the same `watermark.config.ts` the ingest
 pipeline uses, so the two can't drift; density and opacity live in
-`src/lib/watermarkOverlay.ts` (`DEFAULT_OVERLAY_OPACITY`, currently `0.14`) and in the
+`src/lib/watermarkOverlay.ts` (`DEFAULT_OVERLAY_OPACITY`, currently `0.28`) and in the
 component's `TILE_PX`.
 
 ## Getting started

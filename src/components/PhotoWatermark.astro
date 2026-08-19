@@ -14,7 +14,7 @@ interface Props {
 
 const { scale = 'tile', text = defaultWatermarkConfig.text, opacity } = Astro.props;
 
-const TILE_PX = { tile: 140, hero: 260 } as const;
+const TILE_PX = { tile: 120, hero: 220 } as const;
 const size = TILE_PX[scale];
 const dataUri = buildWatermarkTile({ text, size, opacity });
 ---

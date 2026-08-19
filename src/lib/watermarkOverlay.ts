@@ -17,12 +17,12 @@ export interface WatermarkTileOptions {
   text: string;
   /** Edge of one repeat, in CSS px. Feed the same number to `background-size`. */
   size: number;
-  /** Opacity of the light text, 0-1. The dark shadow behind it tracks at ~55% of this. */
+  /** Opacity of the light text, 0-1. The dark shadow behind it tracks at 75% of this. */
   opacity?: number;
 }
 
 /** Light enough to browse behind, dark enough to survive a screenshot re-crop. */
-export const DEFAULT_OVERLAY_OPACITY = 0.14;
+export const DEFAULT_OVERLAY_OPACITY = 0.28;
 
 /**
  * Returns a `url()`-ready `data:image/svg+xml` URI for a square tile carrying the mark
@@ -39,8 +39,15 @@ export function buildWatermarkTile({ text, size, opacity = DEFAULT_OVERLAY_OPACI
   // matter which font the visitor's device actually substitutes, so the lattice keeps its
   // spacing everywhere instead of going sparse on one platform and crowded on another.
   const span = Math.round(edge * 0.78);
-  const fontSize = Math.max(8, Math.round(edge * 0.085));
+  // Taller glyphs for the same `textLength` means thicker strokes, which is most of what
+  // makes the mark survive being viewed small or re-compressed — raising opacity alone
+  // just tints the photograph.
+  const fontSize = Math.max(8, Math.round(edge * 0.1));
   const baselineShift = Math.round(fontSize * 0.35);
+  // Scaled with the type rather than a flat 1px: on a bright frame the white fill has
+  // almost nothing to contrast against, so the offset dark copy is what's actually
+  // carrying the mark there, and a hairline offset behind 22px glyphs disappears.
+  const shadowOffset = Math.max(1, Math.round(fontSize * 0.1));
   const escaped = escapeXml(text);
 
   const glyphs = `font-family="Georgia, 'Iowan Old Style', serif" font-size="${fontSize}" text-anchor="middle" textLength="${span}" lengthAdjust="spacingAndGlyphs"`;
@@ -50,7 +57,7 @@ export function buildWatermarkTile({ text, size, opacity = DEFAULT_OVERLAY_OPACI
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${edge}" height="${edge}">` +
     `<g transform="rotate(-30 ${center} ${center})">` +
-    `<text x="${center + 1}" y="${center + baselineShift + 1}" ${glyphs} fill="#000000" fill-opacity="${round(alpha * 0.55)}">${escaped}</text>` +
+    `<text x="${center + shadowOffset}" y="${center + baselineShift + shadowOffset}" ${glyphs} fill="#000000" fill-opacity="${round(alpha * 0.75)}">${escaped}</text>` +
     `<text x="${center}" y="${center + baselineShift}" ${glyphs} fill="#ffffff" fill-opacity="${round(alpha)}">${escaped}</text>` +
     `</g></svg>`;
 

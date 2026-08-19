@@ -50,7 +50,7 @@ describe('buildWatermarkTile', () => {
     const svg = decode(buildWatermarkTile({ text: 'Mark', size: 140, opacity: 0.4 }));
 
     expect(svg).toContain('fill-opacity="0.4"');
-    expect(svg).toContain('fill-opacity="0.22"');
+    expect(svg).toContain('fill-opacity="0.3"');
   });
 
   it('clamps out-of-range opacity and falls back on a non-finite one', () => {
