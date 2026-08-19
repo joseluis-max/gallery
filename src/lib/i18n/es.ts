@@ -72,6 +72,30 @@ export interface Dictionary {
      *  confirmation that did not add up. Deliberately the same message for both. */
     unconfirmed: string;
     completePayment: string;
+    /** Heading over the per-item download links shown on a paid order. */
+    downloadsTitle: string;
+    download: string;
+    /** Contains `{days}` and `{uses}` placeholders. */
+    downloadsValidity: string;
+    /** Contains `{count}` and `{email}` placeholders. */
+    emailedTo: string;
+    /** Shown instead of `emailedTo` when the order carries no address to send to. */
+    noEmail: string;
+  };
+  /** Copy for the order-confirmation email. It lives in the dictionary rather than beside
+   *  the sender so there is one translation home for the whole product; lib/orderEmail.ts
+   *  renders it. */
+  email: {
+    /** Contains an `{order}` placeholder. */
+    subject: string;
+    intro: string;
+    downloadsTitle: string;
+    download: string;
+    /** Contains `{days}` and `{uses}` placeholders. */
+    validity: string;
+    total: string;
+    viewOrder: string;
+    footer: string;
   };
   account: {
     signInTitle: string;
@@ -212,6 +236,21 @@ export const es: Dictionary = {
     declined: 'El pago fue cancelado o rechazado. No se te cobró nada; puedes intentarlo de nuevo.',
     unconfirmed: 'No pudimos confirmar el pago. Si se te realizó un cargo, se reversará automáticamente. Escríbenos si tienes dudas.',
     completePayment: 'Completar el pago',
+    downloadsTitle: 'Tus descargas',
+    download: 'Descargar',
+    downloadsValidity: 'Cada enlace es válido por {days} día(s) y hasta {uses} descargas. Vuelve a esta página cuando quieras y se generará uno nuevo.',
+    emailedTo: 'También enviamos {count} enlace(s) de descarga a {email}.',
+    noEmail: 'Este pedido no tiene un correo asociado, así que descarga tus archivos desde aquí.',
+  },
+  email: {
+    subject: 'Tu pedido #{order} — José Valdiviezo',
+    intro: 'Gracias por tu compra. Tus archivos digitales están listos para descargar.',
+    downloadsTitle: 'Tus descargas',
+    download: 'Descargar',
+    validity: 'Cada enlace es válido por {days} día(s) y hasta {uses} descargas.',
+    total: 'Total',
+    viewOrder: 'Ver tu pedido',
+    footer: 'José Valdiviezo — Fotografía',
   },
   account: {
     signInTitle: 'Iniciar sesión',

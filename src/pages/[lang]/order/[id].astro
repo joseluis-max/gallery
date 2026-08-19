@@ -1,7 +1,7 @@
 ---
 import { ObjectId } from 'mongodb';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getDbConfig } from '../../../lib/config';
+import { getDbConfig, getDownloadConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
 import { canViewOrder, getOrderById } from '../../../lib/orders';
@@ -37,6 +37,35 @@ if (!canViewOrder(order, viewer)) {
 }
 
 const digitalItemCount = order.items.length;
+
+// The download links are deliberately NOT the tokens fulfilment emailed. Only a token's
+// hash is stored (lib/downloads.ts), so those raw values no longer exist anywhere on the
+// server — and minting a fresh set on every render would spend a token row on every
+// refresh, back-button and crawl. Each link below points at an endpoint that mints one
+// when it is actually clicked; see api/order-download/[orderId]/[photoId].ts, which
+// re-checks `canViewOrder` so this page can never hand out more than it is allowed to.
+const { ttlDays, maxUses } = getDownloadConfig();
+
+const downloadsValidity = t.order.downloadsValidity.replace('{days}', String(ttlDays)).replace('{uses}', String(maxUses));
+
+/**
+ * Masks the local part of the address the receipt went to.
+ *
+ * A guest order is readable by anyone holding its id — that is the documented deal in
+ * lib/orders.ts — and a receipt link is exactly the kind of thing that gets forwarded, so
+ * printing the address in full would publish it to everyone downstream. The masked form
+ * still does the job it is here for: the buyer recognises their own address, and a
+ * mistyped *domain* — the error that actually strands a purchase — stays visible.
+ */
+function maskEmail(address: string): string {
+  const at = address.lastIndexOf('@');
+  if (at <= 0) return '•••';
+  return `${address[0]}•••${address.slice(at)}`;
+}
+
+const emailNotice = order.customer.email
+  ? t.order.emailedTo.replace('{count}', String(digitalItemCount)).replace('{email}', maskEmail(order.customer.email))
+  : t.order.noEmail;
 
 // Reading `?payment=` is safe precisely because it only picks which *message* to show —
 // the order's actual status still comes from the database above. Anyone can put
@@ -100,11 +129,34 @@ const paymentNotice = paymentParam === 'declined' ? t.order.declined : paymentPa
 
     {
       order.status === 'paid' && digitalItemCount > 0 && (
-        <p class="panel mt-8 p-4 text-sm text-ink-muted">
-          {lang === 'es'
-            ? `Hemos enviado ${digitalItemCount} enlace(s) de descarga a tu correo. Cada enlace es válido por tiempo limitado.`
-            : `We've emailed ${digitalItemCount} download link(s) to your inbox. Each link is valid for a limited time and number of uses.`}
-        </p>
+        <section class="mt-12">
+          <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.order.downloadsTitle}</h2>
+
+          <ul class="mt-4 divide-y divide-border border-y border-border">
+            {order.items.map((item) => (
+              <li class="flex items-center justify-between gap-4 py-3">
+                <span>{item.photoTitle}</span>
+                {/*
+                 * data-astro-reload, not decoration: ClientRouter would otherwise try to
+                 * swap this in as a page. The endpoint answers with a redirect to a
+                 * short-lived presigned URL carrying its own attachment disposition, which
+                 * is also why there is no `download` attribute — that attribute is ignored
+                 * cross-origin, and the header is what actually saves the file.
+                 */}
+                <a
+                  href={`/api/order-download/${order._id.toString()}/${item.photoId.toString()}`}
+                  data-astro-reload
+                  class="btn btn-ghost shrink-0 px-4 py-2"
+                >
+                  {t.order.download}
+                </a>
+              </li>
+            ))}
+          </ul>
+
+          <p class="mt-4 text-xs text-ink-muted">{downloadsValidity}</p>
+          <p class="mt-2 text-xs text-ink-muted">{emailNotice}</p>
+        </section>
       )
     }
 

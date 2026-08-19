@@ -8,7 +8,7 @@ const recordConfirmResponseMock = vi.fn();
 const getOrderByIdMock = vi.fn();
 const markOrderPaidMock = vi.fn();
 const mintDownloadTokenMock = vi.fn();
-const sendEmailMock = vi.fn();
+const sendMock = vi.fn();
 
 // The route reaches for no collection directly — everything goes through lib/payments and
 // lib/orders — so the db handle only has to exist.
@@ -19,6 +19,8 @@ vi.mock('../../src/lib/config', () => ({
   getDbConfig: vi.fn(() => ({})),
   getPayphoneConfig: vi.fn(() => ({ token: 'tok_x', storeId: 'store_x' })),
   getDownloadConfig: vi.fn(() => ({ ttlDays: 7, maxUses: 5 })),
+  getPublicSiteUrl: vi.fn(() => 'https://josevaldiviezo.test'),
+  createEmailer: vi.fn(() => ({ send: sendMock })),
 }));
 vi.mock('../../src/lib/payphone', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/payphone')>()),
@@ -31,7 +33,6 @@ vi.mock('../../src/lib/payments', () => ({
 }));
 vi.mock('../../src/lib/orders', () => ({ getOrderById: getOrderByIdMock, markOrderPaid: markOrderPaidMock }));
 vi.mock('../../src/lib/downloads', () => ({ mintDownloadToken: mintDownloadTokenMock }));
-vi.mock('../../src/lib/email', () => ({ sendEmail: sendEmailMock }));
 
 const { GET } = await import('../../src/pages/api/payphone-confirm.ts');
 
@@ -96,7 +97,7 @@ describe('GET /api/payphone-confirm', () => {
     getOrderByIdMock.mockReset().mockResolvedValue(pendingOrder);
     markOrderPaidMock.mockReset().mockResolvedValue(paidOrder);
     mintDownloadTokenMock.mockReset().mockResolvedValue('raw-token-abc');
-    sendEmailMock.mockReset();
+    sendMock.mockReset().mockResolvedValue(undefined);
   });
 
   it('400s when clientTransactionId is missing', async () => {
@@ -138,8 +139,15 @@ describe('GET /api/payphone-confirm', () => {
       customer: { email: 'buyer@example.com', name: undefined },
     });
     expect(mintDownloadTokenMock).toHaveBeenCalledTimes(2);
-    expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    expect(sendEmailMock.mock.calls[0][0].text).toContain('/api/download/raw-token-abc');
+    expect(sendMock).toHaveBeenCalledTimes(1);
+
+    const message = sendMock.mock.calls[0][0];
+    expect(message.to).toBe('buyer@example.com');
+    // Absolute, in BOTH parts. A relative path is not a link once it is inside an inbox,
+    // which is the defect this replaced — and a client that strips HTML must still be
+    // left with something the buyer can paste into a browser.
+    expect(message.text).toContain('https://josevaldiviezo.test/api/download/raw-token-abc');
+    expect(message.html).toContain('https://josevaldiviezo.test/api/download/raw-token-abc');
     // The locale comes from the stored attempt, not from the query string.
     expect(redirect).toHaveBeenCalledWith(`/es/order/${orderId.toString()}`, 302);
   });
@@ -155,7 +163,7 @@ describe('GET /api/payphone-confirm', () => {
 
     expect(markOrderPaidMock).not.toHaveBeenCalled();
     expect(mintDownloadTokenMock).not.toHaveBeenCalled();
-    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
     // Reported as the generic failure, not a distinct probe-able string.
     expect(redirect).toHaveBeenCalledWith(`/es/order/${orderId.toString()}?payment=unconfirmed`, 302);
     // ...but the evidence is still on record.
@@ -205,7 +213,7 @@ describe('GET /api/payphone-confirm', () => {
 
     expect(confirmPayphonePaymentMock).not.toHaveBeenCalled();
     expect(mintDownloadTokenMock).not.toHaveBeenCalled();
-    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
     expect(redirect).toHaveBeenCalledWith(`/es/order/${orderId.toString()}`, 302);
   });
 
@@ -243,7 +251,7 @@ describe('GET /api/payphone-confirm', () => {
     await call(okQuery).promise;
 
     expect(mintDownloadTokenMock).not.toHaveBeenCalled();
-    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
   });
 
   // The crash-safety ordering is otherwise an invisible invariant: this is the only thing
@@ -266,5 +274,37 @@ describe('GET /api/payphone-confirm', () => {
     await promise;
 
     expect(redirect).toHaveBeenCalledWith(`/en/order/${orderId.toString()}`, 302);
+  });
+
+  it('writes the receipt in the locale the buyer paid in', async () => {
+    claimConfirmMock.mockResolvedValue({ ...attempt, lang: 'en' });
+
+    await call(okQuery).promise;
+
+    expect(sendMock.mock.calls[0][0].subject).toContain('Your order');
+    expect(sendMock.mock.calls[0][0].text).toContain('Thank you for your purchase');
+  });
+
+  // The buyer has paid, the order says paid, and the tokens exist — the order page can
+  // hand over every file on its own. An email outage must not be dressed up as a failed
+  // fulfilment, and above all must not cost the buyer their redirect.
+  it('still completes the order when the email provider is down', async () => {
+    sendMock.mockRejectedValue(new Error('Mailgun rejected the message (HTTP 401): Forbidden'));
+
+    const { redirect, promise } = call(okQuery);
+    await promise;
+
+    expect(markOrderPaidMock).toHaveBeenCalled();
+    expect(mintDownloadTokenMock).toHaveBeenCalledTimes(2);
+    expect(redirect).toHaveBeenCalledWith(`/es/order/${orderId.toString()}`, 302);
+  });
+
+  it('does not attempt a send for an order with no address on it', async () => {
+    markOrderPaidMock.mockResolvedValue({ ...paidOrder, customer: { email: '' } });
+
+    await call(okQuery).promise;
+
+    expect(mintDownloadTokenMock).toHaveBeenCalledTimes(2);
+    expect(sendMock).not.toHaveBeenCalled();
   });
 });

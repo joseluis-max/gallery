@@ -4,6 +4,7 @@
 import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import type { DbConfig } from '../src/lib/db.ts';
+import { createEmailProvider, type EmailProvider } from '../src/lib/email.ts';
 import { createStorageAdapter, type GcsConfig, type StorageAdapter } from '../src/lib/storage.ts';
 
 if (existsSync('.env')) {
@@ -26,6 +27,11 @@ const scriptEnvSchema = z.object({
   GCS_ORIGINALS_PREFIX: z.string().default('originals'),
   GCS_PUBLIC_PREFIX: z.string().default('public'),
   GCS_PUBLIC_BASE_URL: z.string().optional(),
+  EMAIL_DRIVER: z.enum(['console', 'mailgun']).default('mailgun'),
+  MAILGUN_API_KEY: z.string().optional(),
+  MAILGUN_DOMAIN: z.string().optional(),
+  MAILGUN_FROM: z.string().optional(),
+  MAILGUN_BASE_URL: z.string().default('https://api.mailgun.net'),
 });
 
 let cached: z.infer<typeof scriptEnvSchema> | undefined;
@@ -50,9 +56,12 @@ export function getDbConfig(): DbConfig {
   return { uri: env.MONGODB_URI, dbName: env.MONGODB_DB_NAME };
 }
 
-function required(name: string, value: string | undefined, driver: string): string {
+/** `when` names the setting that asked for the variable — "STORAGE_DRIVER=gcs",
+ *  "EMAIL_DRIVER=mailgun" — because a message that blames the wrong setting sends people
+ *  to the wrong part of .env. Mirrors `required()` in src/lib/config.ts. */
+function required(name: string, value: string | undefined, when: string): string {
   if (!value) {
-    console.error(`${name} is required when STORAGE_DRIVER=${driver}. See .env.example.`);
+    console.error(`${name} is required when ${when}. See .env.example.`);
     process.exit(1);
   }
   return value;
@@ -61,9 +70,9 @@ function required(name: string, value: string | undefined, driver: string): stri
 export function getGcsConfig(): GcsConfig {
   const env = readEnv();
   return {
-    accessKeyId: required('GCS_ACCESS_KEY_ID', env.GCS_ACCESS_KEY_ID, 'gcs'),
-    secretAccessKey: required('GCS_SECRET_ACCESS_KEY', env.GCS_SECRET_ACCESS_KEY, 'gcs'),
-    bucket: required('GCS_BUCKET', env.GCS_BUCKET, 'gcs'),
+    accessKeyId: required('GCS_ACCESS_KEY_ID', env.GCS_ACCESS_KEY_ID, 'STORAGE_DRIVER=gcs'),
+    secretAccessKey: required('GCS_SECRET_ACCESS_KEY', env.GCS_SECRET_ACCESS_KEY, 'STORAGE_DRIVER=gcs'),
+    bucket: required('GCS_BUCKET', env.GCS_BUCKET, 'STORAGE_DRIVER=gcs'),
     originalsPrefix: env.GCS_ORIGINALS_PREFIX,
     publicPrefix: env.GCS_PUBLIC_PREFIX,
     publicBaseUrl: env.GCS_PUBLIC_BASE_URL,
@@ -76,6 +85,33 @@ export function getStorageDriver(): 'gcs' | 'local' {
 
 export function getLocalStorageDir(): string {
   return readEnv().LOCAL_STORAGE_DIR;
+}
+
+/** The CLI counterpart to `createEmailer()` in src/lib/config.ts — same driver switch
+ *  and the same defaults, so `pnpm verify-email` proves the configuration the running app
+ *  would actually use rather than a parallel one that happens to work. */
+export function getEmailer(): EmailProvider {
+  const env = readEnv();
+  if (env.EMAIL_DRIVER === 'console') return createEmailProvider({ driver: 'console' });
+
+  const domain = required('MAILGUN_DOMAIN', env.MAILGUN_DOMAIN, 'EMAIL_DRIVER=mailgun');
+  return createEmailProvider({
+    driver: 'mailgun',
+    apiKey: required('MAILGUN_API_KEY', env.MAILGUN_API_KEY, 'EMAIL_DRIVER=mailgun'),
+    domain,
+    from: env.MAILGUN_FROM || `José Valdiviezo <no-reply@${domain}>`,
+    baseUrl: env.MAILGUN_BASE_URL,
+    timeoutMs: 10_000,
+  });
+}
+
+export function getEmailDriver(): 'console' | 'mailgun' {
+  return readEnv().EMAIL_DRIVER;
+}
+
+export function getMailgunSummary() {
+  const env = readEnv();
+  return { domain: env.MAILGUN_DOMAIN, from: env.MAILGUN_FROM, baseUrl: env.MAILGUN_BASE_URL, hasKey: !!env.MAILGUN_API_KEY };
 }
 
 /** The CLI counterpart to `createStorage()` in src/lib/config.ts — same driver switch,

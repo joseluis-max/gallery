@@ -16,6 +16,7 @@
     "ingest": "tsx scripts/ingest.ts",
     "init-db": "tsx scripts/init-db.ts",
     "verify-storage": "tsx scripts/verify-storage.ts",
+    "verify-email": "tsx scripts/verify-email.ts",
     "generate:placeholders": "tsx scripts/generate-placeholders.ts",
     "create-admin": "tsx scripts/create-admin.ts"
   },

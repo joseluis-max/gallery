@@ -136,6 +136,7 @@ pnpm dev
 | `pnpm ingest <dir> [--collection=x] [--dry-run]` | Run the image pipeline over a folder |
 | `pnpm run init-db` | Create Mongo collections + indexes |
 | `pnpm verify-storage` | Prove the configured bucket works *and* that originals aren't public |
+| `pnpm verify-email <address>` | Send a real test message through the configured provider |
 | `pnpm run generate:placeholders` | Generate synthetic test photos from `seed/metadata.json` |
 | `pnpm create-admin <email> <password> [name]` | Create (or promote) an admin account |
 
@@ -159,6 +160,20 @@ See `.env.example` for the full list with inline comments. Summary:
   response URL (`/api/payphone-confirm`) and the authorized domain must be registered
   there too; see `.env.example`.
 - `DOWNLOAD_TOKEN_TTL_DAYS` (default 7), `DOWNLOAD_TOKEN_MAX_USES` (default 5).
+- `EMAIL_DRIVER` — `mailgun` | `console` (default **`mailgun`**). `console` prints
+  messages instead of sending them and is a development mode you opt into; it is not the
+  fallback, because a store whose product is a download link must not be able to fail
+  silently. Verify with `pnpm verify-email <address>`.
+- `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM` (optional, defaults to
+  `no-reply@<domain>`), `MAILGUN_BASE_URL` (defaults to the US host). Set
+  `MAILGUN_BASE_URL=https://api.eu.mailgun.net` for an EU-provisioned domain — an EU
+  domain called on the US host returns 401, which reads exactly like a bad key.
+
+  These are declared `access: 'secret'` in `astro.config.mjs` **including
+  `EMAIL_DRIVER`**, which is not a credential. `secret` is astro:env's only
+  runtime-resolved level; anything `public` is inlined at `docker build`, where `.env`
+  does not exist, so `--set-env-vars` at deploy time could never move it. That is the
+  exact failure `PAYPHONE_STORE_ID` already went through.
 
 There is deliberately **no admin credential in the environment**. `ADMIN_PASSWORD_HASH`
 used to live here; admin access is now a `users` document with `role: 'admin'`, created
@@ -441,10 +456,18 @@ no client-side plotting code, nothing to hydrate:
   client sends dimensions/paper/qty; it never sends a price, and nothing trusts one if
   it did.
 - **Download tokens are single-use-capped and expiring, never durable links.** Only a
-  SHA-256 hash of the token is stored; the raw value exists only in memory long enough
-  to email it once. Consuming a token is one atomic `findOneAndUpdate` with the
+  SHA-256 hash of the token is stored; the raw value exists only in memory long enough to
+  be handed out once. Consuming a token is one atomic `findOneAndUpdate` with the
   expiry/use-cap guards baked into the filter, to avoid a race where concurrent requests
   could exceed `maxUses`.
+- **The order page's Download buttons mint on click, not on render.** Because only the
+  hash is stored, the tokens the receipt email carries cannot be re-displayed later — so
+  `/api/order-download/[orderId]/[photoId]` re-checks `canViewOrder`, the paid status and
+  item membership, mints one token, and redirects to `/api/download/[token]`. That keeps
+  `/api/download/[token]` the only thing in the codebase that ever touches an original,
+  and spends a token row on a real download request rather than on every page view. Note
+  the trade-off it accepts: for a *guest* order the unguessable order id becomes the
+  credential for the files, not just for the receipt.
 - **Every admin mutation writes an audit log entry** via the single `writeAuditLog()`
   helper (`lib/audit.ts`), and every admin Action is defined through
   `defineAdminAction()` (`src/actions/adminGuard.ts`), which enforces the auth check
@@ -463,10 +486,16 @@ no client-side plotting code, nothing to hydrate:
   `src/middleware.ts`, which calls `astro:i18n`'s `middleware()` helper itself — but only
   for non-`/admin` paths — reproducing the exact same locale-prefix behavior for the
   public site while leaving the (deliberately non-bilingual) admin panel alone.
-- **No email provider was specified.** `lib/email.ts` is a small provider interface with
-  a console-log fallback (`ConsoleEmailProvider`). Swap in a real provider (Resend,
-  Postmark, SendGrid, ...) by implementing `EmailProvider` and calling
-  `setEmailProvider()` once at startup.
+- **Email is a driver behind `createEmailer()`**, exactly as storage is behind
+  `createStorage()`: `lib/email.ts` holds the `EmailProvider` interface and its two
+  implementations (`MailgunEmailProvider`, `ConsoleEmailProvider`) and reads no
+  environment of its own, while `lib/config.ts` assembles the config from `EMAIL_DRIVER`
+  and the `MAILGUN_*` vars. `EMAIL_DRIVER` defaults to `mailgun`, **not** `console`, and
+  that is deliberate: the previous console-only stub was never swapped out, so every
+  receipt the store ever produced — and with it every download link — went to stdout while
+  the order page told the buyer to check their inbox. A misconfigured deployment now
+  throws on the first send instead of failing invisibly. `pnpm verify-email <address>`
+  proves the configuration end to end without making a purchase.
 - **Fulfilment is manual today, pluggable later.** `lib/fulfillment.ts`'s
   `FulfillmentProvider` interface has one implementation (`ManualFulfillmentProvider` —
   José enters carrier/tracking by hand in `/admin/orders/[id]`); a Prodigi/Gelato adapter
@@ -597,6 +626,10 @@ registered in the Payphone Developer console:
       item, and the receipt carries the links.
 - [ ] **Refreshing the confirm URL mints no second token, sends no second email, and makes
       no second call to Payphone** — confirm is terminal, so this is the one that matters.
+- [ ] The receipt email actually arrives, in the locale the buyer paid in, with **absolute**
+      download links that work from the inbox — and the order page's own Download buttons
+      deliver the same files. Run `pnpm verify-email` first: it isolates a Mailgun
+      misconfiguration from a fulfilment bug.
 - [ ] A hand-crafted `/api/payphone-confirm?id=999&clientTransactionId=<valid>` leaves the
       order `pending` and returns `?payment=unconfirmed`.
 - [ ] A checkout page left open past 10 minutes shows the expired state, and "start again"
@@ -617,12 +650,11 @@ registered in the Payphone Developer console:
 
 ### Not built, and why
 
-- **Email verification and "forgot password" are absent** because `lib/email.ts` still
-  has no real provider behind it (see the architecture note). Both are the same small
-  piece of work — a hashed, expiring, single-use token, exactly like `lib/downloads.ts` —
-  once a provider is wired up. Until then, a forgotten password is reset by an admin in
-  `/admin/customers/[id]`, and unverified addresses are why guest orders are never
-  claimed into an account by email match.
+- **Email verification and "forgot password" are absent.** There is a real provider now,
+  so the blocker is gone — both are the same small piece of work, a hashed, expiring,
+  single-use token exactly like `lib/downloads.ts` — but neither is built. Until they are,
+  a forgotten password is reset by an admin in `/admin/customers/[id]`, and unverified
+  addresses remain why guest orders are never claimed into an account by email match.
 - **No third-party sign-in (Google/Apple).** It would add an OAuth dependency and a
   second identity path to keep correct, for a shop whose accounts exist mainly to show
   someone their own order history.
@@ -710,8 +742,11 @@ That is Atlas rejecting an unlisted source IP at the TLS layer. Two ways to fix 
 - [ ] Confirm Payphone's **minimum transaction amount** with the account rep and encode it
       as `PAYPHONE_MIN_AMOUNT_CENTS` — a single-photo order is legitimately $1.20–$2.00, so
       a $1 or $2 floor would reject real orders.
-- [ ] A real email provider behind `lib/email.ts`. It is a `console.log` stub, so **no
-      buyer currently receives their download links**, which is the whole deliverable.
+- [ ] A verified Mailgun sending domain, a `mailgun-api-key` secret in Secret Manager
+      (with `secretAccessor` granted to the service account), and `_MAILGUN_DOMAIN` filled
+      in at the top of `cloudbuild.yaml`. A Mailgun **sandbox** domain only delivers to
+      addresses added as Authorized Recipients, so it will silently drop real customers —
+      verify a real domain, then confirm with `pnpm verify-email`.
 - [ ] A custom domain mapped to the service, then a rebuild with `_SITE_URL` set to it
       and that origin added to the bucket's CORS rule.
 - [ ] Cloud CDN in front of the public prefix, with `GCS_PUBLIC_BASE_URL` pointed at it.

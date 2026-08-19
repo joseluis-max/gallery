@@ -16,6 +16,14 @@ substitutions:
   # runtime. The hashed valdiviezo-gallery-fvve3xyyxq-ue.a.run.app URL still resolves
   # too, but the custom domain is what canonical links/sitemap/OG tags should name.
   _SITE_URL: https://josevaldiviezo.com
+  # Mailgun's verified sending domain, exactly as the Mailgun dashboard lists it (e.g.
+  # mg.josevaldiviezo.com). SET THIS before the next deploy: order confirmations — and
+  # therefore every download link — are sent through it, and an unset value makes each
+  # send throw. The API key is NOT here; it lives in Secret Manager as mailgun-api-key.
+  _MAILGUN_DOMAIN: ''
+  # Optional From override. Must be an address on _MAILGUN_DOMAIN or Mailgun refuses the
+  # message; empty means no-reply@<domain>.
+  _MAILGUN_FROM: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -54,8 +62,16 @@ steps:
       - --service-account=valdiviezo-storage@$PROJECT_ID.iam.gserviceaccount.com
       # Secrets stay in Secret Manager and are mounted as env vars at start; they are
       # never baked into the image or visible in the revision's plain config.
-      - --set-secrets=MONGODB_URI=mongodb-uri:latest,GCS_ACCESS_KEY_ID=gcs-access-key-id:latest,GCS_SECRET_ACCESS_KEY=gcs-secret-access-key:latest,PAYPHONE_TOKEN=payphone-token:latest
-      - --set-env-vars=MONGODB_DB_NAME=gallery,STORAGE_DRIVER=gcs,GCS_BUCKET=valdiviezo-gallery,GCS_ORIGINALS_PREFIX=originals,GCS_PUBLIC_PREFIX=public,DOWNLOAD_TOKEN_TTL_DAYS=7,DOWNLOAD_TOKEN_MAX_USES=5,PAYPHONE_STORE_ID=b2152fd5-d437-4dd8-8976-16cac0d8b4be
+      # mailgun-api-key must exist in Secret Manager and the service account above needs
+      # roles/secretmanager.secretAccessor on it, exactly as for the four before it:
+      #   printf '%s' "<private api key>" | gcloud secrets create mailgun-api-key --data-file=-
+      - --set-secrets=MONGODB_URI=mongodb-uri:latest,GCS_ACCESS_KEY_ID=gcs-access-key-id:latest,GCS_SECRET_ACCESS_KEY=gcs-secret-access-key:latest,PAYPHONE_TOKEN=payphone-token:latest,MAILGUN_API_KEY=mailgun-api-key:latest
+      # EMAIL_DRIVER, MAILGUN_DOMAIN and MAILGUN_FROM are all `access: 'secret'` in
+      # astro.config.mjs — not because a driver name is confidential, but because that is
+      # astro:env's only runtime-resolved level. Declared `public` they would be compiled
+      # into the image at build time and these --set-env-vars would be inert, which is the
+      # precise failure PAYPHONE_STORE_ID already went through.
+      - --set-env-vars=MONGODB_DB_NAME=gallery,STORAGE_DRIVER=gcs,GCS_BUCKET=valdiviezo-gallery,GCS_ORIGINALS_PREFIX=originals,GCS_PUBLIC_PREFIX=public,DOWNLOAD_TOKEN_TTL_DAYS=7,DOWNLOAD_TOKEN_MAX_USES=5,PAYPHONE_STORE_ID=b2152fd5-d437-4dd8-8976-16cac0d8b4be,EMAIL_DRIVER=mailgun,MAILGUN_DOMAIN=${_MAILGUN_DOMAIN},MAILGUN_FROM=${_MAILGUN_FROM}
       # sharp on a 25MB original is memory- and CPU-hungry; the default 512MiB is not
       # enough to hold a 24MP decode.
       - --memory=1Gi

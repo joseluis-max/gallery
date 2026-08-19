@@ -118,6 +118,40 @@ export default defineConfig({
 
       DOWNLOAD_TOKEN_TTL_DAYS: envField.number({ context: 'server', access: 'public', default: 7 }),
       DOWNLOAD_TOKEN_MAX_USES: envField.number({ context: 'server', access: 'public', default: 5 }),
+
+      // --- Email ---
+      // How order confirmations actually leave the building: console | mailgun.
+      //
+      // Defaults to `mailgun`, not `console`, and unlike STORAGE_DRIVER that default is
+      // about a *silent* failure rather than a loud one. What shipped before this was a
+      // console-log stub that no code ever replaced, so every receipt since the store
+      // opened — and with it every download link, which is the entire deliverable of a
+      // digital purchase — was printed to stdout and never sent, while the order page
+      // cheerfully told the buyer to check their inbox. An unconfigured deployment now
+      // throws on the first send instead.
+      //
+      // `secret` for the runtime-resolution reason spelled out on PAYPHONE_STORE_ID below,
+      // not because a driver name is confidential: astro:env inlines every `public` value
+      // at build time, and .dockerignore keeps .env out of the image, so a public var here
+      // would freeze to whatever `docker build` saw and cloudbuild.yaml's --set-env-vars
+      // could never move it.
+      EMAIL_DRIVER: envField.enum({ context: 'server', access: 'secret', values: ['console', 'mailgun'], default: 'mailgun' }),
+
+      // Mailgun's private API key (Dashboard → Sending → Domain settings → Sending API
+      // keys) and the verified sending domain, e.g. mg.josevaldiviezo.com. Both are
+      // `optional` in the schema and validated in src/lib/config.ts instead, so the
+      // `console` driver doesn't demand credentials it will never use.
+      MAILGUN_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      MAILGUN_DOMAIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // The From header. Must be an address ON the sending domain — Mailgun refuses
+      // anything else — so config.ts defaults it to no-reply@<domain> rather than making a
+      // third variable a prerequisite for any mail at all.
+      MAILGUN_FROM: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Mailgun runs two independent regions and an EU-provisioned domain answers ONLY on
+      // api.eu.mailgun.net — a valid EU key against the US host returns 401, which reads
+      // exactly like a bad key. If mail is rejected with a correct-looking key, this is the
+      // first thing to check.
+      MAILGUN_BASE_URL: envField.string({ context: 'server', access: 'secret', default: 'https://api.mailgun.net' }),
     },
   },
 });

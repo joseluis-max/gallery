@@ -15,10 +15,11 @@
 // would invert the exact property that comment exists to protect, and would run
 // token-minting on every one of those visits.
 import type { APIRoute } from 'astro';
-import { getDbConfig, getDownloadConfig, getPayphoneConfig } from '../../lib/config';
+import { createEmailer, getDbConfig, getDownloadConfig, getPayphoneConfig, getPublicSiteUrl } from '../../lib/config';
 import { getDb } from '../../lib/db';
 import { mintDownloadToken } from '../../lib/downloads';
-import { sendEmail } from '../../lib/email';
+import type { Locale } from '../../lib/i18n';
+import { buildOrderEmail, type OrderEmailLink } from '../../lib/orderEmail';
 import { getOrderById, markOrderPaid, type OrderDoc } from '../../lib/orders';
 import { claimConfirm, findPaymentAttempt, recordConfirmResponse, type PayphoneTransactionDoc } from '../../lib/payments';
 import { confirmPayphonePayment, PAYPHONE_STATUS_APPROVED, PAYPHONE_STATUS_CANCELED, type PayphoneConfirmResponse } from '../../lib/payphone';
@@ -91,7 +92,7 @@ export const GET: APIRoute = async ({ url, redirect }) => {
   }
 
   try {
-    await fulfil(db, order, verdict.body);
+    await fulfil(db, order, verdict.body, claimed.lang);
   } catch (err) {
     // The payment is real and already recorded, so the buyer still goes to their order
     // page — where the status will read `paid` if markOrderPaid landed before the failure.
@@ -166,12 +167,22 @@ function evaluateConfirm(
 /**
  * Marks the order paid, mints one download token per item, and emails the links.
  *
- * Ported unchanged from the Stripe webhook's `handleCheckoutCompleted` — swapping gateways
- * is not a reason to touch fulfilment. `markOrderPaid` returning null still means the order
- * was already paid, and still means stop: minting a second set of tokens for one purchase
- * is the failure this guard has always existed to prevent.
+ * Ported from the Stripe webhook's `handleCheckoutCompleted` — swapping gateways is not a
+ * reason to touch fulfilment. `markOrderPaid` returning null still means the order was
+ * already paid, and still means stop: minting a second set of tokens for one purchase is
+ * the failure this guard has always existed to prevent.
+ *
+ * Two things here are not from the Stripe original, and both were defects rather than
+ * choices. The links are absolute now — a bare `/api/download/<token>` is not something an
+ * inbox can follow — and the mail goes out through `createEmailer()`, which actually
+ * sends, where `sendEmail` resolved to a console stub that no code ever replaced.
  */
-async function fulfil(db: Awaited<ReturnType<typeof getDb>>, order: OrderDoc, body: PayphoneConfirmResponse): Promise<void> {
+async function fulfil(
+  db: Awaited<ReturnType<typeof getDb>>,
+  order: OrderDoc,
+  body: PayphoneConfirmResponse,
+  lang: Locale,
+): Promise<void> {
   const paid = await markOrderPaid(db, {
     orderId: order._id,
     actor: 'payphone-confirm',
@@ -190,7 +201,8 @@ async function fulfil(db: Awaited<ReturnType<typeof getDb>>, order: OrderDoc, bo
   if (!paid) return;
 
   const downloadConfig = getDownloadConfig();
-  const downloadLinks: string[] = [];
+  const siteUrl = getPublicSiteUrl();
+  const links: OrderEmailLink[] = [];
   for (const item of paid.items) {
     const token = await mintDownloadToken(db, {
       orderId: paid._id,
@@ -198,21 +210,36 @@ async function fulfil(db: Awaited<ReturnType<typeof getDb>>, order: OrderDoc, bo
       ttlDays: downloadConfig.ttlDays,
       maxUses: downloadConfig.maxUses,
     });
-    downloadLinks.push(`/api/download/${token}`);
+    links.push({ title: item.photoTitle, url: `${siteUrl}/api/download/${token}` });
   }
 
   const email = paid.customer.email;
-  if (email) {
-    const lines = [
-      `Thank you for your order — #${paid._id.toString()}.`,
-      '',
-      ...paid.items.map((item) => `- ${item.photoTitle} — $${(item.totalCents / 100).toFixed(2)}`),
-      '',
-      `Total: $${(paid.totalCents / 100).toFixed(2)}`,
-    ];
-    if (downloadLinks.length > 0) {
-      lines.push('', 'Your digital downloads:', ...downloadLinks);
-    }
-    await sendEmail({ to: email, subject: `Order confirmation — #${paid._id.toString()}`, text: lines.join('\n') });
+  if (!email) {
+    // The checkout page collects an address precisely so this cannot happen, and the
+    // gateway usually reports one as well. If both are somehow absent the purchase is
+    // still complete and still collectable from the order page — but it earns a log line,
+    // because nobody was told where to collect it from.
+    console.error('payphone-confirm: order paid with no email address to send the links to', paid._id.toString());
+    return;
+  }
+
+  const message = buildOrderEmail({
+    order: paid,
+    lang,
+    links,
+    orderUrl: `${siteUrl}/${lang}/order/${paid._id.toString()}`,
+    ttlDays: downloadConfig.ttlDays,
+    maxUses: downloadConfig.maxUses,
+  });
+
+  // Deliberately last, and deliberately swallowing its own failure. By this point the money
+  // is taken, the order says paid, and the tokens exist — so every file is already
+  // collectable from the order page, which now shows its own download links. Letting a mail
+  // outage bubble up would file it under "fulfilment failed" beside a Mongo write error,
+  // and those two want very different responses from whoever reads the log.
+  try {
+    await createEmailer().send({ to: email, ...message });
+  } catch (err) {
+    console.error('payphone-confirm: order fulfilled but the confirmation email did not send', paid._id.toString(), err);
   }
 }
