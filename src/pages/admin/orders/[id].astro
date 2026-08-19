@@ -19,11 +19,11 @@ if (!order) {
   return new Response('Not found', { status: 404 });
 }
 
-const stripeDashboardUrl = order.stripePaymentIntentId
-  ? `https://dashboard.stripe.com/payments/${order.stripePaymentIntentId}`
-  : order.stripeSessionId
-    ? `https://dashboard.stripe.com/checkout/sessions/${order.stripeSessionId}`
-    : null;
+// Deliberately not a deep link into Payphone's merchant panel: no per-transaction URL is
+// documented for it, and a fabricated link that 404s is worse than an id an operator can
+// paste into their search. If Payphone confirms such a URL exists, this becomes a link.
+const payment = order.payment;
+const card = payment && payment.cardBrand ? `${payment.cardBrand} •••• ${payment.lastDigits ?? '????'}` : null;
 ---
 
 <AdminLayout title={`Order #${order._id.toString().slice(-8)}`}>
@@ -94,12 +94,34 @@ const stripeDashboardUrl = order.stripePaymentIntentId
         }
       </p>
 
-      {stripeDashboardUrl && (
-        <p class="mt-6 text-sm">
-          <a href={stripeDashboardUrl} target="_blank" rel="noreferrer" class="underline">
-            View payment in Stripe →
-          </a>
-        </p>
+      {payment && (
+        <div class="mt-6 text-sm">
+          <h3 class="text-xs uppercase tracking-widest text-ink-muted">Payment</h3>
+          <dl class="mt-2 space-y-1">
+            <div class="flex justify-between gap-4">
+              <dt class="text-ink-muted">Payphone transaction</dt>
+              <dd class="font-mono">{payment.transactionId}</dd>
+            </div>
+            {payment.authorizationCode && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-ink-muted">Authorization</dt>
+                <dd class="font-mono">{payment.authorizationCode}</dd>
+              </div>
+            )}
+            {card && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-ink-muted">Card</dt>
+                <dd>{card}</dd>
+              </div>
+            )}
+            {payment.document && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-ink-muted">Cédula / RUC</dt>
+                <dd class="font-mono">{payment.document}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
       )}
 
     </div>

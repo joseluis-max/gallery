@@ -87,8 +87,22 @@ export default defineConfig({
       GCS_SECRET_ACCESS_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       GCS_BUCKET: envField.string({ context: 'server', access: 'secret', optional: true }),
 
-      STRIPE_SECRET_KEY: envField.string({ context: 'server', access: 'secret' }),
-      STRIPE_WEBHOOK_SECRET: envField.string({ context: 'server', access: 'secret' }),
+      // Payphone's bearer token, from the Payphone Developer console. It authorizes both
+      // the Cajita widget and the server-side confirm call.
+      //
+      // `server`/`secret` even though the widget needs it in the browser. The checkout
+      // page is server-rendered and hands it to the widget per request; making it a
+      // `client` var instead would inline it into the built output at build time, which
+      // means it lands in the container image (contradicting the deploy model where
+      // secrets arrive from Secret Manager at revision start), rotation becomes a rebuild,
+      // and it inherits the whole Dockerfile ARG / --build-arg apparatus PUBLIC_SITE_URL
+      // already needs. Server context also means astro:env refuses to resolve it from
+      // client code at all, so the exposure can only ever be one deliberate line in one
+      // .astro file rather than an accident of an import.
+      PAYPHONE_TOKEN: envField.string({ context: 'server', access: 'secret' }),
+      // Identifies the store, not a credential — and it reaches the browser in the widget
+      // config regardless, same as the GCS prefixes above.
+      PAYPHONE_STORE_ID: envField.string({ context: 'server', access: 'public' }),
 
       // No ADMIN_PASSWORD_HASH: admin access is a `users` document with role 'admin'
       // (see src/lib/users.ts and `pnpm create-admin`), so there is no admin credential

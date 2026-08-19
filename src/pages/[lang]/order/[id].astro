@@ -3,10 +3,11 @@ import { ObjectId } from 'mongodb';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
-import type { Locale } from '../../../lib/i18n';
+import { getDictionary, type Locale } from '../../../lib/i18n';
 import { canViewOrder, getOrderById } from '../../../lib/orders';
 
 const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
 const idParam = Astro.params.id as string;
 
 let orderId: InstanceType<typeof ObjectId>;
@@ -16,8 +17,11 @@ try {
   return new Response('Not found', { status: 404 });
 }
 
-// Deliberately reads order status from Mongo, never from Stripe redirect query params —
-// the redirect itself is not proof of payment and can be forged by hand.
+// Deliberately reads order status from Mongo, never from the redirect that brought the
+// buyer here. That mattered under Stripe and it matters more under Payphone: the return
+// leg carries `id` and `clientTransactionId` in a query string anyone can type, and the
+// only authoritative statement about a payment is the confirm response the server pulled
+// back itself (see api/payphone-confirm.ts).
 const db = await getDb(getDbConfig());
 const order = await getOrderById(db, orderId);
 
@@ -34,12 +38,11 @@ if (!canViewOrder(order, viewer)) {
 
 const digitalItemCount = order.items.length;
 
-const statusLabel: Record<typeof order.status, string> = {
-  pending: lang === 'es' ? 'Pendiente de pago' : 'Awaiting payment',
-  paid: lang === 'es' ? 'Pagado' : 'Paid',
-  cancelled: lang === 'es' ? 'Cancelado' : 'Cancelled',
-  refunded: lang === 'es' ? 'Reembolsado' : 'Refunded',
-};
+// Reading `?payment=` is safe precisely because it only picks which *message* to show —
+// the order's actual status still comes from the database above. Anyone can put
+// `?payment=declined` on this URL and all they get is a sentence.
+const paymentParam = Astro.url.searchParams.get('payment');
+const paymentNotice = paymentParam === 'declined' ? t.order.declined : paymentParam === 'unconfirmed' ? t.order.unconfirmed : null;
 ---
 
 <BaseLayout title={`${lang === 'es' ? 'Pedido' : 'Order'} #${order._id.toString()} — José Valdiviezo`} lang={lang}>
@@ -47,7 +50,9 @@ const statusLabel: Record<typeof order.status, string> = {
     <h1 class="font-display text-2xl">
       {lang === 'es' ? 'Pedido' : 'Order'} #{order._id.toString().slice(-8)}
     </h1>
-    <p class="mt-2 text-sm uppercase tracking-widest text-accent">{statusLabel[order.status]}</p>
+    <p class="mt-2 text-sm uppercase tracking-widest text-accent">{t.account.statuses[order.status]}</p>
+
+    {paymentNotice && <p class="panel mt-6 p-4 text-sm text-accent">{paymentNotice}</p>}
 
     {
       order.status === 'pending' && (
@@ -56,6 +61,17 @@ const statusLabel: Record<typeof order.status, string> = {
             ? 'Estamos esperando la confirmación del pago. Esta página se actualizará automáticamente una vez confirmado.'
             : "We're waiting on payment confirmation. This page will reflect it once confirmed."}
         </p>
+      )
+    }
+
+    {
+      order.status === 'pending' && order.kind === 'purchase' && (
+        // The recovery path for an abandoned payment. `data-astro-reload` is required, not
+        // decorative: a soft navigation would not re-evaluate Payphone's CDN module, so the
+        // widget on the other side would have nothing to render with.
+        <a href={`/${lang}/checkout/${order._id.toString()}`} data-astro-reload class="btn btn-primary mt-6 inline-block px-6 py-3">
+          {t.order.completePayment}
+        </a>
       )
     }
 

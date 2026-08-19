@@ -1,0 +1,50 @@
+---
+import { buildWatermarkTile } from '../lib/watermarkOverlay';
+import { defaultWatermarkConfig } from '../../watermark.config';
+
+interface Props {
+  /** `tile` for mosaic thumbnails, `hero` for the detail image and the enlarged view.
+   *  Only the repeat period changes — the mark keeps the same relative density either
+   *  way, so a thumbnail doesn't end up carrying one giant letter. */
+  scale?: 'tile' | 'hero';
+  /** Defaults to the string burned into every derivative, so the two marks never disagree. */
+  text?: string;
+  opacity?: number;
+}
+
+const { scale = 'tile', text = defaultWatermarkConfig.text, opacity } = Astro.props;
+
+const TILE_PX = { tile: 140, hero: 260 } as const;
+const size = TILE_PX[scale];
+const dataUri = buildWatermarkTile({ text, size, opacity });
+---
+
+{/*
+  `pointer-events: none` is load-bearing twice over, not just tidiness. It's what keeps
+  the stretched <a> in PhotoCard and the lightbox trigger button clickable through the
+  mark — and it's what keeps `event.target` on a right-click the <img> itself, which is
+  the check BaseLayout's contextmenu suppression makes. A hit-testable overlay would
+  silently hand "Save image as" back to anyone who right-clicked.
+
+  aria-hidden because the mark carries no information a screen reader needs: the same
+  attribution is in the page's copy and the footer.
+*/}
+<div
+  class="photo-watermark"
+  aria-hidden="true"
+  style={`--wm-tile: url("${dataUri}"); --wm-size: ${size}px;`}
+>
+</div>
+
+<style>
+  .photo-watermark {
+    position: absolute;
+    inset: 0;
+    /* Below PhotoCard's cart toggle (z-10), above the photo and the stretched link. */
+    z-index: 5;
+    pointer-events: none;
+    background-image: var(--wm-tile);
+    background-repeat: repeat;
+    background-size: var(--wm-size) var(--wm-size);
+  }
+</style>

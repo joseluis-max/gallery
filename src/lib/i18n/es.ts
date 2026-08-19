@@ -48,6 +48,31 @@ export interface Dictionary {
     /** Contains `{count}` and `{price}` placeholders. */
     nextTier: string;
   };
+  checkout: {
+    title: string;
+    orderSummary: string;
+    total: string;
+    /** Labels the payment column. A noun, deliberately distinct from `title`,
+     *  which heads the whole page — in Spanish both would otherwise read 'Pagar'. */
+    paymentSection: string;
+    loading: string;
+    /** Contains a `{time}` placeholder — mm:ss until the payment form expires. */
+    expiresIn: string;
+    expired: string;
+    startAgain: string;
+    emailLabel: string;
+    emailHint: string;
+    emailContinue: string;
+    errors: Record<'WIDGET_UNAVAILABLE' | 'INVALID_EMAIL' | 'UNKNOWN', string>;
+  };
+  order: {
+    /** Shown when the gateway reported the payment as cancelled or declined. */
+    declined: string;
+    /** Shown when the payment could not be confirmed — a network failure, or a
+     *  confirmation that did not add up. Deliberately the same message for both. */
+    unconfirmed: string;
+    completePayment: string;
+  };
   account: {
     signInTitle: string;
     registerTitle: string;
@@ -164,6 +189,29 @@ export const es: Dictionary = {
     unavailable: '{count} artículo(s) ya no están disponibles y se omitieron.',
     volumeDiscount: 'Descuento por volumen — {price} por foto',
     nextTier: 'Agrega {count} foto(s) más y todas cuestan {price} cada una.',
+  },
+  checkout: {
+    title: 'Pagar',
+    orderSummary: 'Resumen del pedido',
+    total: 'Total',
+    paymentSection: 'Pago',
+    loading: 'Cargando el formulario de pago…',
+    expiresIn: 'El formulario de pago vence en {time}.',
+    expired: 'El formulario de pago venció. Vuelve a empezar para generar uno nuevo.',
+    startAgain: 'Volver a empezar',
+    emailLabel: 'Correo electrónico',
+    emailHint: 'Te enviaremos aquí los enlaces de descarga. Revísalo bien: es la única forma de recibir tus fotografías.',
+    emailContinue: 'Continuar',
+    errors: {
+      WIDGET_UNAVAILABLE: 'No pudimos cargar el formulario de pago. Revisa tu conexión y vuelve a intentarlo.',
+      INVALID_EMAIL: 'Ingresa un correo electrónico válido.',
+      UNKNOWN: 'Algo salió mal. Inténtalo de nuevo.',
+    },
+  },
+  order: {
+    declined: 'El pago fue cancelado o rechazado. No se te cobró nada; puedes intentarlo de nuevo.',
+    unconfirmed: 'No pudimos confirmar el pago. Si se te realizó un cargo, se reversará automáticamente. Escríbenos si tienes dudas.',
+    completePayment: 'Completar el pago',
   },
   account: {
     signInTitle: 'Iniciar sesión',

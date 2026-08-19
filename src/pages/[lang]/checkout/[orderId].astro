@@ -1,0 +1,282 @@
+---
+// Where the buyer actually pays. Stripe hosted this page on its own domain; Payphone's
+// Cajita is a widget, so it lives here — which is nicer for the buyer (they never leave the
+// gallery) and puts three obligations on this file that a redirect would not have:
+//
+//   1. The Payphone token is rendered into the HTML, because the widget takes it as
+//      configuration. It is domain-locked on Payphone's side. See getPayphoneConfig().
+//   2. `Referrer-Policy` has to permit Payphone to see our origin, or the domain check
+//      they rely on fails and the widget refuses to render.
+//   3. A payment attempt must exist in our database BEFORE the widget can be shown, or a
+//      buyer could complete a payment we have no way to resolve on the way back.
+import { ObjectId } from 'mongodb';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDbConfig, getPayphoneConfig } from '../../../lib/config';
+import { getDb } from '../../../lib/db';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { canViewOrder, getOrderById } from '../../../lib/orders';
+import { createPaymentAttempt } from '../../../lib/payments';
+import { newClientTransactionId, PAYPHONE_FORM_LIFETIME_MS, splitAmountForIva } from '../../../lib/payphone';
+
+export const prerender = false;
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+const idParam = Astro.params.orderId as string;
+
+let orderId: InstanceType<typeof ObjectId>;
+try {
+  orderId = new ObjectId(idParam);
+} catch {
+  return new Response('Not found', { status: 404 });
+}
+
+const db = await getDb(getDbConfig());
+const order = await getOrderById(db, orderId);
+
+if (!order) {
+  return new Response('Not found', { status: 404 });
+}
+
+// 404 rather than 403, matching the order page: a 403 would confirm this order id exists.
+// A guest order stays payable by anyone holding the (96-bit, unguessable) id, which is no
+// wider than the existing exposure of /[lang]/order/[id] — and they would be paying *for*
+// the order, not taking anything out of it.
+const viewer = await Astro.session?.get('user');
+if (!canViewOrder(order, viewer)) {
+  return new Response('Not found', { status: 404 });
+}
+
+// One page shows order state; this one only takes money. Paid, cancelled, refunded and the
+// impossible free-claim case all resolve the same way.
+if (order.status !== 'pending') {
+  return Astro.redirect(`/${lang}/order/${orderId.toString()}`, 302);
+}
+
+const amounts = splitAmountForIva(order.totalCents);
+const clientTransactionId = newClientTransactionId(order._id.toString());
+
+// Before render, deliberately: if this insert fails we must not put a widget in front of
+// the buyer whose payment we could never resolve on the confirm leg.
+await createPaymentAttempt(db, { orderId: order._id, clientTransactionId, amountCents: order.totalCents, lang });
+
+// Payphone validates that the widget is running on the domain registered for the store,
+// and that check reads the referrer. Set on this page rather than globally in middleware:
+// it is one integration's requirement, and while most browsers already default to
+// something that satisfies it, relying on a browser default for a payment gateway's
+// security check is an accident rather than a decision.
+Astro.response.headers.set('Referrer-Policy', 'origin-when-cross-origin');
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+const payphone = getPayphoneConfig();
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+// A signed-in buyer already has an address on the order. A guest does not, and Payphone —
+// unlike Stripe's hosted form — does not guarantee one comes back with the payment, so the
+// widget stays locked until they give us one. The download links are the entire
+// deliverable; sending them nowhere is not an acceptable outcome.
+const knownEmail = order.customer.email || '';
+
+const widgetConfig = {
+  token: payphone.token,
+  storeId: payphone.storeId,
+  clientTransactionId,
+  ...amounts,
+  currency: 'USD',
+  reference: `Fotografías — pedido ${order._id.toString().slice(-8)}`,
+  lang,
+  timeZone: -5,
+  ...(knownEmail ? { email: knownEmail } : {}),
+};
+---
+
+<BaseLayout title={`${t.checkout.title} — José Valdiviezo`} lang={lang}>
+  <div
+    class="mx-auto max-w-5xl px-6 py-16"
+    data-checkout-page
+    data-order-id={order._id.toString()}
+    data-has-email={knownEmail ? 'true' : 'false'}
+    data-expires-at={String(Date.now() + PAYPHONE_FORM_LIFETIME_MS)}
+    data-pp-config={JSON.stringify(widgetConfig)}
+    data-copy={JSON.stringify({
+      loading: t.checkout.loading,
+      expiresIn: t.checkout.expiresIn,
+      expired: t.checkout.expired,
+      WIDGET_UNAVAILABLE: t.checkout.errors.WIDGET_UNAVAILABLE,
+      INVALID_EMAIL: t.checkout.errors.INVALID_EMAIL,
+      UNKNOWN: t.checkout.errors.UNKNOWN,
+    })}
+  >
+    <h1 class="font-display text-2xl">{t.checkout.title}</h1>
+
+    {/*
+      Two rails: paying on the left, what you're paying for on the right, which is the
+      shape every buyer has already seen elsewhere. Both sections stay inside
+      [data-checkout-page] — the script reaches all of its elements by querying down from
+      that root, so the layout is free to move them around it but not out of it.
+
+      The summary comes FIRST in the DOM and is placed into the right column explicitly,
+      rather than being written second. Stacked on a phone that puts the order above the
+      payment form, where it belongs; the usual objection to ordering columns this way
+      (a keyboard tab order that jumps across the page) doesn't apply, because the
+      summary holds nothing focusable.
+    */}
+    <div class="mt-8 grid gap-10 md:grid-cols-[1.35fr_1fr]">
+      <section class="md:sticky md:top-8 md:col-start-2 md:row-start-1 md:self-start">
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.checkout.orderSummary}</h2>
+        <ul class="mt-3 divide-y divide-border border-y border-border">
+          {
+            order.items.map((item) => (
+              <li class="flex items-center justify-between gap-4 py-4">
+                <div>
+                  <p>{item.photoTitle}</p>
+                  <p class="text-sm text-ink-muted">{t.cart.digitalFile}</p>
+                </div>
+                <p class="shrink-0">{money(item.totalCents)}</p>
+              </li>
+            ))
+          }
+        </ul>
+        <div class="mt-4 flex justify-between font-display text-lg">
+          <span>{t.checkout.total}</span>
+          <span>{money(order.totalCents)}</span>
+        </div>
+      </section>
+
+      <section class="md:col-start-1 md:row-start-1">
+        <h2 class="text-sm uppercase tracking-widest text-ink-muted">{t.checkout.paymentSection}</h2>
+
+        <div data-email-gate hidden={knownEmail !== ''} class="panel mt-3 p-4">
+          <label class="block text-sm" for="checkout-email">{t.checkout.emailLabel}</label>
+          <input id="checkout-email" data-email-input type="email" required autocomplete="email" class="field mt-2 w-full" />
+          <p class="mt-2 text-sm text-ink-muted">{t.checkout.emailHint}</p>
+          <button type="button" data-email-submit class="btn btn-primary mt-4 w-full py-3">{t.checkout.emailContinue}</button>
+        </div>
+
+        <p data-checkout-status hidden={knownEmail === ''} class="mt-6 text-sm text-ink-muted">{t.checkout.loading}</p>
+        <p data-checkout-error hidden class="mt-4 text-sm text-accent"></p>
+
+        <!-- The widget's required render target. -->
+        <div id="pp-button" class="mt-6"></div>
+
+        <div data-expired-panel hidden class="panel mt-6 p-4">
+          <p class="text-sm text-ink-muted">{t.checkout.expired}</p>
+          <!-- A reload is exactly right: it mints a fresh clientTransactionId and a fresh
+               attempt, which is what "start again" has to mean here. -->
+          <button type="button" data-restart class="btn btn-primary mt-4 w-full py-3">{t.checkout.startAgain}</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<link rel="stylesheet" href="https://cdn.payphonetodoesposible.com/box/v2.0/payphone-payment-box.css" />
+<!-- is:inline so Astro leaves the remote module alone rather than trying to bundle it. -->
+<script is:inline type="module" src="https://cdn.payphonetodoesposible.com/box/v2.0/payphone-payment-box.js"></script>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-checkout-page]');
+    if (!root || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const copy = JSON.parse(root.dataset.copy!) as Record<string, string>;
+    const config = JSON.parse(root.dataset.ppConfig!) as Record<string, unknown>;
+    const expiresAt = Number(root.dataset.expiresAt);
+
+    const gateEl = root.querySelector<HTMLElement>('[data-email-gate]')!;
+    const emailInput = root.querySelector<HTMLInputElement>('[data-email-input]')!;
+    const emailSubmit = root.querySelector<HTMLButtonElement>('[data-email-submit]')!;
+    const statusEl = root.querySelector<HTMLElement>('[data-checkout-status]')!;
+    const errorEl = root.querySelector<HTMLElement>('[data-checkout-error]')!;
+    const boxEl = root.querySelector<HTMLElement>('#pp-button')!;
+    const expiredEl = root.querySelector<HTMLElement>('[data-expired-panel]')!;
+    const restartBtn = root.querySelector<HTMLButtonElement>('[data-restart]')!;
+
+    function showError(message: string) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+
+    /** Waits for the CDN module to define the global. It is a deferred remote script, so it
+     *  may well not have evaluated by the time this runs. */
+    async function waitForWidget(timeoutMs = 10_000): Promise<unknown> {
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        const ctor = (window as unknown as { PPaymentButtonBox?: unknown }).PPaymentButtonBox;
+        if (ctor) return ctor;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return null;
+    }
+
+    async function renderWidget() {
+      statusEl.hidden = false;
+      statusEl.textContent = copy.loading;
+
+      const Ctor = (await waitForWidget()) as (new (c: unknown) => { render: (id: string) => void }) | null;
+      if (!Ctor) {
+        statusEl.hidden = true;
+        return showError(copy.WIDGET_UNAVAILABLE);
+      }
+
+      try {
+        new Ctor(config).render('pp-button');
+        statusEl.hidden = true;
+        startCountdown();
+      } catch {
+        statusEl.hidden = true;
+        showError(copy.WIDGET_UNAVAILABLE);
+      }
+    }
+
+    /** Counts down from the absolute expiry stamped into the page at render, NOT from ten
+     *  minutes after this script runs. A back-button/bfcache restore re-runs the script but
+     *  not the server render, so a relative timer would cheerfully show a fresh ten minutes
+     *  over a form that died long ago. */
+    function startCountdown() {
+      const tick = () => {
+        const remaining = expiresAt - Date.now();
+        if (remaining <= 0) {
+          statusEl.hidden = true;
+          boxEl.hidden = true;
+          expiredEl.hidden = false;
+          clearInterval(timer);
+          return;
+        }
+        const totalSeconds = Math.floor(remaining / 1000);
+        const mmss = `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+        statusEl.hidden = false;
+        statusEl.textContent = copy.expiresIn.replace('{time}', mmss);
+      };
+      const timer = setInterval(tick, 1000);
+      tick();
+    }
+
+    emailSubmit.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      if (!email || !emailInput.checkValidity()) return showError(copy.INVALID_EMAIL);
+
+      errorEl.hidden = true;
+      emailSubmit.disabled = true;
+      const { error } = await actions.setOrderEmail({ orderId: root.dataset.orderId!, email });
+      if (error) {
+        emailSubmit.disabled = false;
+        return showError(copy[error.message] ?? copy.UNKNOWN);
+      }
+
+      // Payphone prefills the cardholder email from this, and — more importantly — the
+      // address is now on the order, so the receipt has somewhere to go even if the
+      // gateway's confirm response comes back without one.
+      config.email = email;
+      gateEl.hidden = true;
+      void renderWidget();
+    });
+
+    restartBtn.addEventListener('click', () => location.reload());
+
+    if (root.dataset.hasEmail === 'true') void renderWidget();
+  });
+</script>

@@ -26,6 +26,23 @@ export interface OrderHistoryEntry {
   note?: string;
 }
 
+/**
+ * What the gateway said when it approved the payment. Display and support data only —
+ * nothing in here is ever re-read to decide entitlement. `status` is what decides that,
+ * and `consumeDownloadToken` is the only thing that reads it.
+ *
+ * Replaces `stripePaymentIntentId`, which was the same idea in one provider's vocabulary.
+ * `document` is the buyer's cédula/RUC: the Cajita collects it, issuing an SRI factura
+ * needs it, and it cannot be obtained again afterwards.
+ */
+export interface OrderPayment {
+  transactionId: string;
+  authorizationCode?: string;
+  cardBrand?: string;
+  lastDigits?: string;
+  document?: string;
+}
+
 export interface OrderDoc {
   _id: ObjectId;
   /** Set only when the order was placed by a signed-in account, and never inferred
@@ -39,8 +56,12 @@ export interface OrderDoc {
   totalCents: number;
   currency: 'usd';
   status: OrderStatus;
-  stripeSessionId?: string;
-  stripePaymentIntentId?: string;
+  /** Set once, when payment is confirmed. Deliberately not a reference to the payment
+   *  *attempt*: a buyer who cancels and retries produces several attempts against one
+   *  order, so a single field here could only ever hold "the latest", which reads like
+   *  "the" transaction and isn't. That 1:N relationship lives in
+   *  `payphoneTransactions.orderId` instead. */
+  payment?: OrderPayment;
   customer: { email: string; name?: string };
   history: OrderHistoryEntry[];
   createdAt: Date;
@@ -57,11 +78,14 @@ export interface NewOrderInput {
 }
 
 /**
- * The order is created before the Stripe Checkout Session exists, so for a guest there's
- * no customer email yet — Stripe collects it during hosted checkout, and the webhook
- * back-fills `customer` onto this same document when payment completes (see
- * markOrderPaid). A signed-in buyer's account email is seeded here, and Stripe's own
- * (possibly different) billing email overwrites it at that same point.
+ * The order exists before any payment attempt does — the checkout page needs an order id
+ * to build a transaction id from, and to have something to attach a failed attempt to.
+ *
+ * A signed-in buyer's account email is seeded here. A guest's is collected on the checkout
+ * page before the widget will initialise, because Payphone (unlike Stripe's hosted form)
+ * does not guarantee an email comes back with the payment — and that address is where the
+ * download links go, which is the entire deliverable of the purchase. `markOrderPaid`
+ * still overwrites it if the gateway reports a different one.
  */
 export async function createPendingOrder(db: Db, input: NewOrderInput): Promise<OrderDoc> {
   const now = new Date();
@@ -100,7 +124,8 @@ export interface FreeClaimInput {
  *    patched. Any window where the order is pending is a window where the customer's own
  *    freshly-minted token is rejected by that same status check.
  *
- * No `stripeSessionId`: that unique index is sparse, so any number of free orders coexist.
+ * No payment attempt is ever created for one of these: nothing was charged, so there is
+ * nothing for a gateway to confirm.
  */
 export async function createFreeClaimOrder(db: Db, input: FreeClaimInput): Promise<OrderDoc> {
   const now = new Date();
@@ -126,18 +151,19 @@ export async function findFreeClaim(db: Db, userId: ObjectId, photoId: ObjectId)
   return db.collection<OrderDoc>('orders').findOne({ userId, kind: 'free-claim', 'items.photoId': photoId });
 }
 
-export async function attachStripeSession(db: Db, orderId: ObjectId, stripeSessionId: string): Promise<void> {
-  await db.collection<OrderDoc>('orders').updateOne({ _id: orderId }, { $set: { stripeSessionId, updatedAt: new Date() } });
-}
-
 /**
- * Atomically flips a pending order to paid — the `status: 'pending'` filter guard means
- * a duplicate webhook delivery (already handled via the stripeEvents idempotency guard,
- * but defense in depth) can never double-process the same order.
+ * Atomically flips a pending order to paid — the `status: 'pending'` filter guard means a
+ * second confirmation attempt (already handled by the claim in lib/payments.ts, but
+ * defense in depth) can never double-process the same order.
  */
 export interface MarkOrderPaidParams {
   orderId: ObjectId;
-  paymentIntentId: string;
+  payment: OrderPayment;
+  /** Required rather than defaulted. The history entry exists to answer "who did this",
+   *  and a default is precisely how a new caller silently inherits someone else's name —
+   *  which is what happened to `'stripe-webhook'`, hard-coded here until it was no longer
+   *  the only path that marked an order paid. */
+  actor: string;
   customer?: { email: string; name?: string };
 }
 
@@ -148,11 +174,11 @@ export async function markOrderPaid(db: Db, params: MarkOrderPaidParams): Promis
     {
       $set: {
         status: 'paid',
-        stripePaymentIntentId: params.paymentIntentId,
+        payment: params.payment,
         updatedAt: now,
         ...(params.customer ? { customer: params.customer } : {}),
       },
-      $push: { history: { status: 'paid', at: now, actor: 'stripe-webhook', note: 'Payment confirmed' } },
+      $push: { history: { status: 'paid', at: now, actor: params.actor, note: 'Payment confirmed' } },
     },
     { returnDocument: 'after' },
   );
@@ -161,10 +187,6 @@ export async function markOrderPaid(db: Db, params: MarkOrderPaidParams): Promis
 
 export async function getOrderById(db: Db, id: ObjectId): Promise<OrderDoc | null> {
   return db.collection<OrderDoc>('orders').findOne({ _id: id });
-}
-
-export async function getOrderByStripeSessionId(db: Db, stripeSessionId: string): Promise<OrderDoc | null> {
-  return db.collection<OrderDoc>('orders').findOne({ stripeSessionId });
 }
 
 /** Orders a signed-in customer may see in their account area. Keyed on `userId` only —

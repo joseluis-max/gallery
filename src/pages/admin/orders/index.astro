@@ -3,8 +3,19 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import type { OrderDoc } from '../../../lib/orders';
+import { listUnreconciledAttempts } from '../../../lib/payments';
 
 const db = await getDb(getDbConfig());
+
+// Payphone has no webhook, so the buyer's browser is a mandatory link in the fulfilment
+// chain: a closed tab or a dead process can strand a payment with nothing to retry it.
+// Stripe's webhook retries were the compensating control; this section is. It should
+// render nothing — every row is a payment that needs a human.
+//
+// 10 minutes is twice Payphone's five-minute reversal window, so anything listed here has
+// already passed the point where it could resolve itself.
+const unreconciled = await listUnreconciledAttempts(db, 10 * 60 * 1000);
+const needsAttention = unreconciled.approvedButUnfulfilled.length + unreconciled.stalledConfirms.length;
 
 const statusFilter = Astro.url.searchParams.get('status');
 const search = Astro.url.searchParams.get('q')?.trim();
@@ -32,6 +43,56 @@ const orders = await db.collection<OrderDoc>('orders').find(query).sort({ create
       Export CSV
     </a>
   </div>
+
+  {
+    needsAttention > 0 && (
+      <section class="panel mt-6 border-accent p-4">
+        <h2 class="text-sm uppercase tracking-widest text-accent">Payments needing attention</h2>
+
+        {unreconciled.approvedButUnfulfilled.length > 0 && (
+          <div class="mt-3">
+            <p class="text-sm">
+              <strong>{unreconciled.approvedButUnfulfilled.length}</strong> payment(s) Payphone approved against an order that is
+              not paid. The buyer was charged and has received nothing — these need fulfilling by hand.
+            </p>
+            <ul class="mt-2 space-y-1 text-sm">
+              {unreconciled.approvedButUnfulfilled.map((attempt) => (
+                <li class="flex flex-wrap items-center justify-between gap-2">
+                  <a href={`/admin/orders/${attempt.orderId.toString()}`} class="underline">
+                    Order #{attempt.orderId.toString().slice(-8)}
+                  </a>
+                  <span class="font-mono text-xs text-ink-muted">
+                    tx {attempt.payphoneTransactionId ?? '—'} · ${(attempt.amountCents / 100).toFixed(2)} · {attempt.orderStatus}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {unreconciled.stalledConfirms.length > 0 && (
+          <div class="mt-4">
+            <p class="text-sm">
+              <strong>{unreconciled.stalledConfirms.length}</strong> confirmation(s) started and never finished. Whether the charge
+              stands depends on whether Payphone received the call — check each transaction in the Payphone panel.
+            </p>
+            <ul class="mt-2 space-y-1 text-sm">
+              {unreconciled.stalledConfirms.map((attempt) => (
+                <li class="flex flex-wrap items-center justify-between gap-2">
+                  <a href={`/admin/orders/${attempt.orderId.toString()}`} class="underline">
+                    Order #{attempt.orderId.toString().slice(-8)}
+                  </a>
+                  <span class="font-mono text-xs text-ink-muted">
+                    tx {attempt.payphoneTransactionId ?? '—'} · started {attempt.confirmStartedAt?.toISOString().slice(0, 16) ?? '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    )
+  }
 
   <form class="mt-4 flex flex-wrap items-center gap-3 text-sm">
     <input type="search" name="q" value={search ?? ''} placeholder="Search by email or order id" class="field" />

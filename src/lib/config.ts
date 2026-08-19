@@ -16,12 +16,12 @@ import {
   LOCAL_STORAGE_DIR,
   MONGODB_DB_NAME,
   MONGODB_URI,
+  PAYPHONE_STORE_ID,
+  PAYPHONE_TOKEN,
   STORAGE_DRIVER,
-  STRIPE_SECRET_KEY,
-  STRIPE_WEBHOOK_SECRET,
 } from 'astro:env/server';
 // `client`-context vars are also readable from server code (they're a subset exposed
-// everywhere) — used here to build absolute Stripe success/cancel URLs.
+// everywhere) — used here for absolute links (sitemap, OG tags, emailed download URLs).
 import { PUBLIC_SITE_URL } from 'astro:env/client';
 import type { DbConfig } from './db';
 import { createStorageAdapter, type GcsConfig, type StorageAdapter } from './storage';
@@ -85,8 +85,18 @@ export function createStorage(): StorageAdapter {
   return createStorageAdapter('gcs', getGcsConfig());
 }
 
-export function getStripeConfig() {
-  return { secretKey: STRIPE_SECRET_KEY, webhookSecret: STRIPE_WEBHOOK_SECRET };
+/**
+ * Payphone's credentials. The token is a `secret` astro:env var, but note that it does
+ * legitimately reach the browser: the Cajita widget takes it as configuration. Payphone's
+ * mitigation is that a store's widget only runs on the domain registered in their console,
+ * so a token lifted from the page HTML is not usable from anywhere else.
+ *
+ * What that domain lock does NOT cover is the confirm endpoint, which the same token
+ * authorizes and which is terminal — see `newClientTransactionId` in lib/payphone.ts for
+ * why the attempt ids carry 64 bits of entropy.
+ */
+export function getPayphoneConfig() {
+  return { token: PAYPHONE_TOKEN, storeId: PAYPHONE_STORE_ID };
 }
 
 export function getDownloadConfig() {

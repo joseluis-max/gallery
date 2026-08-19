@@ -32,9 +32,6 @@ importers:
       sharp:
         specifier: 0.35.3
         version: 0.35.3(@types/node@22.20.1)
-      stripe:
-        specifier: 22.3.2
-        version: 22.3.2(@types/node@22.20.1)
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
@@ -2083,15 +2080,6 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
-
-  stripe@22.3.2:
-    resolution: {integrity: sha512-O13QOvgEIQvDlTy6Ubb5kB980wpbhmoZNsgCXKILjCMZS67f+bW+6w99k3gnSi/N1lkryoj1WYdpGT5Wc5edjg==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
 
   svgo@4.0.2:
     resolution: {integrity: sha512-ekx94z1rRc5LDi6oSUaeRnYhd0UOJxdtQCL2rF8xpWxD3TPAsISWOrxezqGovqS38GRZOdpDfvQe3ts6F7nsng==}
@@ -4552,10 +4540,6 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
-
-  stripe@22.3.2(@types/node@22.20.1):
-    optionalDependencies:
-      '@types/node': 22.20.1
 
   svgo@4.0.2:
     dependencies:

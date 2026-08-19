@@ -1,4 +1,6 @@
 ---
+import PhotoWatermark from './PhotoWatermark.astro';
+
 interface Props {
   slug: string;
   title: string;
@@ -42,6 +44,7 @@ const { slug, title, webpUrl, jpegUrl, aspectRatio, lqip } = Astro.props;
       class="relative h-full w-full object-contain"
     />
   </picture>
+  <PhotoWatermark scale="hero" />
 </button>
 
 <div
@@ -54,10 +57,13 @@ const { slug, title, webpUrl, jpegUrl, aspectRatio, lqip } = Astro.props;
   <button type="button" data-lightbox-close aria-label="Close" class="absolute right-4 top-4 text-3xl text-surface">
     &times;
   </button>
-  <picture>
-    <source srcset={webpUrl} type="image/webp" />
-    <img src={jpegUrl} alt={title} class="max-h-[90vh] max-w-[92vw] object-contain" />
-  </picture>
+  <div class="relative">
+    <picture class="block">
+      <source srcset={webpUrl} type="image/webp" />
+      <img src={jpegUrl} alt={title} class="block max-h-[90vh] max-w-[92vw] object-contain" />
+    </picture>
+    <PhotoWatermark scale="hero" />
+  </div>
 </div>
 
 <script>

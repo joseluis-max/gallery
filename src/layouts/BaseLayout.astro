@@ -82,9 +82,10 @@ const alternates = LOCALES.map((locale) => ({
 
     <!--
       Courtesy speed bump, not a real control — anything rendered in a browser can be
-      screenshotted regardless. The actual defenses are the ≤2000px downscale and the
-      burned-in watermark on every public derivative; this just deters casual
-      right-click-save/drag on gallery images.
+      screenshotted regardless. The actual defenses are the ≤2000px downscale, the
+      burned-in watermark on every public derivative, and the on-page lattice
+      (components/PhotoWatermark.astro) that a screenshot picks up along with the photo;
+      this just deters casual right-click-save/drag on gallery images.
     -->
     <script>
       // Lives in <head>, which Astro's ClientRouter persists across same-origin

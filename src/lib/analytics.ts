@@ -6,8 +6,8 @@ import type { Db, ObjectId } from 'mongodb';
  * Two conventions, both deliberate:
  *
  * 1. **"Revenue" means `paid` orders that are actual purchases.** A `pending` order is a
- *    Stripe Checkout Session someone may never complete; counting it would inflate
- *    every number on the dashboard. `cancelled`/`refunded` are excluded for the
+ *    checkout someone may never complete — or one whose payment was never confirmed and
+ *    was reversed by the gateway; counting it would inflate every number on the dashboard. `cancelled`/`refunded` are excluded for the
  *    obvious reason. Free-credit claims are also real `paid` orders (see OrderKind), so
  *    every revenue query additionally excludes `kind: 'free-claim'` — otherwise a $0
  *    claim would drag average order value toward zero and inflate the order count.

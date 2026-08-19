@@ -51,7 +51,11 @@ async function main() {
   await ensureCollection(db, 'competitions');
   await ensureCollection(db, 'orders');
   await ensureCollection(db, 'downloadTokens');
-  await ensureCollection(db, 'stripeEvents');
+  // `stripeEvents` is deliberately NOT created any more, and deliberately NOT dropped
+  // either: this script is documented as safe to re-run and is additive apart from index
+  // drops, so removing a collection that may hold data is a different class of action.
+  // Drop it by hand once the Payphone switch is verified in production.
+  await ensureCollection(db, 'payphoneTransactions');
   await ensureCollection(db, 'settings');
   await ensureCollection(db, 'auditLog');
   await ensureCollection(db, 'uploadJobs');
@@ -78,12 +82,16 @@ async function main() {
   await db.collection('competitions').createIndex({ slug: 1 }, { unique: true });
   await db.collection('competitions').createIndex({ status: 1, date: -1 });
 
-  // Sparse, not just unique: an order is inserted *before* its Stripe Checkout Session
-  // exists (createPendingOrder → attachStripeSession), and a non-sparse unique index
-  // counts every one of those as the same null key — so a second checkout starting
-  // before the first order's session id was attached would fail to insert, and any
-  // order that never got one would block all later ones permanently.
-  await ensureIndex(db, 'orders', { stripeSessionId: 1 }, { unique: true, sparse: true });
+  // The old sparse-unique `orders.stripeSessionId` index is gone rather than renamed. Its
+  // uniqueness constraint moved to payphoneTransactions.clientTransactionId below, where
+  // it does not need to be sparse — see the comment there. `.catch` because it is already
+  // gone on every run after the first, and on a database that never had it.
+  await db
+    .collection('orders')
+    .dropIndex('stripeSessionId_1')
+    .then(() => console.log('dropped obsolete index: orders.stripeSessionId_1'))
+    .catch(() => {});
+
   await db.collection('orders').createIndex({ status: 1 });
   await db.collection('orders').createIndex({ 'customer.email': 1 });
   // Sparse: guest orders have no userId, and there are expected to be many of them.
@@ -108,7 +116,17 @@ async function main() {
   await db.collection('downloadTokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   await db.collection('downloadTokens').createIndex({ orderId: 1 });
 
-  await db.collection('stripeEvents').createIndex({ eventId: 1 }, { unique: true });
+  // Unique but NOT sparse, unlike the orders.stripeSessionId index this replaces. The
+  // clientTransactionId is written by the same insertOne that creates the document, so the
+  // "inserted before the id exists" window that forced `sparse: true` — and that made a
+  // never-attached order block every later one — cannot occur here at all. The bug class is
+  // designed out rather than carried forward.
+  await ensureIndex(db, 'payphoneTransactions', { clientTransactionId: 1 }, { unique: true });
+  await db.collection('payphoneTransactions').createIndex({ orderId: 1 });
+  // The admin reconciliation view scans by age. No TTL anywhere on this collection: an
+  // attempt with no recorded confirm is exactly what that view needs to see, and these
+  // documents are payment evidence.
+  await db.collection('payphoneTransactions').createIndex({ createdAt: -1 });
 
   await db.collection('auditLog').createIndex({ at: -1 });
   await db.collection('auditLog').createIndex({ targetType: 1, targetId: 1 });
@@ -162,6 +180,25 @@ async function main() {
     .updateMany({ freeDownloadsRemaining: { $exists: false } }, { $set: { freeDownloadsRemaining: FREE_DOWNLOAD_GRANT } });
   if (granted.modifiedCount > 0) {
     console.log(`granted ${FREE_DOWNLOAD_GRANT} free download(s) to ${granted.modifiedCount} existing account(s)`);
+  }
+
+  // Migration: Stripe is gone. `stripePaymentIntentId` was the only Stripe field an order
+  // still carried after payment, so it moves to the provider-neutral `payment.transactionId`;
+  // `stripeSessionId` was per-attempt bookkeeping that payphoneTransactions now owns, so it
+  // is dropped outright. $rename silently no-ops on a missing source field, which is what
+  // lets both operations share one pass. Idempotent — matches nothing after the first run.
+  //
+  // Expected to touch zero documents: no real Stripe payment ever completed against this
+  // database. Written anyway, because the alternative is finding out otherwise in
+  // production, and six lines is cheaper than that.
+  const depaid = await db
+    .collection('orders')
+    .updateMany(
+      { $or: [{ stripePaymentIntentId: { $exists: true } }, { stripeSessionId: { $exists: true } }] },
+      { $rename: { stripePaymentIntentId: 'payment.transactionId' }, $unset: { stripeSessionId: '' } },
+    );
+  if (depaid.modifiedCount > 0) {
+    console.log(`migrated ${depaid.modifiedCount} order(s): stripe fields → payment`);
   }
 
   console.log('Indexes ensured.');

@@ -1,7 +1,9 @@
 // Pure functions of (input, settings) — no Mongo, no Astro — so pricing can be
 // unit-tested with zero live services, and so the cart page, the checkout action and the
-// Stripe line items are guaranteed to agree: all three call `computeCartPricing`. The
-// client never sends (or is trusted for) a price.
+// amount handed to the payment gateway are guaranteed to agree: all three call
+// `computeCartPricing`. The client never sends (or is trusted for) a price — and the
+// confirm route re-checks the gateway's own figure against the stored order total, so a
+// tampered amount cannot buy anything either.
 import type { SettingsDoc } from './settings';
 
 export interface PriceQuoteResult {

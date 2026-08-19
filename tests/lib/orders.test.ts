@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb';
 import type { Db } from 'mongodb';
 import { describe, expect, it, vi } from 'vitest';
-import { attachStripeSession, createPendingOrder, getOrderById, markOrderPaid, type OrderItem } from '../../src/lib/orders.ts';
+import { createPendingOrder, getOrderById, markOrderPaid, type OrderItem, type OrderPayment } from '../../src/lib/orders.ts';
 
 function makeMockDb(config: {
   insertOneResult?: unknown;
@@ -65,27 +65,14 @@ describe('createPendingOrder', () => {
   });
 });
 
-describe('attachStripeSession', () => {
-  it('sets stripeSessionId on the matching order', async () => {
-    const orderId = new ObjectId();
-    const { db, ordersCollection } = makeMockDb({});
-
-    await attachStripeSession(db, orderId, 'cs_test_123');
-
-    expect(ordersCollection.updateOne).toHaveBeenCalledWith(
-      { _id: orderId },
-      { $set: { stripeSessionId: 'cs_test_123', updatedAt: expect.any(Date) } },
-    );
-  });
-});
-
 describe('markOrderPaid', () => {
   const orderId = new ObjectId();
+  const payment: OrderPayment = { transactionId: '23178284', authorizationCode: 'W23178284', cardBrand: 'Visa', lastDigits: '4242' };
 
   it('filters on status: "pending" so an already-paid order can never be double-processed', async () => {
     const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId, status: 'paid' } });
 
-    await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1' });
+    await markOrderPaid(db, { orderId, payment, actor: 'payphone-confirm' });
 
     const [filter] = ordersCollection.findOneAndUpdate.mock.calls[0];
     expect(filter).toEqual({ _id: orderId, status: 'pending' });
@@ -93,36 +80,41 @@ describe('markOrderPaid', () => {
 
   it('returns null when the guard filter matches nothing (already paid, or nonexistent)', async () => {
     const { db } = makeMockDb({ findOneAndUpdateResult: null });
-    const result = await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1' });
+    const result = await markOrderPaid(db, { orderId, payment, actor: 'payphone-confirm' });
     expect(result).toBeNull();
   });
 
   it('omits customer from the update when not provided', async () => {
     const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId } });
 
-    await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1' });
+    await markOrderPaid(db, { orderId, payment, actor: 'payphone-confirm' });
 
     const [, update] = ordersCollection.findOneAndUpdate.mock.calls[0];
     expect(update.$set).not.toHaveProperty('customer');
     expect(update.$set.status).toBe('paid');
-    expect(update.$set.stripePaymentIntentId).toBe('pi_1');
+    expect(update.$set.payment).toEqual(payment);
   });
 
   it('includes customer in the update when provided', async () => {
     const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId } });
     const customer = { email: 'buyer@example.com', name: 'Buyer' };
 
-    await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1', customer });
+    await markOrderPaid(db, { orderId, payment, actor: 'payphone-confirm', customer });
 
     const [, update] = ordersCollection.findOneAndUpdate.mock.calls[0];
     expect(update.$set.customer).toEqual(customer);
   });
 
-  it('pushes a "paid" history entry', async () => {
-    const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId } });
-    await markOrderPaid(db, { orderId, paymentIntentId: 'pi_1' });
-    const [, update] = ordersCollection.findOneAndUpdate.mock.calls[0];
-    expect(update.$push.history).toMatchObject({ status: 'paid', actor: 'stripe-webhook' });
+  // The actor is whatever the caller says it is. Asserted with two different values
+  // because the behavioural claim is "it is not hard-coded" — pinning one string here is
+  // how the previous version passed while being wrong for every non-webhook caller.
+  it('attributes the "paid" history entry to the caller', async () => {
+    for (const actor of ['payphone-confirm', 'reconcile-script']) {
+      const { db, ordersCollection } = makeMockDb({ findOneAndUpdateResult: { _id: orderId } });
+      await markOrderPaid(db, { orderId, payment, actor });
+      const [, update] = ordersCollection.findOneAndUpdate.mock.calls[0];
+      expect(update.$push.history).toMatchObject({ status: 'paid', actor });
+    }
   });
 });
 

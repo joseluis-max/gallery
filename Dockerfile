@@ -31,6 +31,13 @@ ENV PUBLIC_SITE_URL=$PUBLIC_SITE_URL
 # rather than at build time — but MONGODB_URI is read by the config module, so give the
 # build a syntactically valid placeholder. Nothing connects during a build.
 ENV MONGODB_URI=mongodb://placeholder-not-used-at-build-time:27017
+# PAYPHONE_STORE_ID is `context: 'server', access: 'public'` (astro.config.mjs) — a
+# *public* var, so unlike PAYPHONE_TOKEN (secret) astro:env validates it eagerly at
+# build time regardless of whether anything reads it during the build. It has no
+# schema default, so the build fails without a value present. The real value is
+# supplied at deploy time via cloudbuild.yaml's --set-env-vars; nothing calls Payphone
+# during a build, so this placeholder never actually reaches a request.
+ENV PAYPHONE_STORE_ID=placeholder-not-used-at-build-time
 RUN pnpm run build
 
 # Ship only what the server needs: no source, no dev dependencies, no build toolchain.

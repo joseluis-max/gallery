@@ -1,4 +1,6 @@
 ---
+import PhotoWatermark from './PhotoWatermark.astro';
+
 interface Props {
   href: string;
   slug: string;
@@ -62,6 +64,8 @@ const {
       />
     </picture>
   </a>
+
+  <PhotoWatermark scale="tile" />
 
   <button
     type="button"

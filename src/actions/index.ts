@@ -8,13 +8,12 @@ import { auth } from './auth';
 import { downloads } from './downloads';
 import { addCartItem, hasCartItem, removeCartItem } from '../lib/cart';
 import { buildCartView } from '../lib/cartView';
-import { createStorage, getDbConfig, getPublicSiteUrl, getStripeConfig } from '../lib/config';
+import { createStorage, getDbConfig } from '../lib/config';
 import { getDictionary } from '../lib/i18n';
 import { getDb } from '../lib/db';
-import { attachStripeSession, createPendingOrder, type OrderItem } from '../lib/orders';
+import { canViewOrder, createPendingOrder, getOrderById, type OrderItem } from '../lib/orders';
 import { computeCartPricing } from '../lib/pricing';
 import { getSettings } from '../lib/settings';
-import { createStripeClient } from '../lib/stripe';
 
 function parsePhotoId(raw: string): InstanceType<typeof ObjectId> {
   try {
@@ -107,10 +106,12 @@ export const server = {
       const subtotalCents = pricing.totalCents;
       const totalCents = pricing.totalCents;
 
-      // Stripe rejects a zero-total Checkout Session outright. Free photos are claimed
-      // through the free-credit flow, which never touches the cart, so a $0 total here
-      // means a misconfigured price rather than a legitimate free order — fail loudly
-      // instead of handing Stripe something it will refuse.
+      // Payphone rejects a zero amount, and enforces a per-merchant minimum above it (see
+      // the note in lib/payphone.ts — the figure still needs confirming with the account
+      // rep). Free photos are claimed through the free-credit flow, which never touches
+      // the cart, so a $0 total here means a misconfigured price rather than a legitimate
+      // free order — fail loudly with a message from this store instead of letting the
+      // buyer meet a raw gateway error.
       if (totalCents <= 0) {
         throw new ActionError({ code: 'BAD_REQUEST', message: 'INVALID_TOTAL' });
       }
@@ -125,33 +126,61 @@ export const server = {
         ...(sessionUser ? { user: { id: new ObjectId(sessionUser.id), email: sessionUser.email, name: sessionUser.name } } : {}),
       });
 
-      const stripe = createStripeClient(getStripeConfig().secretKey);
-      const siteUrl = getPublicSiteUrl();
-
-      const lineItems = orderItems.map((item) => ({
-        price_data: {
-          currency: 'usd',
-          product_data: { name: `${item.photoTitle} — Digital download` },
-          unit_amount: item.unitPriceCents,
-        },
-        quantity: 1,
-      }));
-
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        line_items: lineItems,
-        metadata: { orderId: order._id.toString() },
-        // Prefills (and locks) the email field for a signed-in buyer; Stripe still
-        // collects it itself for guests.
-        ...(sessionUser ? { customer_email: sessionUser.email } : {}),
-        success_url: `${siteUrl}/${input.lang}/order/${order._id.toString()}`,
-        cancel_url: `${siteUrl}/${input.lang}/cart`,
-      });
-
-      await attachStripeSession(db, order._id, session.id!);
       context.session?.set('cart', []);
 
-      return { url: session.url, orderId: order._id.toString() };
+      // A relative path, and the cart page redirects to it exactly as it did to Stripe's
+      // hosted URL. Nothing here is resolved on someone else's server any more, so there
+      // is no reason for it to be absolute.
+      return { url: `/${input.lang}/checkout/${order._id.toString()}`, orderId: order._id.toString() };
+    },
+  }),
+
+  /**
+   * Records the buyer's email on a pending order, from the checkout page's guest gate.
+   *
+   * This exists because Payphone's widget replaced Stripe's hosted form, and with it the
+   * guarantee that every purchase came with an email attached. Payphone *may* return one
+   * on the confirm response, but it is optional — and that address is where the download
+   * links go, so a guest order without one is a purchase that silently delivers nothing.
+   */
+  setOrderEmail: defineAction({
+    accept: 'json',
+    input: z.object({
+      orderId: z.string(),
+      // A `refine` rather than `.email()` so the failure carries the same error *code* the
+      // rest of the app uses, which is what the checkout page looks up in the dictionary.
+      email: z.string().refine((value) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value), { message: 'INVALID_EMAIL' }),
+    }),
+    handler: async (input, context) => {
+      let orderId: InstanceType<typeof ObjectId>;
+      try {
+        orderId = new ObjectId(input.orderId);
+      } catch {
+        throw new ActionError({ code: 'BAD_REQUEST', message: 'INVALID_ORDER_ID' });
+      }
+
+      const db = await getDb(getDbConfig());
+      const order = await getOrderById(db, orderId);
+      if (!order) {
+        throw new ActionError({ code: 'NOT_FOUND', message: 'ORDER_NOT_FOUND' });
+      }
+
+      // Same visibility rule as every other order surface, and the `status: 'pending'`
+      // filter below is the other half: a paid order's customer must never be rewritten by
+      // an unauthenticated call, or the receipt could be redirected after the fact.
+      const viewer = await context.session?.get('user');
+      if (!canViewOrder(order, viewer)) {
+        throw new ActionError({ code: 'NOT_FOUND', message: 'ORDER_NOT_FOUND' });
+      }
+
+      await db
+        .collection('orders')
+        .updateOne(
+          { _id: orderId, status: 'pending' },
+          { $set: { 'customer.email': input.email, updatedAt: new Date() } },
+        );
+
+      return { ok: true };
     },
   }),
 };

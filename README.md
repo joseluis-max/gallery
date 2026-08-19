@@ -13,7 +13,7 @@ orders, customers, analytics, and settings.
 - **Google Cloud Storage** (one bucket, via its S3-compatible API — `@aws-sdk/client-s3`
   + `@aws-sdk/s3-request-presigner`), or local disk in development, selected with
   `STORAGE_DRIVER`
-- **Stripe** (hosted Checkout Sessions)
+- **Payphone** (Cajita de Pagos widget — Ecuador's gateway; cards and the Payphone wallet)
 - **sharp** (image pipeline — CLI ingest and admin browser upload share the same code)
 - **zod 4** (Actions input, `astro:env` schema)
 - **vitest** (unit tests for the framework-independent `lib/` layer)
@@ -32,9 +32,41 @@ public page to an original: `StorageAdapter.publicUrl()` takes no bucket paramet
 hardcodes the public prefix, so it is not *possible* to construct a public URL for an
 original.
 
-After Stripe confirms payment, a short-lived (5-minute) presigned URL to the original is
+After Payphone's confirmation succeeds, a short-lived (5-minute) presigned URL to the original is
 minted on demand and bound to a single-use-limited, expiring download token — never a
 durable public link.
+
+## Why this integration has no webhook
+
+Payphone does not provide one. That is a property of the gateway, not an omission here,
+and it makes the payment path structurally weaker than the Stripe integration it replaced.
+The difference is worth stating plainly so it is not rediscovered later as a defect:
+
+| | Stripe (before) | Payphone (now) |
+|---|---|---|
+| How we learn a payment happened | Signed webhook, pushed, retried for days | The buyer's browser returns to `/api/payphone-confirm`, and we **pull** the truth back |
+| What proves it | HMAC signature over the payload | Nothing in the request. Only the confirm response we fetch ourselves |
+| Idempotency | Provider event id | An atomic claim on our own attempt ledger (`claimConfirm`) |
+| Buyer closes the tab | Webhook still arrives; the order fulfils | No confirm runs, and Payphone **auto-reverses the charge after 5 minutes** |
+
+Three consequences shape the code:
+
+1. **The `id` and `clientTransactionId` on the return URL are attacker-typeable.** The
+   confirm route therefore verifies that the gateway's own reported amount equals the
+   stored order total before anything is fulfilled. That check is the security boundary.
+2. **Confirm is terminal** — a second call errors rather than returning the same answer —
+   so `claimConfirm` grants exactly one request the right to make it, and a refresh or a
+   second tab redirects without touching Payphone.
+3. **Fulfilment has no retry safety net.** The confirm response is persisted *before* the
+   order is touched, so a crash mid-fulfilment leaves durable evidence rather than a silent
+   loss. The compensating control is the "payments needing attention" section on
+   `/admin/orders`, which lists approved payments whose order never went `paid`, and
+   confirms that started and never finished. It should always be empty.
+
+The failure mode where a buyer closes the tab is the common one, and it is *safe*: the
+reversal returns their money. The expensive one is a confirm that succeeded followed by a
+process death — the charge stands and is not reversed — which is exactly what the admin
+section exists to surface.
 
 The separation between the two prefixes is a **per-object `public-read` ACL** on
 derivatives — the bucket itself grants the public nothing. (GCS forbids IAM conditions
@@ -49,6 +81,16 @@ that actually work are the ≤2000px downscale (a screenshot of that won't print
 acceptably at 40×60cm) and the burned-in bottom-left watermark. The `oncontextmenu`/drag
 suppression in `BaseLayout.astro` is explicitly labelled in its own comment as a courtesy
 speed bump against casual right-click-save, not a real control.
+
+What a screenshot *does* pick up is the second watermark: `PhotoWatermark.astro` paints a
+repeating diagonal mark over the mosaic tiles, the detail image and the enlarged view, so
+a captured frame carries the attribution across the whole photograph rather than in one
+croppable corner. It's a CSS background — a determined visitor deletes the element in
+devtools and it's gone, which is why it supplements the burned-in mark instead of
+replacing it. The mark's text comes from the same `watermark.config.ts` the ingest
+pipeline uses, so the two can't drift; density and opacity live in
+`src/lib/watermarkOverlay.ts` (`DEFAULT_OVERLAY_OPACITY`, currently `0.14`) and in the
+component's `TILE_PX`.
 
 ## Getting started
 
@@ -113,7 +155,9 @@ See `.env.example` for the full list with inline comments. Summary:
 
   The bucket must grant the public nothing: derivatives are readable because of their
   own object ACL, which is what keeps `originals/` private in the same bucket.
-- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — Stripe (test-mode keys while developing).
+- `PAYPHONE_TOKEN`, `PAYPHONE_STORE_ID` — Payphone, from their Developer console. The
+  response URL (`/api/payphone-confirm`) and the authorized domain must be registered
+  there too; see `.env.example`.
 - `DOWNLOAD_TOKEN_TTL_DAYS` (default 7), `DOWNLOAD_TOKEN_MAX_USES` (default 5).
 
 There is deliberately **no admin credential in the environment**. `ADMIN_PASSWORD_HASH`
@@ -155,7 +199,7 @@ it runs the real photos through the real image pipeline, writes the watermarked
 derivatives straight into `public/local-public/` (served by Astro itself, git-ignored),
 and upserts them into Mongo as `status: 'published'` — so the actual gallery, detail, and
 admin pages render against real content and a real database with zero cloud setup.
-Requires a real `MONGODB_URI`; touches neither GCS nor Stripe. Not part of the production
+Requires a real `MONGODB_URI`; touches neither GCS nor Payphone. Not part of the production
 ingest path — `pnpm ingest` (uploads to the bucket, defaults new photos to `draft`) is what actually publishes
 a shoot.
 
@@ -431,7 +475,7 @@ no client-side plotting code, nothing to hydrate:
 ## Verification performed in this build
 
 A real MongoDB Atlas cluster was connected and used for live verification later in the
-build (Google Cloud Storage and Stripe credentials remain unset — `.env` still
+build (Google Cloud Storage and Payphone credentials remain unset — `.env` still
 satisfies `astro:env`'s startup validation only for those). What was actually verified:
 
 - **Live against real Atlas:** `pnpm run init-db` (collections/indexes created for real),
@@ -469,12 +513,15 @@ satisfies `astro:env`'s startup validation only for those). What was actually ve
   published. Also checked: the original is *not* reachable through the public route
   (404), path traversal is rejected on both local routes, an unauthenticated `PUT`
   to the upload route is 401, and deleting the photo removed every byte from disk.
-- **A real pre-existing bug this surfaced, now fixed:** `orders.stripeSessionId` had a
-  unique but *non-sparse* index, so only one order could exist without a session id at a
-  time. Since `createPendingOrder` inserts before `attachStripeSession` runs, a second
-  checkout starting in that window failed to insert — and any order that never got a
-  session id would have blocked all later ones permanently. The index is now
-  `{ unique: true, sparse: true }`, and `init-db` drops/recreates an index whose options
+- **A real pre-existing bug this surfaced:** `orders.stripeSessionId` had a unique but
+  *non-sparse* index, so only one order could exist without a session id at a time. Since
+  the order was inserted before the session id was attached, a second checkout starting in
+  that window failed to insert — and any order that never got a session id would have
+  blocked all later ones permanently. It was fixed with `sparse: true`; the Payphone
+  migration then removed the field entirely and moved uniqueness to
+  `payphoneTransactions.clientTransactionId`, which is written by the same `insertOne` that
+  creates the document and therefore does not need to be sparse at all. The bug class is
+  designed out rather than patched. `init-db` still drops/recreates an index whose options
   changed rather than erroring on the conflict.
 - `pnpm build` and `pnpm check` — clean, including under Astro 7's stricter Rust
   compiler (unclosed tags are hard errors now).
@@ -491,10 +538,14 @@ satisfies `astro:env`'s startup validation only for those). What was actually ve
   asserting the sideways fixture comes out correctly oriented and that watermark
   compositing visibly changes the expected pixel region), `lib/auth.ts` (password
   hash/verify, rate limiting), `lib/cart.ts`, `lib/slug.ts`, `lib/serialize.ts`, the
-  download-delivery API route's status-code mapping, the Stripe webhook route
-  (missing/invalid signature, first-time processing, idempotent replay of an
-  already-processed event, and that a mid-handler failure leaves the event unmarked so
-  Stripe's own retry can reprocess it), `lib/users.ts` (email normalization, password
+  download-delivery API route's status-code mapping, `lib/payphone.ts` (the amount-split
+  identity swept across every total from $0.01 to $50, attempt-id uniqueness and length,
+  and that the confirm call reports every failure as a value rather than throwing),
+  `lib/payments.ts` (the exact atomic filter that serves as the confirm claim), the
+  Payphone confirm route (malformed params, unknown transaction, **an approved payment
+  whose amount does not match the order total**, decline, refresh and two-tab races making
+  no second gateway call, and that the confirm response is persisted even when fulfilment
+  throws), `lib/users.ts` (email normalization, password
   policy, duplicate-key → `EMAIL_TAKEN`, that a disabled account fails authentication
   even with the right password, and that the session snapshot never carries the password
   hash), `lib/charts.ts` (tick rounding, the all-zero and single-point axes, mark
@@ -509,9 +560,9 @@ satisfies `astro:env`'s startup validation only for those). What was actually ve
 - Live dev-server smoke test: theme toggle persists with no flash across reloads and
   `<ClientRouter />` navigations; unsupported-locale routes (e.g. `/fr/...`) 404 via
   middleware; the root `/` → `/es/` redirect works; `prefers-reduced-motion` styling
-  loads correctly; the Stripe webhook route correctly rejects requests with a missing or
-  invalid signature (no live Stripe account needed for signature verification itself);
-  the full admin sign-in flow (unauthenticated → form → submit → session set → guarded
+  loads correctly; the Payphone confirm route correctly rejects requests with missing or
+  malformed parameters, and an unknown transaction id, without ever calling the gateway
+  (no live Payphone account needed for either); the full admin sign-in flow (unauthenticated → form → submit → session set → guarded
   pages recognize the session → logout) was exercised live end-to-end.
 
 ### Verified live against `gs://valdiviezo-gallery`
@@ -533,17 +584,25 @@ error page, the admin catalog and public gallery both rendered
 `storage.googleapis.com/valdiviezo-gallery/public/...` URLs, and deleting the photo
 removed all three objects from the bucket. `pnpm verify-storage` passes end to end.
 
-### Deferred — needs real Stripe credentials, not part of this session
+### Deferred — needs real Payphone credentials, not part of this session
 
-Once real Stripe values are in `.env`:
+Once real Payphone values are in `.env`, **and** the response URL and authorized domain are
+registered in the Payphone Developer console:
 
 - [ ] A real (non-dry-run) `pnpm ingest`, uploading to the real bucket.
 - [ ] Cart/checkout pages against real seeded data (gallery/detail/admin already verified
       live — see above).
-- [ ] Stripe test-mode checkout end to end: `stripe listen --forward-to
-      localhost:4321/api/stripe-webhook`, pay with `4242 4242 4242 4242`, confirm the
-      order flips to `paid`, a download token is minted, the emailed link delivers the
-      original as an attachment, and a **replayed webhook mints no second token**.
+- [ ] Payphone checkout end to end: the Cajita renders with amounts that sum to the
+      total, paying as a guest flips the order to `paid`, a download token is minted per
+      item, and the receipt carries the links.
+- [ ] **Refreshing the confirm URL mints no second token, sends no second email, and makes
+      no second call to Payphone** — confirm is terminal, so this is the one that matters.
+- [ ] A hand-crafted `/api/payphone-confirm?id=999&clientTransactionId=<valid>` leaves the
+      order `pending` and returns `?payment=unconfirmed`.
+- [ ] A checkout page left open past 10 minutes shows the expired state, and "start again"
+      mints a fresh attempt.
+- [ ] Abandoning at the Payphone step leaves the order `pending`, surfaces the attempt in
+      the admin reconciliation section, and the charge reverses at T+5min.
 - [ ] Confirm an expired/over-used download token 403s, and that hitting the order
       success URL without ever paying leaves the order `pending`.
 - [ ] Admin: upload a full shoot (80+ full-resolution A7III frames, ~1GB) through
@@ -597,8 +656,8 @@ stating:
   `SERVICE-HASH-ue.a.run.app` form rather than the deterministic
   `SERVICE-PROJECTNUMBER.REGION.run.app` one.
 - **Secrets come from Secret Manager**, mounted as environment variables by the revision
-  (`mongodb-uri`, `gcs-access-key-id`, `gcs-secret-access-key`, `stripe-secret-key`,
-  `stripe-webhook-secret`). Nothing secret is in the image, in `cloudbuild.yaml`, or in
+  (`mongodb-uri`, `gcs-access-key-id`, `gcs-secret-access-key`, `payphone-token`).
+  Nothing secret is in the image, in `cloudbuild.yaml`, or in
   the revision's plain config. `.dockerignore` excludes `.env` from the build context.
 
 `--memory=1Gi` is deliberate: sharp decoding a 24MP original does not fit comfortably in
@@ -644,9 +703,15 @@ That is Atlas rejecting an unlisted source IP at the TLS layer. Two ways to fix 
 
 ### Still to do before this is a public storefront
 
-- [ ] Real Stripe keys in the `stripe-secret-key` / `stripe-webhook-secret` secrets
-      (they currently hold the local placeholders, so checkout will fail), and the
-      webhook endpoint pointed at `https://<service-url>/api/stripe-webhook`.
+- [ ] A real `payphone-token` secret and `PAYPHONE_STORE_ID` env var (both currently hold
+      placeholders, so checkout will fail), with the response URL registered in Payphone
+      Developer as `https://<service-url>/api/payphone-confirm` and the service's domain
+      added as the store's authorized domain.
+- [ ] Confirm Payphone's **minimum transaction amount** with the account rep and encode it
+      as `PAYPHONE_MIN_AMOUNT_CENTS` — a single-photo order is legitimately $1.20–$2.00, so
+      a $1 or $2 floor would reject real orders.
+- [ ] A real email provider behind `lib/email.ts`. It is a `console.log` stub, so **no
+      buyer currently receives their download links**, which is the whole deliverable.
 - [ ] A custom domain mapped to the service, then a rebuild with `_SITE_URL` set to it
       and that origin added to the bucket's CORS rule.
 - [ ] Cloud CDN in front of the public prefix, with `GCS_PUBLIC_BASE_URL` pointed at it.
@@ -656,6 +721,6 @@ That is Atlas rejecting an unlisted source IP at the TLS layer. Two ways to fix 
 `output: 'server'` + `@astrojs/node` standalone, so the `Dockerfile` here works anywhere
 that runs a container (Fly.io, Railway, Render, a plain VPS). Set the environment
 variables from `.env.example` on the host, remembering that `PUBLIC_SITE_URL` is a build
-argument rather than a runtime variable, and point the Stripe webhook endpoint at
-`https://<your-domain>/api/stripe-webhook` once deployed. The Mongo-backed session store
+argument rather than a runtime variable, and register `https://<your-domain>/api/payphone-confirm`
+as the response URL (plus the domain itself as authorized) in Payphone Developer once deployed. The Mongo-backed session store
 is what makes more than one instance safe; keep it whatever the host.
