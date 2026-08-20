@@ -37,12 +37,10 @@ const competitionCards = await Promise.all(
   }),
 );
 
-const cart = (await Astro.session?.get('cart')) ?? [];
-const cartLineByPhotoId = new Map(cart.map((item) => [item.photoId, item.lineId]));
-
+// No cart lookup here, unlike the gallery and portfolio: the homepage strip is an
+// exhibition (see the MosaicGrid below), so there is no toggle whose state would need it.
 const items: GridItem[] = featured.map((photo) => {
   const urls = getPhotoImageUrls(photo, storage);
-  const photoId = photo._id.toString();
   return {
     href: `/${lang}/gallery/${photo.slug}`,
     slug: photo.slug,
@@ -51,23 +49,51 @@ const items: GridItem[] = featured.map((photo) => {
     lqip: photo.lqip,
     webpUrl: urls.webp,
     jpegUrl: urls.jpeg,
-    photoId,
-    inCart: cartLineByPhotoId.has(photoId),
-    lineId: cartLineByPhotoId.get(photoId),
+    photoId: photo._id.toString(),
   };
 });
+
+// The title arrives one word at a time, so it has to be split before it can be marked up.
+// Each word keeps its own mask (see .hero-word) — splitting on characters was the other
+// option and it wrecks the kerning of a serif display face at 60px.
+const heroWords = t.home.heroTitle.split(' ');
 ---
 
 <BaseLayout title={`${t.home.heroTitle} — ${t.home.heroSubtitle}`} description={t.about.body} lang={lang}>
   {/* Half the vertical air it used to carry, and it now says what the site is *for*
       before the photographs start: a visitor who arrived looking for their race number
       should not have to infer that from a mosaic. */}
-  <section class="px-6 py-16 text-center md:px-12 md:py-20">
-    <p class="text-[11px] uppercase tracking-[0.14em] text-ink-muted">{t.home.heroSubtitle}</p>
-    <h1 class="mt-3 font-display text-4xl tracking-tight md:text-6xl">{t.home.heroTitle}</h1>
-    <p class="mx-auto mt-4 max-w-lg text-ink-muted">{t.home.heroBody}</p>
+  {/*
+    The entrance is authored as one sequence rather than a set of independent fades:
+    eyebrow, then the name a word at a time, then the sentence, then the two ways in, then
+    the reassurances, and last the line pointing at the photographs.
+    That order is the order a visitor reads them in, and holding each step back by ~100ms
+    is what makes the page feel composed rather than merely animated. Delays are inline
+    because they *are* the choreography — spread across a stylesheet they would be six
+    numbers nobody could see the shape of.
+  */}
+  <section class="hero relative isolate overflow-hidden px-6 py-16 text-center md:px-12 md:py-20">
+    <div class="hero-aura" aria-hidden="true"></div>
 
-    <div class="mt-7 flex flex-wrap items-center justify-center gap-2.5">
+    <p class="text-[11px] uppercase tracking-[0.14em] text-ink-muted" data-enter="focus" style="--enter-delay: 60ms">
+      {t.home.heroSubtitle}
+    </p>
+
+    <h1 class="hero-title mt-3 font-display text-4xl tracking-tight md:text-6xl">
+      {
+        heroWords.map((word, i) => (
+          <span class="hero-word">
+            <span data-enter="word" style={`--enter-delay: ${200 + i * 110}ms`}>{word}</span>
+          </span>
+        ))
+      }
+    </h1>
+
+    <p class="mx-auto mt-4 max-w-lg text-ink-muted" data-enter="focus" style={`--enter-delay: ${300 + heroWords.length * 110}ms`}>
+      {t.home.heroBody}
+    </p>
+
+    <div class="mt-7 flex flex-wrap items-center justify-center gap-2.5" data-enter style={`--enter-delay: ${420 + heroWords.length * 110}ms`}>
       <a href={`/${lang}/gallery`} class="btn btn-primary px-6 py-3">
         {t.home.viewGallery}
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -79,7 +105,7 @@ const items: GridItem[] = featured.map((photo) => {
     </div>
 
     <ul class="mt-8 flex flex-wrap items-center justify-center gap-x-7 gap-y-2 text-xs text-ink-muted">
-      <li class="flex items-center gap-2">
+      <li class="flex items-center gap-2" data-enter style={`--enter-delay: ${520 + heroWords.length * 110}ms`}>
         <svg class="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 4v10" />
           <path d="M8 11l4 4 4-4" />
@@ -87,28 +113,37 @@ const items: GridItem[] = featured.map((photo) => {
         </svg>
         {t.home.trustInstant}
       </li>
-      <li class="flex items-center gap-2">
+      <li class="flex items-center gap-2" data-enter style={`--enter-delay: ${600 + heroWords.length * 110}ms`}>
         <svg class="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="5" width="18" height="14" rx="2" />
           <path d="M3 10h18" />
         </svg>
         {t.home.trustMethods}
       </li>
-      <li class="flex items-center gap-2">
+      <li class="flex items-center gap-2" data-enter style={`--enter-delay: ${680 + heroWords.length * 110}ms`}>
         <svg class="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z" />
         </svg>
         {t.home.trustOriginal}
       </li>
     </ul>
+
+    {/* The photographs are below the fold on most screens and the hero is deliberately
+        quiet, so something has to point downward. A travelling hairline rather than a
+        bouncing chevron: it says "there is more" without asking to be looked at. */}
+    <div class="hero-cue" aria-hidden="true" data-enter style={`--enter-delay: ${820 + heroWords.length * 110}ms`}>
+      <span></span>
+    </div>
   </section>
 
   {
     items.length > 0 && (
+      /* `showCart` off: this strip is the exhibition, not the shop. Each tile still opens
+         its own page, and that page is where the buy panel lives. */
       <section class="px-2 pb-20 md:px-6">
         <h2 class="sr-only">{t.home.featuredTitle}</h2>
-        <MosaicGrid items={items} addToCartLabel={t.gallery.addToCart} removeFromCartLabel={t.gallery.removeFromCart} />
-        <div class="mt-10 text-center">
+        <MosaicGrid items={items} showCart={false} />
+        <div class="mt-10 text-center" data-reveal>
           <a href={`/${lang}/gallery`} class="text-sm uppercase tracking-widest text-accent hover:underline">
             {t.home.viewGallery}
           </a>
@@ -122,7 +157,7 @@ const items: GridItem[] = featured.map((photo) => {
   {
     competitionCards.length > 0 && (
       <section class="mx-auto max-w-7xl px-6 pb-24 md:px-12">
-        <div class="flex items-baseline justify-between">
+        <div class="flex items-baseline justify-between" data-reveal>
           <h2 class="font-display text-2xl">{t.home.recentCompetitions}</h2>
           <a href={`/${lang}/competitions`} class="text-sm uppercase tracking-widest text-accent hover:underline">
             {t.nav.viewAll} &rarr;
@@ -131,7 +166,7 @@ const items: GridItem[] = featured.map((photo) => {
 
         <ul class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {competitionCards.map(({ competition, urls, lqip, count }) => (
-            <li>
+            <li data-reveal>
               <a href={`/${lang}/competitions/${competition.slug}`} class="group block">
                 <div class="frame relative aspect-[3/2] bg-border">
                   {lqip && <img src={lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-105 object-cover blur-md" />}
@@ -143,7 +178,7 @@ const items: GridItem[] = featured.map((photo) => {
                         alt={competition.name[lang]}
                         loading="lazy"
                         decoding="async"
-                        class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+                        class="relative h-full w-full object-cover transition-transform duration-1000 ease-soft group-hover:scale-[1.04]"
                       />
                     </picture>
                   )}
@@ -164,3 +199,103 @@ const items: GridItem[] = featured.map((photo) => {
     )
   }
 </BaseLayout>
+
+<style>
+  /*
+   * Everything here is the hero's own. The reusable half of the motion system — the
+   * [data-enter] and [data-reveal] attributes these elements carry — lives in global.css,
+   * because rules that reach across components can't be scoped to one; these four
+   * classes reach nowhere and belong to this page alone.
+   */
+
+  /*
+   * A slow wash of the accent behind the name, drifting on a cycle long enough that it
+   * never quite repeats within a visit. It is the one thing on an otherwise white page
+   * that is still moving after the entrance finishes — enough to make the hero feel lit
+   * rather than printed, far too quiet to read as an animation.
+   *
+   * z-index -1 inside the section's own stacking context (`isolate` on the parent): a
+   * positioned element would otherwise paint over the static text beside it, and without
+   * the isolation a negative index would drop it behind the page background entirely.
+   */
+  .hero-aura {
+    position: absolute;
+    inset: -25% -10% auto;
+    z-index: -1;
+    height: 150%;
+    pointer-events: none;
+    background: radial-gradient(58% 52% at 50% 32%, var(--color-accent-wash), transparent 70%);
+    animation: hero-aura 22s var(--ease-soft) infinite alternate;
+  }
+  @keyframes hero-aura {
+    from {
+      transform: scale(1) translate3d(0, 0, 0);
+      opacity: 0.7;
+    }
+    to {
+      transform: scale(1.18) translate3d(0, -4%, 0);
+      opacity: 1;
+    }
+  }
+
+  /*
+   * Flex rather than inline-block words, for two reasons that both bite otherwise: an
+   * `overflow: hidden` inline-block takes its baseline from its bottom edge, which drops
+   * every masked word off the line it belongs on; and the space between two inline-blocks
+   * is a text node the mask would have to be careful of. `column-gap` sidesteps both.
+   */
+  .hero-title {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 0.25em;
+  }
+  /*
+   * The mask each word rises out of. The padding is what keeps the clip off the glyphs —
+   * a serif J descends below the baseline and the é reaches above the cap height, and
+   * without the extra room the mask shaves both. The matching negative margins hand the
+   * space straight back, so the title occupies exactly the box it did before.
+   */
+  .hero-word {
+    display: inline-block;
+    overflow: hidden;
+    padding-top: 0.08em;
+    padding-bottom: 0.16em;
+    margin-top: -0.08em;
+    margin-bottom: -0.16em;
+  }
+  .hero-word > span {
+    display: inline-block;
+  }
+
+  /* A hairline with a lit segment falling down it, on a loop. */
+  .hero-cue {
+    position: relative;
+    margin: 2.75rem auto 0;
+    height: 3rem;
+    width: 1px;
+    overflow: hidden;
+    background: linear-gradient(to bottom, transparent, var(--color-border-strong));
+  }
+  .hero-cue > span {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 40%;
+    background-color: var(--color-accent);
+    animation: hero-cue 2.6s var(--ease-soft) infinite;
+  }
+  @keyframes hero-cue {
+    0% {
+      transform: translate3d(0, -100%, 0);
+      opacity: 0;
+    }
+    30% {
+      opacity: 1;
+    }
+    100% {
+      transform: translate3d(0, 250%, 0);
+      opacity: 0;
+    }
+  }
+</style>

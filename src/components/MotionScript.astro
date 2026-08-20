@@ -1,0 +1,88 @@
+---
+/**
+ * The site's scroll-reveal engine, in two halves that have to load at different moments.
+ *
+ * 1. The flag, inline and pre-paint. `[data-reveal]` elements start hidden, and global.css
+ *    only applies that hidden state under `[data-motion="on"]` — so if scripting is off,
+ *    or this file never runs, every reveal target renders as ordinary visible content
+ *    instead of an invisible page. Same two constraints as ThemeScript.astro, for the same
+ *    two ClientRouter reasons documented in full there: `is:inline` (a module script is
+ *    deferred past first paint, which would flash the targets in before hiding them), and
+ *    re-applied on `astro:after-swap` (swapRootAttributes strips every attribute off the
+ *    live <html> on each navigation).
+ *
+ * 2. The observer, bundled and deferred. Nothing below the fold needs it during paint.
+ *
+ * Lives in BaseLayout so any public page can write `data-reveal` on an element and get the
+ * behaviour — the observer used to be MosaicGrid's, which meant only photo tiles could
+ * have it and the homepage's own copy could not.
+ */
+---
+
+<script is:inline>
+  (function () {
+    var apply = function () {
+      document.documentElement.dataset.motion = 'on';
+    };
+
+    apply();
+    document.addEventListener('astro:after-swap', apply);
+  })();
+</script>
+
+<script>
+  /** Between one tile and the next in the same batch. Small enough to read as one gesture. */
+  const STAGGER_MS = 60;
+  /** Cap on the stagger: past this the cascade stops being a flourish and becomes a wait. */
+  const MAX_STEPS = 8;
+
+  document.addEventListener('astro:page-load', () => {
+    const targets = document.querySelectorAll<HTMLElement>('[data-reveal]:not([data-reveal-bound])');
+    if (targets.length === 0) return;
+
+    // No observer, no reveal — and a permanently invisible page. Show everything instead.
+    if (!('IntersectionObserver' in window)) {
+      for (const el of targets) el.classList.add('is-visible');
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        /*
+         * Everything the observer reports in a single callback crossed the threshold
+         * together, so that set *is* the batch to stagger — which is why the delay is
+         * assigned here and not baked into each tile at render time. On first paint the
+         * whole visible grid arrives at once and cascades; scrolling afterwards brings in
+         * one or two tiles at a time, and those get almost no delay at all.
+         *
+         * Sorted by position rather than DOM order because the mosaic is a dense grid:
+         * `grid-flow-row-dense` back-fills gaps, so the tile that comes next in the
+         * markup is regularly not the one that comes next on screen, and a cascade that
+         * jumps around looks like a glitch rather than a sweep.
+         */
+        const batch = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (a, b) =>
+              a.boundingClientRect.top - b.boundingClientRect.top ||
+              a.boundingClientRect.left - b.boundingClientRect.left,
+          );
+
+        batch.forEach((entry, index) => {
+          const el = entry.target as HTMLElement;
+          el.style.setProperty('--reveal-delay', `${Math.min(index, MAX_STEPS) * STAGGER_MS}ms`);
+          el.classList.add('is-visible');
+          observer.unobserve(el);
+        });
+      },
+      // Reveals fire a little *after* the element's edge appears, so the animation plays
+      // where the reader is looking rather than in the corner of their eye.
+      { rootMargin: '0px 0px -8% 0px', threshold: 0.05 },
+    );
+
+    for (const el of targets) {
+      el.dataset.revealBound = 'true';
+      observer.observe(el);
+    }
+  });
+</script>

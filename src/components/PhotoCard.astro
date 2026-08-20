@@ -13,11 +13,14 @@ interface Props {
   tileClass: string;
   eager?: boolean;
   photoId: string;
+  /** False on exhibition walls (the homepage), where the tile shows the work rather than
+   *  offering it for sale. See MosaicGrid's `showCart` for the reasoning. */
+  showCart?: boolean;
   inCart: boolean;
   /** The cart line to remove when toggling off. Present exactly when `inCart` is true. */
   lineId?: string;
-  addToCartLabel: string;
-  removeFromCartLabel: string;
+  addToCartLabel?: string;
+  removeFromCartLabel?: string;
 }
 
 const {
@@ -30,6 +33,7 @@ const {
   tileClass,
   eager = false,
   photoId,
+  showCart = true,
   inCart,
   lineId,
   addToCartLabel,
@@ -45,8 +49,19 @@ const {
 */}
 {/* `data-photo-title` is what the gallery's search field filters on — lower-cased here so
     the filter is a plain `includes` rather than a per-keystroke case fold over every tile. */}
-<div class={`group relative overflow-hidden bg-border ${tileClass}`} data-reveal data-photo-title={title.toLowerCase()}>
-  <a href={href} class="absolute inset-0 block">
+{/*
+  Four nested elements carry four independent transforms, and keeping them on separate
+  layers is what lets them all run at once without one clobbering another: the tile is the
+  reveal aperture, `.photo-media` the reveal settle, `.photo-frame` the exhibition drift,
+  `.photo-img` the hover push. Collapsing any two onto one element would make whichever
+  rule cascaded last silently win. See the Motion section of global.css.
+*/}
+<div
+  class={`photo-tile relative overflow-hidden bg-border ${tileClass}`}
+  data-reveal="photo"
+  data-photo-title={title.toLowerCase()}
+>
+  <a href={href} class="photo-media absolute inset-0 block">
     <img
       src={lqip}
       alt=""
@@ -54,7 +69,7 @@ const {
       class="absolute inset-0 h-full w-full object-cover scale-105 blur-md"
       loading="eager"
     />
-    <picture>
+    <picture class="photo-frame">
       <source srcset={webpUrl} type="image/webp" />
       <img
         src={jpegUrl}
@@ -62,7 +77,7 @@ const {
         loading={eager ? 'eager' : 'lazy'}
         decoding="async"
         transition:name={`photo-${slug}`}
-        class="relative h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+        class="photo-img relative h-full w-full object-cover"
       />
     </picture>
   </a>
@@ -74,39 +89,165 @@ const {
     still takes every click. The veil is what makes the title legible over a bright
     photograph without dimming the grid at rest.
   */}
-  <div
-    class="pointer-events-none absolute inset-x-0 bottom-0 z-[5] bg-gradient-to-t from-black/55 to-transparent pt-8 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-    aria-hidden="true"
-  >
-    <p class="translate-y-1 px-3 pb-2.5 text-xs text-white transition-transform duration-200 group-hover:translate-y-0">
-      {title}
-    </p>
+  <div class="photo-veil" aria-hidden="true">
+    <span class="photo-rule"></span>
+    <p>{title}</p>
   </div>
 
-  <button
-    type="button"
-    class="cart-toggle"
-    data-cart-toggle
-    data-photo-id={photoId}
-    data-line-id={lineId ?? ''}
-    data-in-cart={String(inCart)}
-    data-add-label={addToCartLabel}
-    data-remove-label={removeFromCartLabel}
-    aria-pressed={inCart}
-    aria-label={inCart ? removeFromCartLabel : addToCartLabel}
-    title={inCart ? removeFromCartLabel : addToCartLabel}
-  >
-    <svg class="icon-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-    <svg class="icon-remove" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
-  </button>
+  {
+    showCart ? (
+      <button
+        type="button"
+        class="cart-toggle"
+        data-cart-toggle
+        data-photo-id={photoId}
+        data-line-id={lineId ?? ''}
+        data-in-cart={String(inCart)}
+        data-add-label={addToCartLabel}
+        data-remove-label={removeFromCartLabel}
+        aria-pressed={inCart}
+        aria-label={inCart ? removeFromCartLabel : addToCartLabel}
+        title={inCart ? removeFromCartLabel : addToCartLabel}
+      >
+        <svg class="icon-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+        <svg class="icon-remove" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      </button>
+    ) : (
+      /* Not a control: the whole tile is already the link, so a second focusable thing
+         pointing at the same place would only add a stop for keyboard users. It is the
+         corner the cart toggle vacated, saying "this opens" — and it stays out of the way
+         until the pointer is on the photograph, so the wall reads as quiet at rest. */
+      <span class="photo-open" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8.5 15.5L15.5 8.5" />
+          <path d="M9.5 8.5h6v6" />
+        </svg>
+      </span>
+    )
+  }
 </div>
 
 <style>
+  /*
+   * The <picture> is promoted to a real box of its own — inline by default, it was only
+   * ever a pass-through wrapper — so the exhibition drift in global.css has a layer to
+   * animate that neither the reveal above it nor the hover below it is already using.
+   * The <img> inside still resolves `h-full` against the same rectangle it always did.
+   */
+  .photo-frame {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+
+  /*
+   * The hover push. Long and eased rather than snappy: at 1.06 over a second the
+   * photograph looks like it is leaning toward the reader, where the same move in 150ms
+   * looks like a button. The slight saturation lift reads as the frame catching light.
+   *
+   * `:focus-within` wherever `:hover` appears, so a keyboard user tabbing through the
+   * grid gets the same title and the same affordance a mouse user gets.
+   */
+  .photo-img {
+    transition:
+      transform 1.2s var(--ease-soft),
+      filter 0.5s var(--ease-soft);
+  }
+  .photo-tile:hover .photo-img,
+  .photo-tile:focus-within .photo-img {
+    transform: scale(1.06);
+    filter: saturate(1.06) contrast(1.02);
+  }
+
+  /* Above the watermark lattice (z-5) so the title stays readable through it, below the
+     cart toggle (z-10) so it never covers the one thing here that takes a click. */
+  .photo-veil {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 6;
+    padding: 2.5rem 0.75rem 0.7rem;
+    background: linear-gradient(to top, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.16) 55%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s var(--ease-soft);
+  }
+  .photo-tile:hover .photo-veil,
+  .photo-tile:focus-within .photo-veil {
+    opacity: 1;
+  }
+
+  /* The accent rule draws itself in first and the title follows a beat later. Two things
+     moving in sequence is most of what separates a considered hover from a fade. */
+  .photo-rule {
+    display: block;
+    width: 1.75rem;
+    height: 1px;
+    margin-bottom: 0.4rem;
+    background-color: var(--color-accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.5s var(--ease-soft) 0.06s;
+  }
+  .photo-tile:hover .photo-rule,
+  .photo-tile:focus-within .photo-rule {
+    transform: scaleX(1);
+  }
+
+  .photo-veil p {
+    color: #fff;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    opacity: 0;
+    transform: translate3d(0, 0.5rem, 0);
+    transition:
+      opacity 0.45s var(--ease-soft) 0.08s,
+      transform 0.45s var(--ease-soft) 0.08s;
+  }
+  .photo-tile:hover .photo-veil p,
+  .photo-tile:focus-within .photo-veil p {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Deliberately smaller and dimmer than the cart toggle it stands in for: a hint, not a
+     control. `pointer-events: none` keeps every pixel of the tile clickable as the link. */
+  .photo-open {
+    position: absolute;
+    right: 0.5rem;
+    top: 0.5rem;
+    z-index: 6;
+    display: inline-flex;
+    height: 2rem;
+    width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background-color: rgb(0 0 0 / 0.45);
+    color: #fff;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(-0.25rem, 0.25rem, 0) scale(0.9);
+    transition:
+      opacity 0.3s var(--ease-soft),
+      transform 0.4s var(--ease-soft);
+  }
+  .photo-tile:hover .photo-open,
+  .photo-tile:focus-within .photo-open {
+    opacity: 1;
+    transform: none;
+  }
+  .photo-open svg {
+    height: 1rem;
+    width: 1rem;
+  }
+
   .cart-toggle {
     position: absolute;
     right: 0.5rem;

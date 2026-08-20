@@ -2,6 +2,7 @@
 import { ClientRouter } from 'astro:transitions';
 import ThemeToggle from '../components/ThemeToggle.astro';
 import ThemeScript from '../components/ThemeScript.astro';
+import MotionScript from '../components/MotionScript.astro';
 import { listPublishedCompetitions } from '../lib/competitions';
 import { getDbConfig } from '../lib/config';
 import { getDb } from '../lib/db';
@@ -77,6 +78,7 @@ const alternates = LOCALES.map((locale) => ({
     {ogImage && <meta name="twitter:image" content={ogImage} />}
 
     <ThemeScript />
+    <MotionScript />
 
     <ClientRouter />
 

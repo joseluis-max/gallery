@@ -11,19 +11,28 @@ export interface GridItem {
   jpegUrl: string;
   photoId: string;
   /** Whether the viewer's session cart already holds this photo — read fresh on every
-   *  render, same as the buy panel, so the toggle never opens showing a stale state. */
-  inCart: boolean;
+   *  render, same as the buy panel, so the toggle never opens showing a stale state.
+   *  Omitted on exhibition grids, which render no toggle for it to reflect. */
+  inCart?: boolean;
   /** The cart line to remove when toggling off. Present exactly when `inCart` is true. */
   lineId?: string;
 }
 
 interface Props {
   items: GridItem[];
-  addToCartLabel: string;
-  removeFromCartLabel: string;
+  /**
+   * Whether the tiles are for sale. The homepage strip is an *exhibition* — the work on
+   * show, not the shop — so it opts out: a plus button on every frame turns a curated
+   * wall into a product listing before the visitor has even seen what the photographs
+   * are. Every tile still links through to its own page, where buying is the point and
+   * the buy panel is waiting.
+   */
+  showCart?: boolean;
+  addToCartLabel?: string;
+  removeFromCartLabel?: string;
 }
 
-const { items, addToCartLabel, removeFromCartLabel } = Astro.props;
+const { items, showCart = true, addToCartLabel, removeFromCartLabel } = Astro.props;
 
 /*
  * An asymmetric modular grid in the Japanese editorial tradition (see Muji/Casa BRUTUS
@@ -60,8 +69,15 @@ function tileClassFor(item: GridItem, index: number): string {
   grid-flow-row-dense packs each tile into the first slot it fits on the shared 2/6-column
   grid, so mixing feature/wide/tall/small shapes never leaves gaps — no JS layout pass or
   measurement needed, same zero-layout-shift property the old flex-based grid had.
+
+  `data-exhibition` is the one hook the wall needs that a single tile can't own: it's what
+  global.css keys the lead tile's slow drift off, and it has to be read from the container
+  because "the lead tile" is a fact about the grid, not about any photograph in it.
 -->
-<div class="grid grid-cols-2 auto-rows-[clamp(120px,32vw,220px)] grid-flow-row-dense gap-1 md:grid-cols-6 md:auto-rows-[clamp(90px,13vw,170px)] md:gap-2">
+<div
+  class="grid grid-cols-2 auto-rows-[clamp(120px,32vw,220px)] grid-flow-row-dense gap-1 md:grid-cols-6 md:auto-rows-[clamp(90px,13vw,170px)] md:gap-2"
+  data-exhibition={showCart ? undefined : ''}
+>
   {
     items.map((item, i) => (
       <PhotoCard
@@ -74,7 +90,8 @@ function tileClassFor(item: GridItem, index: number): string {
         tileClass={tileClassFor(item, i)}
         eager={i < 4}
         photoId={item.photoId}
-        inCart={item.inCart}
+        showCart={showCart}
+        inCart={item.inCart ?? false}
         lineId={item.lineId}
         addToCartLabel={addToCartLabel}
         removeFromCartLabel={removeFromCartLabel}
@@ -82,41 +99,3 @@ function tileClassFor(item: GridItem, index: number): string {
     ))
   }
 </div>
-
-<script>
-  document.addEventListener('astro:page-load', () => {
-    const targets = document.querySelectorAll<HTMLElement>('[data-reveal]:not([data-reveal-bound])');
-    if (targets.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            observer.unobserve(entry.target);
-          }
-        }
-      },
-      { rootMargin: '0px 0px -5% 0px', threshold: 0.05 },
-    );
-
-    for (const el of targets) {
-      el.dataset.revealBound = 'true';
-      observer.observe(el);
-    }
-  });
-</script>
-
-<style>
-  [data-reveal] {
-    opacity: 0;
-    transform: translateY(12px);
-    transition:
-      opacity 0.6s ease-out,
-      transform 0.6s ease-out;
-  }
-  [data-reveal].is-visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-</style>

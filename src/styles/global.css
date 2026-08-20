@@ -46,6 +46,15 @@
   --ease-soft: cubic-bezier(0.2, 0.7, 0.3, 1);
 
   /*
+   * The entrance curve. Where --ease-soft is for state changes a reader triggers (a
+   * hover, a panel opening) and settles in ~200ms, this one is for arrivals: almost all
+   * of the distance is covered in the first third, then it coasts. That long tail is
+   * what makes a photograph look like it is settling into the grid rather than sliding
+   * to a stop, and it only reads as intentional over ~1s durations.
+   */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /*
    * The admin charts' single data hue. Same terracotta family as --color-accent, but a
    * separate token because the two have different jobs: the accent is UI emphasis, this
    * is a data mark, and its dark-mode step was *chosen* against the dark surface rather
@@ -364,6 +373,144 @@ select:focus-visible,
 }
 
 /*
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Motion
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Two systems, deliberately separate:
+ *
+ *   [data-enter]   An entrance that plays on load, as a plain CSS animation. No
+ *                  JavaScript is involved, so it starts on the very first frame instead
+ *                  of waiting for a module to evaluate, and it still runs with scripting
+ *                  off. Stagger is authored per element as `--enter-delay`.
+ *
+ *   [data-reveal]  An entrance that waits until the element is scrolled into view. That
+ *                  needs an observer, so the hidden start state is gated behind
+ *                  [data-motion="on"] (components/MotionScript.astro): with no
+ *                  JavaScript nothing would ever un-hide these, and content that never
+ *                  appears is far worse than content that appears unanimated. Stagger is
+ *                  assigned at reveal time as `--reveal-delay`, per batch of tiles that
+ *                  crossed the threshold together — an index-based delay baked in at
+ *                  render would make the 40th tile wait two seconds after the reader
+ *                  scrolled to it.
+ *
+ * Both are attributes rather than classes so a component opts in without importing
+ * anything, and both live here rather than in component <style> blocks because Astro
+ * rewrites scoped selectors per component: a rule that reaches from <html> down to a
+ * card, or from the grid across into a tile, cannot be scoped to either one of them.
+ */
+
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 1.25rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A focus pull — the copy resolves out of a blur the way a lens finds its subject.
+   Reserved for the handful of hero elements: animating `filter` is not free. */
+@keyframes enter-focus {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translate3d(0, 0.5rem, 0) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+/* Words rising out of a mask (see .hero-word). The half-degree of rotation is what keeps
+   it from reading as a mechanical slide. */
+@keyframes enter-word {
+  from {
+    transform: translate3d(0, 115%, 0) rotate(2deg);
+  }
+  to {
+    transform: none;
+  }
+}
+
+[data-enter] {
+  animation: enter-rise 0.9s var(--ease-out-expo) both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+[data-enter='focus'] {
+  animation-name: enter-focus;
+  animation-duration: 1.1s;
+}
+[data-enter='word'] {
+  animation-name: enter-word;
+  animation-duration: 1.05s;
+}
+
+[data-motion='on'] [data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 1.25rem, 0);
+  transition:
+    opacity 0.85s var(--ease-out-expo) var(--reveal-delay, 0ms),
+    transform 0.85s var(--ease-out-expo) var(--reveal-delay, 0ms);
+}
+[data-motion='on'] [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/*
+ * Photographs get an aperture instead of a slide: the tile opens from a slightly inset
+ * rectangle while the image inside settles back from a 1.16 push. The two run at
+ * different lengths on purpose — the frame arrives first and the picture keeps moving for
+ * another half second, which is what makes the grid feel like it breathes into place
+ * rather than switching on.
+ *
+ * Three transform layers, one per element, because none of them may fight:
+ *   .photo-media (the stretched link) — the reveal settle, here
+ *   .photo-frame (the <picture>)      — the exhibition drift, below
+ *   .photo-img   (the <img>)          — the hover push, in PhotoCard.astro
+ */
+[data-motion='on'] [data-reveal='photo'] {
+  transform: none;
+  clip-path: inset(9% 9% 9% 9%);
+  transition:
+    opacity 0.9s var(--ease-out-expo) var(--reveal-delay, 0ms),
+    clip-path 1.1s var(--ease-out-expo) var(--reveal-delay, 0ms);
+}
+[data-motion='on'] [data-reveal='photo'].is-visible {
+  clip-path: inset(0% 0% 0% 0%);
+}
+[data-motion='on'] [data-reveal='photo'] .photo-media {
+  transform: scale(1.16);
+  transition: transform 1.6s var(--ease-out-expo) var(--reveal-delay, 0ms);
+}
+[data-motion='on'] [data-reveal='photo'].is-visible .photo-media {
+  transform: none;
+}
+
+/*
+ * The lead tile of an exhibition wall drifts, the way a projected slide never sits
+ * perfectly still. Exactly one element on the page carries it — a continuously composited
+ * transform is cheap once and expensive forty times.
+ */
+@keyframes ken-burns {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.07) translate3d(0, -1.5%, 0);
+  }
+}
+[data-exhibition] > :first-child .photo-frame {
+  will-change: transform;
+  animation: ken-burns 28s var(--ease-soft) infinite alternate;
+}
+
+/*
  * Every animation in the site (page crossfade, photo morph, scroll-reveal) is gated
  * behind this — reduced-motion visitors get instant state changes, never a stripped-down
  * version of the same motion.
@@ -375,6 +522,11 @@ select:focus-visible,
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    /* Delays too, not just durations. The reveal system staggers with
+       animation-delay/transition-delay, so without these the page would still trickle in
+       over half a second — instantly, one element at a time, which is the worst of both. */
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }
