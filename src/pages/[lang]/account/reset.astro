@@ -1,0 +1,126 @@
+---
+import AuthLayout from '../../../components/AuthLayout.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { RESET_TOKEN_TTL_MINUTES } from '../../../lib/passwordReset';
+import { safeRedirectTarget } from '../../../lib/redirects';
+import { MIN_PASSWORD_LENGTH } from '../../../lib/users';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+const next = safeRedirectTarget(Astro.url.searchParams.get('next'), `/${lang}/account`);
+
+/*
+ * The token is taken at face value here and never checked against the database on render.
+ * That is deliberate: a server-side lookup would have to either consume it (breaking the
+ * page on a refresh) or report whether it is valid before anyone has typed a password —
+ * turning this page into an oracle for guessed tokens, and one that costs nothing to
+ * hammer. It is validated exactly once, inside the action, at the moment it is spent.
+ *
+ * An absent token is different: there is no form to show at all, so that case is answered
+ * without involving the action.
+ */
+const token = Astro.url.searchParams.get('token') ?? '';
+
+const forgotHref = `/${lang}/account/forgot?next=${encodeURIComponent(next)}`;
+const signInHref = `/${lang}/account/login?next=${encodeURIComponent(next)}`;
+// Where a successful reset lands. Not signed in — see the action for why the last step is
+// deliberately typing the new password into the sign-in form.
+const doneHref = `/${lang}/account/login?reset=done&next=${encodeURIComponent(next)}`;
+const validity = t.account.resetValidity.replace('{minutes}', String(RESET_TOKEN_TTL_MINUTES));
+---
+
+<BaseLayout title={`${t.account.resetTitle} — José Valdiviezo`} lang={lang}>
+  <div data-auth-page data-errors={JSON.stringify(t.account.errors)} data-done={doneHref}>
+    <AuthLayout lang={lang} mode="recover" next={next}>
+      <h1 class="font-display text-2xl">{t.account.resetTitle}</h1>
+
+      {
+        token ? (
+          <>
+            <p class="mt-2 text-sm text-ink-muted">{t.account.resetBody}</p>
+
+            <form data-reset-form class="mt-5 space-y-3.5">
+              <input type="hidden" name="token" value={token} />
+              {/* A hidden username field is what tells a password manager *which* account
+                  the new password belongs to. Without it the browser offers to save a
+                  credential with no address attached, which is worse than not offering. */}
+              <input type="hidden" name="username" autocomplete="username" value="" />
+              <label class="block text-sm">
+                {t.account.newPassword}
+                <input
+                  type="password"
+                  name="password"
+                  autocomplete="new-password"
+                  required
+                  minlength={MIN_PASSWORD_LENGTH}
+                  class="field mt-1 block w-full px-3 py-2"
+                />
+                <span class="mt-1 block text-xs text-ink-muted">{t.account.passwordHint}</span>
+              </label>
+              <p data-auth-error hidden class="text-sm text-accent" />
+              <button type="submit" class="btn btn-primary w-full py-3">
+                {t.account.resetSubmit}
+              </button>
+            </form>
+
+            <p class="mt-3 text-xs text-ink-muted">{validity}</p>
+          </>
+        ) : (
+          /* No token in the URL at all — a link that lost its query string, or a bare
+             visit. Nothing to validate and nothing to submit, so this says so and points
+             at the one thing that helps. */
+          <div class="mt-4">
+            <p class="text-sm text-ink-muted">{t.account.resetLinkInvalid}</p>
+            <a href={forgotHref} class="btn btn-primary mt-4 w-full py-3">
+              {t.account.requestNewLink}
+            </a>
+          </div>
+        )
+      }
+
+      <p class="mt-4 text-sm text-ink-muted">
+        <a href={signInHref} class="underline hover:text-ink">{t.account.backToSignIn}</a>
+      </p>
+    </AuthLayout>
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-auth-page]');
+    const form = root?.querySelector<HTMLFormElement>('[data-reset-form]');
+    // No form on the no-token variant of this page, so there is nothing to bind.
+    if (!root || !form || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const errorEl = root.querySelector<HTMLElement>('[data-auth-error]')!;
+    const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const messages: Record<string, string> = JSON.parse(root.dataset.errors!);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      submit.disabled = true;
+
+      const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
+      const { error } = await actions.auth.resetPassword({ token: value('token'), password: value('password') });
+
+      if (error) {
+        errorEl.textContent = messages[error.message] ?? messages.UNKNOWN;
+        errorEl.hidden = false;
+        // Left enabled on purpose: PASSWORD_TOO_SHORT is the likely error and the token
+        // survives it, so the next attempt is a retype rather than a new email.
+        submit.disabled = false;
+        return;
+      }
+
+      // Full page load rather than a client-side navigation, same as sign-in: the banner
+      // waiting on the other side is rendered from the server's reading of the URL.
+      window.location.href = root.dataset.done!;
+    });
+  });
+</script>

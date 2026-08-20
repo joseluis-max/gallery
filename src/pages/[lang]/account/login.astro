@@ -13,6 +13,11 @@ const t = getDictionary(lang);
 // into an open redirect.
 const next = safeRedirectTarget(Astro.url.searchParams.get('next'), `/${lang}/account`);
 
+// Set by the reset page, which sends people here rather than signing them in on the
+// strength of an email link. Purely cosmetic — a crafted `?reset=done` shows a banner and
+// nothing else, since it grants nothing and asserts nothing about the visitor.
+const justReset = Astro.url.searchParams.get('reset') === 'done';
+
 const sessionUser = await Astro.session?.get('user');
 if (sessionUser) {
   return Astro.redirect(sessionUser.role === 'admin' ? '/admin' : next);
@@ -26,13 +31,36 @@ if (sessionUser) {
     <AuthLayout lang={lang} mode="signin" next={next}>
       <h1 class="font-display text-2xl">{t.account.signInTitle}</h1>
 
+      {
+        justReset && (
+          <p class="mt-4 flex items-start gap-2.5 rounded-md bg-accent-wash p-3 text-sm">
+            <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+            </svg>
+            {t.account.resetDone}
+          </p>
+        )
+      }
+
       <form data-login-form class="mt-5 space-y-3.5">
         <label class="block text-sm">
           {t.account.email}
           <input type="email" name="email" autocomplete="email" required class="field mt-1 block w-full px-3 py-2" />
         </label>
         <label class="block text-sm">
-          {t.account.password}
+          {/* The label and the recovery link share the password row rather than the link
+              sitting under the button: the moment somebody needs it is the moment they're
+              looking at this field, having just failed to fill it. */}
+          <span class="flex items-baseline justify-between gap-3">
+            {t.account.password}
+            <a
+              href={`/${lang}/account/forgot?next=${encodeURIComponent(next)}`}
+              class="text-xs text-ink-muted underline hover:text-ink"
+            >
+              {t.account.forgotLink}
+            </a>
+          </span>
           <input
             type="password"
             name="password"

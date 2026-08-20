@@ -9,12 +9,22 @@ import {
   verifyPassword,
 } from '../lib/auth';
 import { writeAuditLog } from '../lib/audit';
-import { getDbConfig } from '../lib/config';
+import { buildPasswordResetEmail } from '../lib/authEmail';
+import { createEmailer, getDbConfig, getPublicSiteUrl } from '../lib/config';
 import { getDb } from '../lib/db';
+import {
+  consumePasswordResetToken,
+  invalidatePasswordResetTokens,
+  mintPasswordResetToken,
+  RESET_TOKEN_TTL_MINUTES,
+} from '../lib/passwordReset';
 import { requireSessionUser } from './sessionGuard';
 import {
+  assertValidPassword,
   authenticateUser,
   createUser,
+  findUserByEmail,
+  findUserById,
   recordLogin,
   setUserPassword,
   toSessionUser,
@@ -155,6 +165,124 @@ export const auth = {
       } catch (err) {
         toActionError(err);
       }
+
+      // Any reset link still in flight is now stale. Someone who changes their password
+      // because they suspect their inbox was seen must not leave a working way back in
+      // sitting in that inbox.
+      await invalidatePasswordResetTokens(db, user._id);
+      return { ok: true };
+    },
+  }),
+
+  /**
+   * Step one of forgotten-password recovery: mail a single-use link.
+   *
+   * **This action tells the caller nothing.** It returns `{ ok: true }` for a registered
+   * address, an unregistered one, a disabled account, and a failed send alike. That is the
+   * whole design: a "no such account" response here would turn the form into a way to test
+   * whether any given address shops with this photographer, which is precisely what the
+   * sign-in action already refuses to leak. The cost is that a broken mailer looks like
+   * success to the visitor — so a send failure is logged loudly, because the server log is
+   * the only place it can be reported without also answering the enumeration question.
+   */
+  requestPasswordReset: defineAction({
+    accept: 'json',
+    input: z.object({ email: z.string().min(1), lang: z.enum(['es', 'en']) }),
+    handler: async (input, context) => {
+      const ip = context.clientAddress ?? 'unknown';
+      const key = rateLimitKey('password-reset', ip);
+      // Rate limited on *every* request rather than only on failures, unlike sign-in:
+      // there is no such thing as a failed attempt here to count, and what needs bounding
+      // is how many emails one caller can cause to be sent.
+      if (isRateLimited(key)) {
+        throw new ActionError({ code: 'TOO_MANY_REQUESTS', message: 'TOO_MANY_ATTEMPTS' });
+      }
+      recordFailedAttempt(key);
+
+      const db = await getDb(getDbConfig());
+      const user = await findUserByEmail(db, input.email);
+
+      // A disabled account gets no link either: reactivating is the photographer's call,
+      // and a reset would otherwise be a way around the disable switch.
+      if (user && !user.disabled) {
+        try {
+          const raw = await mintPasswordResetToken(db, { userId: user._id, email: user.email, ip });
+          const message = buildPasswordResetEmail({
+            lang: input.lang,
+            // The token rides in the query string. Browsers default to
+            // `strict-origin-when-cross-origin`, so the cross-origin request for the
+            // photograph on the reset page sends only the origin — never this URL — and
+            // keeping it addressable means a reload does not break the page mid-reset.
+            resetUrl: `${getPublicSiteUrl()}/${input.lang}/account/reset?token=${encodeURIComponent(raw)}`,
+            ttlMinutes: RESET_TOKEN_TTL_MINUTES,
+          });
+          await createEmailer().send({ to: user.email, ...message });
+        } catch (err) {
+          console.error('auth.requestPasswordReset: could not send the reset link to', user.email, err);
+        }
+      }
+
+      return { ok: true };
+    },
+  }),
+
+  /**
+   * Step two: spend the link and set the new password.
+   *
+   * Order matters here. The password is validated *before* the token is consumed, so
+   * someone who types four characters gets "too short" and keeps a working link, rather
+   * than burning their one use on a typo and having to start over.
+   */
+  resetPassword: defineAction({
+    accept: 'json',
+    input: z.object({ token: z.string().min(1), password: z.string().min(1) }),
+    handler: async (input, context) => {
+      const ip = context.clientAddress ?? 'unknown';
+      const key = rateLimitKey('password-reset-confirm', ip);
+      if (isRateLimited(key)) {
+        throw new ActionError({ code: 'TOO_MANY_REQUESTS', message: 'TOO_MANY_ATTEMPTS' });
+      }
+
+      try {
+        assertValidPassword(input.password);
+      } catch (err) {
+        toActionError(err);
+      }
+
+      const db = await getDb(getDbConfig());
+      const result = await consumePasswordResetToken(db, input.token);
+      if (!result.ok) {
+        recordFailedAttempt(key);
+        // Expired, already used, and never existed are one message to the reader: the
+        // instruction is "ask for a new link" in all three cases, and distinguishing them
+        // would say whether a guessed token was ever real.
+        throw new ActionError({ code: 'BAD_REQUEST', message: 'RESET_TOKEN_INVALID' });
+      }
+
+      try {
+        await setUserPassword(db, result.userId, input.password);
+      } catch (err) {
+        toActionError(err);
+      }
+
+      // Every other link for this account dies with the one just used, so a second reset
+      // email sitting in the inbox is not a second chance for whoever else can read it.
+      await invalidatePasswordResetTokens(db, result.userId);
+
+      const user = await findUserById(db, result.userId);
+      if (user?.role === 'admin') {
+        await writeAuditLog(db, {
+          actor: user.email,
+          action: 'admin.passwordReset',
+          targetType: 'user',
+          targetId: user._id.toString(),
+          ip,
+        });
+      }
+
+      // Deliberately not signed in. The reset proves control of the mailbox, not of the
+      // password — so the last step is typing the new one into the sign-in form, and an
+      // intercepted link alone never lands anybody inside the account.
       return { ok: true };
     },
   }),

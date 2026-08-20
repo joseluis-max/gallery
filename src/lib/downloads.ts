@@ -1,18 +1,12 @@
-import { createHash, randomBytes } from 'node:crypto';
 import type { Db, ObjectId } from 'mongodb';
+import { generateRawToken, hashToken, isTokenExpired } from './tokens';
 
-export function generateRawToken(): string {
-  return randomBytes(32).toString('base64url');
-}
+/* The generate/hash/expiry trio moved to ./tokens when password-reset links needed the
+   same primitive; it is re-exported here so this module's public surface is unchanged. */
+export { generateRawToken, hashToken, isTokenExpired };
 
-export function hashToken(raw: string): string {
-  return createHash('sha256').update(raw).digest('hex');
-}
-
-export function isTokenExpired(expiresAt: Date, now = new Date()): boolean {
-  return now >= expiresAt;
-}
-
+/** Stays here rather than in ./tokens: a use *cap* is a download-link idea. A reset link
+ *  is single-use by construction, which is a different rule, not a maxUses of 1. */
 export function isTokenExhausted(useCount: number, maxUses: number): boolean {
   return useCount >= maxUses;
 }

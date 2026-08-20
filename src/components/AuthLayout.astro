@@ -15,9 +15,15 @@ import { getFeaturedPhotos, getPhotoImageUrls, getPublishedPhotos } from '../lib
  */
 interface Props {
   lang: Locale;
-  /** Which side of the pair is showing; it drives the tab state and the free-download
-   *  note, which belongs to registering and would be a lie above a sign-in form. */
-  mode: 'signin' | 'register';
+  /**
+   * Which side of the pair is showing; it drives the tab state and the free-download
+   * note, which belongs to registering and would be a lie above a sign-in form.
+   *
+   * `recover` is the password-reset pair, and it deliberately lights *neither* tab: those
+   * pages are not a third destination alongside sign-in and register, they're a detour
+   * back to sign-in. The tabs stay rendered so the detour always has a way out.
+   */
+  mode: 'signin' | 'register' | 'recover';
   next: string;
 }
 

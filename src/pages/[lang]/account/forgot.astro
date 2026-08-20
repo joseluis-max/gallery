@@ -1,0 +1,97 @@
+---
+import AuthLayout from '../../../components/AuthLayout.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getDictionary, type Locale } from '../../../lib/i18n';
+import { safeRedirectTarget } from '../../../lib/redirects';
+
+const lang = Astro.params.lang as Locale;
+const t = getDictionary(lang);
+
+// Carried through the whole detour so somebody who was sent here from a guarded page
+// still lands where they were going once they've reset and signed in.
+const next = safeRedirectTarget(Astro.url.searchParams.get('next'), `/${lang}/account`);
+
+// Somebody already signed in has no use for this form — they have the change-password
+// form on their account page, which asks for the current password instead of an email
+// round trip. Same redirect the sign-in and register pages do.
+const sessionUser = await Astro.session?.get('user');
+if (sessionUser) {
+  return Astro.redirect(sessionUser.role === 'admin' ? '/admin' : `/${lang}/account`);
+}
+
+const signInHref = `/${lang}/account/login?next=${encodeURIComponent(next)}`;
+---
+
+<BaseLayout title={`${t.account.forgotTitle} — José Valdiviezo`} lang={lang}>
+  <div data-auth-page data-errors={JSON.stringify(t.account.errors)} data-lang={lang}>
+    <AuthLayout lang={lang} mode="recover" next={next}>
+      <h1 class="font-display text-2xl">{t.account.forgotTitle}</h1>
+      <p class="mt-2 text-sm text-ink-muted">{t.account.forgotBody}</p>
+
+      <form data-forgot-form class="mt-5 space-y-3.5">
+        <label class="block text-sm">
+          {t.account.email}
+          <input type="email" name="email" autocomplete="email" required class="field mt-1 block w-full px-3 py-2" />
+        </label>
+        <p data-auth-error hidden class="text-sm text-accent"></p>
+        <button type="submit" class="btn btn-primary w-full py-3">{t.account.forgotSubmit}</button>
+      </form>
+
+      {/*
+        Rendered up front and revealed by the script rather than swapped in, so the
+        confirmation is a plain element that was always in the document — and so the copy
+        stays in the template with the rest of the page instead of being assembled in
+        JavaScript.
+      */}
+      <div data-forgot-sent hidden class="mt-5 rounded-md bg-accent-wash p-4 text-sm">
+        <p>{t.account.forgotSent}</p>
+        <p class="mt-1 text-xs text-ink-muted">{t.account.forgotSentHint}</p>
+      </div>
+
+      <p class="mt-4 text-sm text-ink-muted">
+        <a href={signInHref} class="underline hover:text-ink">{t.account.backToSignIn}</a>
+      </p>
+    </AuthLayout>
+  </div>
+</BaseLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-auth-page]');
+    const form = root?.querySelector<HTMLFormElement>('[data-forgot-form]');
+    if (!root || !form || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+
+    const errorEl = root.querySelector<HTMLElement>('[data-auth-error]')!;
+    const sentEl = root.querySelector<HTMLElement>('[data-forgot-sent]')!;
+    const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const messages: Record<string, string> = JSON.parse(root.dataset.errors!);
+    const lang = root.dataset.lang === 'en' ? 'en' : 'es';
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      submit.disabled = true;
+
+      const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+      const { error } = await actions.auth.requestPasswordReset({ email, lang });
+
+      if (error) {
+        // In practice only rate limiting reaches here: the action answers identically
+        // whether or not the address is registered, on purpose.
+        errorEl.textContent = messages[error.message] ?? messages.UNKNOWN;
+        errorEl.hidden = false;
+        submit.disabled = false;
+        return;
+      }
+
+      // The form is replaced by the confirmation rather than left submittable. Re-sending
+      // mints a second link and invalidates nothing, so the useful next step is reading
+      // the inbox, not pressing the button again.
+      form.hidden = true;
+      sentEl.hidden = false;
+    });
+  });
+</script>

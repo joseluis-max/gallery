@@ -1,4 +1,5 @@
 import type { EmailMessage } from './email';
+import { escapeHtml, fill } from './emailTemplate';
 import { getDictionary, type Locale } from './i18n';
 import type { OrderDoc } from './orders';
 
@@ -23,22 +24,6 @@ export interface OrderEmailParams {
 
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
-}
-
-/** Titles are photographer-supplied and the URLs carry base64url tokens, so both are
- *  escaped rather than trusted — an unescaped `&` alone is enough to break a download link
- *  in an HTML mail client. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function fill(template: string, values: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? String(values[key]) : match));
 }
 
 /**

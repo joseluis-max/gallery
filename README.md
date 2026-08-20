@@ -467,6 +467,34 @@ One `users` collection, one sign-in code path, two roles.
   attempt budget from the same office IP. Wrong password, unknown address, and disabled
   account are all reported identically, so the form can't be used to enumerate accounts.
 
+### Forgotten passwords
+
+`/{es,en}/account/forgot` asks for an address; `/{es,en}/account/reset?token=…` spends the
+emailed link. `lib/passwordReset.ts` owns the tokens, and shares its
+random-secret/store-only-the-digest primitive with download links via `lib/tokens.ts`.
+
+- **The request form answers identically for every address.** Registered, unregistered,
+  disabled, and "the mailer is down" all return `{ ok: true }` — otherwise this form
+  becomes the account-enumeration oracle the sign-in form already refuses to be. The cost
+  is that a broken mailer looks like success to the visitor, so send failures are logged
+  loudly; the server log is the only place they can be reported without also answering the
+  enumeration question.
+- **A link is single-use and lives an hour.** `usedAt` is set by the same
+  `findOneAndUpdate` that reads the token, so two submissions racing on one link cannot
+  both succeed, and every rule (unused, unexpired) is inside the filter rather than in a
+  preceding read.
+- **Using one retires the rest.** A successful reset — and a signed-in password change —
+  invalidates every other outstanding link for that account, so a spare email sitting in an
+  inbox stops working. Disabled accounts get no link at all: a reset would otherwise be a
+  way around the disable switch.
+- **A successful reset does not sign anyone in.** It proves control of the mailbox, not of
+  the password, so the last step is typing the new one into the sign-in form. An
+  intercepted link alone never lands anybody inside the account.
+- **The password is validated before the token is spent**, so a too-short password costs a
+  retype rather than the one use of the link.
+- `pnpm init-db` creates `passwordResetTokens` with a unique index on the digest and a TTL
+  on `expiresAt` — the only deployment step this feature adds.
+
 ## Admin analytics
 
 `/admin` and `/admin/analytics` render **server-side SVG charts** — no charting library,

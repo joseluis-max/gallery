@@ -233,6 +233,17 @@ export interface Dictionary {
       reasonLabel: string;
       retry: string;
     };
+    /** The reset link. `ignore` is not filler: it is what tells someone who did not ask
+     *  for this that there is nothing to do, which is true — requesting a link changes
+     *  nothing until the link is actually used. */
+    passwordReset: {
+      subject: string;
+      intro: string;
+      cta: string;
+      /** Contains a `{minutes}` placeholder. */
+      validity: string;
+      ignore: string;
+    };
   };
   account: {
     signInTitle: string;
@@ -274,6 +285,27 @@ export interface Dictionary {
     freeOffer: string;
     freeOfferHint: string;
     guestNote: string;
+    /** Forgotten-password recovery. `forgotSent` is deliberately worded as "if an account
+     *  exists" rather than "we sent it": the request action answers identically whether or
+     *  not the address is registered, and the copy has to match, or the wording becomes the
+     *  account-enumeration oracle the action refuses to be. */
+    forgotLink: string;
+    forgotTitle: string;
+    forgotBody: string;
+    forgotSubmit: string;
+    forgotSent: string;
+    forgotSentHint: string;
+    backToSignIn: string;
+    resetTitle: string;
+    resetBody: string;
+    resetSubmit: string;
+    /** Contains a `{minutes}` placeholder. */
+    resetValidity: string;
+    /** Shown on the sign-in form after a successful reset, since that is where the reset
+     *  page sends people rather than signing them in on the strength of an email link. */
+    resetDone: string;
+    resetLinkInvalid: string;
+    requestNewLink: string;
     errors: Record<
       | 'INVALID_CREDENTIALS'
       | 'TOO_MANY_ATTEMPTS'
@@ -281,6 +313,7 @@ export interface Dictionary {
       | 'INVALID_EMAIL'
       | 'PASSWORD_TOO_SHORT'
       | 'NAME_REQUIRED'
+      | 'RESET_TOKEN_INVALID'
       | 'UNKNOWN',
       string
     >;
@@ -494,6 +527,13 @@ export const es: Dictionary = {
       reasonLabel: 'Motivo',
       retry: 'Puedes subir otro comprobante desde la página de tu pedido. Si crees que es un error, responde a este correo.',
     },
+    passwordReset: {
+      subject: 'Restablecer tu contraseña',
+      intro: 'Recibimos una solicitud para restablecer la contraseña de tu cuenta. Abre el siguiente enlace para elegir una nueva.',
+      cta: 'Elegir una nueva contraseña',
+      validity: 'El enlace vence en {minutes} minutos y sirve una sola vez.',
+      ignore: 'Si no fuiste tú, puedes ignorar este correo: tu contraseña actual sigue funcionando y no cambia nada hasta que uses el enlace.',
+    },
   },
   account: {
     signInTitle: 'Iniciar sesión',
@@ -532,6 +572,20 @@ export const es: Dictionary = {
     freeOffer: 'Llévate 2 fotografías gratis',
     freeOfferHint: 'Se aplican al crear la cuenta, en la fotografía que elijas.',
     guestNote: 'Comprar no requiere cuenta — también puedes pagar como invitado.',
+    forgotLink: '¿Olvidaste tu contraseña?',
+    forgotTitle: 'Restablecer contraseña',
+    forgotBody: 'Escribe el correo de tu cuenta y te enviamos un enlace para elegir una contraseña nueva.',
+    forgotSubmit: 'Enviar enlace',
+    forgotSent: 'Si existe una cuenta con ese correo, ya enviamos el enlace.',
+    forgotSentHint: 'Revisa también la carpeta de spam. El enlace vence en una hora.',
+    backToSignIn: 'Volver a iniciar sesión',
+    resetTitle: 'Elige una contraseña nueva',
+    resetBody: 'Esta es la última parte: escribe tu contraseña nueva y podrás iniciar sesión con ella.',
+    resetSubmit: 'Guardar contraseña',
+    resetValidity: 'Este enlace vence en {minutes} minutos y sirve una sola vez.',
+    resetDone: 'Listo, tu contraseña quedó actualizada. Inicia sesión con la nueva.',
+    resetLinkInvalid: 'Este enlace ya no sirve: pudo vencer o ya se usó una vez.',
+    requestNewLink: 'Pedir un enlace nuevo',
     errors: {
       INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.',
       TOO_MANY_ATTEMPTS: 'Demasiados intentos. Vuelve a intentarlo en unos minutos.',
@@ -539,6 +593,7 @@ export const es: Dictionary = {
       INVALID_EMAIL: 'Ingresa un correo electrónico válido.',
       PASSWORD_TOO_SHORT: 'La contraseña debe tener al menos 8 caracteres.',
       NAME_REQUIRED: 'Ingresa tu nombre.',
+      RESET_TOKEN_INVALID: 'Este enlace ya no sirve: pudo vencer o ya se usó una vez. Pide uno nuevo.',
       UNKNOWN: 'Algo salió mal. Inténtalo de nuevo.',
     },
     statuses: {

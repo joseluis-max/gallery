@@ -61,6 +61,7 @@ async function main() {
   await ensureCollection(db, 'auditLog');
   await ensureCollection(db, 'uploadJobs');
   await ensureCollection(db, 'users');
+  await ensureCollection(db, 'passwordResetTokens');
   await ensureCollection(db, 'sessions');
 
   await db.collection('photos').createIndex({ slug: 1 }, { unique: true });
@@ -150,6 +151,15 @@ async function main() {
   // EMAIL_TAKEN rather than checking-then-inserting.
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
   await db.collection('users').createIndex({ role: 1, createdAt: -1 });
+
+  // Password-reset links. The unique index on the digest is what makes "look up this
+  // token" a single-document operation, and the TTL sweeps spent and expired links —
+  // unlike the payment collections, there is nothing here worth keeping once the link is
+  // dead. `{userId, createdAt}` serves invalidatePasswordResetTokens, which retires every
+  // outstanding link for one account whenever a password changes by either route.
+  await db.collection('passwordResetTokens').createIndex({ tokenHash: 1 }, { unique: true });
+  await db.collection('passwordResetTokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('passwordResetTokens').createIndex({ userId: 1, createdAt: -1 });
 
   // Sessions live in Mongo so they survive a stateless, multi-instance deployment
   // (src/lib/sessionDriver.ts). The TTL index is what stops abandoned sessions from
