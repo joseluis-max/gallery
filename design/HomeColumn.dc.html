@@ -1,0 +1,243 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; min-height: 1080px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .eyebrow { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .navlink { color: var(--muted); transition: color .15s var(--ease); }
+    .navlink:hover { color: var(--ink); }
+
+    /* Column card: a wide-format thumbnail over two lines. At 250px the cover has to be
+       small, so the name carries the identification and the cover confirms it. */
+    .comp { display: flex; gap: 11px; padding: 9px; border-radius: var(--r-md); transition: background-color .2s var(--ease), transform .2s var(--ease); }
+    .comp:hover { background: color-mix(in oklab, var(--ink) 4%, transparent); transform: translateX(2px); }
+    .comp-cover { width: 74px; height: 52px; flex: none; border-radius: 4px; overflow: hidden; background: var(--border); }
+    .comp-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s var(--ease); }
+    .comp:hover .comp-cover img { transform: scale(1.07); }
+
+    .tile { position: relative; overflow: hidden; border-radius: var(--r-md); background: var(--border); display: block; }
+    .tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .8s var(--ease); }
+    .tile:hover img { transform: scale(1.035); }
+    .tile-open {
+      position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 11px; border-radius: 999px; background: rgba(10,10,10,.55); color: #fff;
+      font-size: 11px; backdrop-filter: blur(4px);
+      opacity: 0; transform: translateY(6px); transition: opacity .25s var(--ease), transform .25s var(--ease);
+    }
+    .tile:hover .tile-open { opacity: 1; transform: none; }
+
+    .rise { animation: rise .55s var(--ease) both; }
+    .stagger { animation: rise .6s var(--ease) both; animation-delay: calc(var(--i) * 70ms); }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    /* The column arrives from its own side, so the two regions read as two things. */
+    .slide { animation: slide .6s var(--ease) both; animation-delay: calc(var(--i) * 70ms); }
+    @keyframes slide { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+    .fade-in { animation: fade .8s var(--ease) both; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .rise, .stagger, .slide, .fade-in { animation: none; }
+      .tile img, .comp-cover img, .comp { transition: none; }
+    }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header class="fade-in" style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 30px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: color-mix(in oklab, var(--surface) 88%, transparent); backdrop-filter: blur(8px); z-index: 20;">
+    <a href="#" class="display" style="font-size: 19px;">José Valdiviezo</a>
+    <nav style="display: flex; align-items: center; gap: 22px; font-size: 13px;">
+      <a href="#" class="navlink" style="color: var(--ink);">Competencias</a>
+      <a href="#" class="navlink">Portafolio</a>
+      <a href="#" class="navlink">Acerca de</a>
+      <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 7px;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+        Carrito
+      </a>
+      <a href="#" class="navlink">Iniciar sesión</a>
+    </nav>
+  </header>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 0;">
+
+    <main>
+      <section class="rise" style="padding: 34px 26px 18px;">
+        <p class="eyebrow">Fotografía deportiva — Cuenca, Ecuador</p>
+        <h1 class="display" style="font-size: 44px; line-height: 1.04; margin: 9px 0 0;">José Valdiviezo</h1>
+        <p style="margin: 9px 0 0; max-width: 470px; color: var(--muted); font-size: 14.5px;">
+          Cada competencia se publica como su propia galería, para que quienes corrieron puedan encontrarse.
+        </p>
+      </section>
+
+      <!-- The showcase. Nothing to buy, nothing to filter, nothing to type into. -->
+      <section style="padding: 0 8px 10px;">
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 168px; gap: 5px;">
+          <a href="#" class="tile stagger" style="--i: 0; grid-column: span 3; grid-row: span 2;">
+            <img src="coast.jpg" alt="La costa desde el mar">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+
+          <a href="#" class="tile stagger" style="--i: 1; grid-column: span 2; grid-row: span 1;">
+            <img src="tortoise.jpg" alt="Tortuga en las tierras altas">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+
+          <a href="#" class="tile stagger" style="--i: 2; grid-column: span 2; grid-row: span 1;">
+            <img src="lava.jpg" alt="Roca de lava y laguna">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+
+          <a href="#" class="tile stagger" style="--i: 3; grid-column: span 2; grid-row: span 2;">
+            <img src="lagoon.jpg" alt="Laguna con veleros">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+
+          <a href="#" class="tile stagger" style="--i: 4; grid-column: span 3; grid-row: span 2;">
+            <img src="beach.jpg" alt="Lobo marino en la playa">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+
+          <a href="#" class="tile stagger" style="--i: 5; grid-column: span 2; grid-row: span 1;">
+            <img src="pelican.jpg" alt="Pelícano en el manglar">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+
+          <a href="#" class="tile stagger" style="--i: 6; grid-column: span 3; grid-row: span 1;">
+            <img src="coast.jpg" alt="Costa, detalle">
+            <span class="tile-open">
+              Ver
+              <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </span>
+          </a>
+        </div>
+
+        <div style="display: flex; justify-content: center; padding: 20px 0 4px;">
+          <a href="#" class="navlink" style="display: inline-flex; align-items: center; gap: 7px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase;">
+            Ver todas las fotografías
+            <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <!--
+      Competitions as a thin rail, sticky: whatever the reader scrolls past, the way into
+      "find my race" stays on screen. The cost is 250px the photographs no longer have.
+    -->
+    <aside style="border-left: 1px solid var(--border); padding: 34px 18px 26px; position: sticky; top: 57px; align-self: start;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between;">
+        <p class="eyebrow" style="margin: 0;">Competencias</p>
+        <a href="#" class="navlink" style="font-size: 11px;">Ver todas</a>
+      </div>
+
+      <div style="display: grid; gap: 2px; margin-top: 10px;">
+        <a href="#" class="comp slide" style="--i: 1;">
+          <span class="comp-cover"><img src="lagoon.jpg" alt="Vuelta al Cajas 2026"></span>
+          <span style="min-width: 0;">
+            <span style="display: block; font-size: 13.5px;">Vuelta al Cajas 2026</span>
+            <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;">12 jul · 184 fotos</span>
+          </span>
+        </a>
+
+        <a href="#" class="comp slide" style="--i: 2;">
+          <span class="comp-cover"><img src="tortoise.jpg" alt="Maratón de Cuenca"></span>
+          <span style="min-width: 0;">
+            <span style="display: block; font-size: 13.5px;">Maratón de Cuenca</span>
+            <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;">28 jun · 312 fotos</span>
+          </span>
+        </a>
+
+        <a href="#" class="comp slide" style="--i: 3;">
+          <span class="comp-cover"><img src="beach.jpg" alt="Triatlón Yaguarcocha"></span>
+          <span style="min-width: 0;">
+            <span style="display: block; font-size: 13.5px;">Triatlón Yaguarcocha</span>
+            <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;">5 jun · 96 fotos</span>
+          </span>
+        </a>
+
+        <a href="#" class="comp slide" style="--i: 4;">
+          <span class="comp-cover"><img src="coast.jpg" alt="Open Shimano"></span>
+          <span style="min-width: 0;">
+            <span style="display: block; font-size: 13.5px;">Open Shimano</span>
+            <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;">14 sep 2025 · 241 fotos</span>
+          </span>
+        </a>
+
+        <a href="#" class="comp slide" style="--i: 5;">
+          <span class="comp-cover"><img src="lava.jpg" alt="Enduro Turi"></span>
+          <span style="min-width: 0;">
+            <span style="display: block; font-size: 13.5px;">Enduro Turi</span>
+            <span style="display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;">3 ago 2025 · 158 fotos</span>
+          </span>
+        </a>
+      </div>
+
+      <p style="margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted);">
+        ¿Buscas tus fotos? Entra a tu competencia y búscala por número de archivo.
+      </p>
+    </aside>
+  </div>
+
+  <footer style="padding: 20px 30px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 12px; color: var(--muted);">
+    <span>© 2026 José Valdiviezo — Cuenca, Ecuador</span>
+    <span style="display: flex; gap: 16px;"><a href="#" class="navlink">Español</a><a href="#" class="navlink">English</a></span>
+  </footer>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+    };
+  }
+}
+</script>
+</body>
+</html>

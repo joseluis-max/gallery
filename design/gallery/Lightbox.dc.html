@@ -1,0 +1,204 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    /* The enlarged view is always dark — it is a room with the lights off, not a themed
+       page — so this artboard does not carry the light/dark switch the others do. */
+    .app {
+      --ink: #0a0a0a; --paper: #f5f5f4; --muted: rgba(245,245,244,.62);
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 1280px; height: 860px;
+      background: color-mix(in oklab, var(--ink) 92%, transparent);
+      color: var(--paper);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+      position: relative; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: var(--paper); text-decoration: none; }
+    .icon { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* The page behind, dimmed and blurred — the shipped overlay is `bg-ink/90` with a
+       backdrop blur, so the gallery stays legible enough to feel like a layer. */
+    .behind { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 150px; gap: 6px; padding: 8px; filter: blur(7px) saturate(.7); opacity: .5; }
+    .scrim { position: absolute; inset: 0; background: rgba(10,10,10,.9); }
+
+    .frame { position: relative; z-index: 2; max-width: 900px; }
+    .frame .shot { position: relative; border-radius: 3px; overflow: hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.7); }
+    .frame .ph { width: 900px; height: 600px; }
+    .wm {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><text x='110' y='112' font-family='Georgia,serif' font-size='17' fill='rgba(255,255,255,0.28)' text-anchor='middle' transform='rotate(-30 110 110)'>© José Valdiviezo</text></svg>");
+    }
+
+    .round {
+      width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(245,245,244,.22);
+      background: rgba(10,10,10,.5); color: var(--paper); display: inline-flex; align-items: center;
+      justify-content: center; cursor: pointer; backdrop-filter: blur(6px);
+      transition: background-color .18s var(--ease), transform .18s var(--ease), border-color .18s var(--ease);
+    }
+    .round:hover { background: rgba(10,10,10,.8); border-color: rgba(245,245,244,.45); transform: scale(1.04); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: 999px; padding: 10px 18px; font: inherit; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; border: 1px solid transparent; cursor: pointer;
+      transition: transform .15s var(--ease), background-color .18s, border-color .18s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-paper { background: var(--paper); color: var(--ink); }
+    .btn-outline { border-color: rgba(245,245,244,.3); color: var(--paper); background: transparent; }
+    .btn-outline:hover { border-color: var(--paper); }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .key { border: 1px solid rgba(245,245,244,.25); border-radius: 4px; padding: 1px 6px; font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .fade { animation: fade .3s var(--ease) both; }
+    @keyframes fade { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app" style="--accent: {{accent}}">
+
+  <div class="behind" aria-hidden="true">
+    <span class="ph ph-coast" style="grid-column: span 3; grid-row: span 2;"></span>
+    <span class="ph ph-tortoise"></span>
+    <span class="ph ph-lava" style="grid-row: span 2;"></span>
+    <span class="ph ph-pelican"></span>
+    <span class="ph ph-beach" style="grid-column: span 2;"></span>
+    <span class="ph ph-lagoon" style="grid-column: span 2; grid-row: span 2;"></span>
+  </div>
+  <div class="scrim"></div>
+
+  <!-- Top bar: what you are looking at on the left, the way out on the right. -->
+  <div style="position: absolute; z-index: 3; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: 18px 22px;">
+    <div>
+      <p class="display" style="margin: 0; font-size: 18px;">{{current.title}}</p>
+      <p style="margin: 2px 0 0; font-size: 12px; color: var(--muted);">Vuelta al Cajas 2026 · {{position}}</p>
+    </div>
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <button class="round" aria-label="Descargar vista previa" style="width: 38px; height: 38px;">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="17" cy="6" r="2.6"></circle><circle cx="7" cy="12" r="2.6"></circle><circle cx="17" cy="18" r="2.6"></circle><path d="M9.3 10.8l5.4-3.2"></path><path d="M9.3 13.2l5.4 3.2"></path></svg>
+      </button>
+      <button class="round" onClick="{{close}}" aria-label="Cerrar" style="width: 38px; height: 38px;">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+      </button>
+    </div>
+  </div>
+
+  <button class="round" onClick="{{prev}}" aria-label="Anterior" style="position: absolute; z-index: 3; left: 22px;">
+    <svg class="icon" style="width: 20px; height: 20px;" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg>
+  </button>
+  <button class="round" onClick="{{next}}" aria-label="Siguiente" style="position: absolute; z-index: 3; right: 22px;">
+    <svg class="icon" style="width: 20px; height: 20px;" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg>
+  </button>
+
+  <div class="frame fade">
+    <div class="shot">
+      <span class="ph {{current.cls}}" role="img" aria-label="{{current.title}}"></span>
+      <span class="wm"></span>
+    </div>
+
+    <!-- Buying from inside the enlarged view. Today closing the overlay is the only way
+         back to the button, which is one click too many at the moment of deciding. -->
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px;">
+      <span style="display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted);">
+        <span style="display: inline-flex; align-items: center; gap: 6px;"><span class="key">←</span><span class="key">→</span> cambiar</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px;"><span class="key">Esc</span> cerrar</span>
+      </span>
+
+      <span style="display: flex; align-items: center; gap: 10px;">
+        <span class="display" style="font-size: 20px;">$2.00</span>
+        <button class="btn {{cartClass}}" onClick="{{toggleCart}}">
+          <sc-if value="{{inCart}}" hint-placeholder-val="{{false}}">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            En el carrito
+          </sc-if>
+          <sc-if value="{{notInCart}}" hint-placeholder-val="{{true}}">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle></svg>
+            Añadir al carrito
+          </sc-if>
+        </button>
+      </span>
+    </div>
+  </div>
+
+  <!-- Filmstrip: where you are in the set, and one click to anywhere else in it. -->
+  <div style="position: absolute; z-index: 3; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; gap: 6px;">
+    <sc-for list="{{strip}}" as="s" hint-placeholder-count="6">
+      <button onClick="{{s.pick}}" aria-label="{{s.title}}" style="border: 0; padding: 0; cursor: pointer; border-radius: 4px; overflow: hidden; outline: {{s.outline}}; outline-offset: -2px; background: transparent;">
+        <span class="ph {{s.cls}}" style="width: 74px; height: 50px; opacity: {{s.opacity}};"></span>
+      </button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { index: 5, cart: [] };
+  }
+
+  photos() {
+    return [
+      { id: 'coast', cls: 'ph-coast', title: 'dsc02172' },
+      { id: 'tortoise', cls: 'ph-tortoise', title: 'dsc02314' },
+      { id: 'lava', cls: 'ph-lava', title: 'dsc02319' },
+      { id: 'pelican', cls: 'ph-pelican', title: 'dsc02401' },
+      { id: 'beach', cls: 'ph-beach', title: 'dsc02455' },
+      { id: 'lagoon', cls: 'ph-lagoon', title: 'dsc02488' },
+    ];
+  }
+
+  renderVals() {
+    const list = this.photos();
+    const i = this.state.index;
+    const current = list[i];
+    const accent = this.props.accent ?? '#b5502e';
+
+    return {
+      accent,
+      current,
+      position: (i + 1) + ' de 184',
+      prev: () => this.setState({ index: (i - 1 + list.length) % list.length }),
+      next: () => this.setState({ index: (i + 1) % list.length }),
+      close: () => this.setState({ index: i }),
+
+      strip: list.map((p, n) => ({
+        ...p,
+        pick: () => this.setState({ index: n }),
+        outline: n === i ? '2px solid ' + accent : '2px solid transparent',
+        opacity: n === i ? '1' : '.55',
+      })),
+
+      inCart: this.state.cart.includes(current.id),
+      notInCart: !this.state.cart.includes(current.id),
+      cartClass: this.state.cart.includes(current.id) ? 'btn-outline' : 'btn-paper',
+      toggleCart: () => this.setState({
+        cart: this.state.cart.includes(current.id)
+          ? this.state.cart.filter((x) => x !== current.id)
+          : this.state.cart.concat(current.id),
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

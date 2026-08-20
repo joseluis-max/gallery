@@ -1,24 +1,122 @@
 {
   "pages": [
-    { "id": "page-buy", "name": "Compra y cuenta" },
-    { "id": "page-public", "name": "Sitio público" },
-    { "id": "page-admin", "name": "Admin" },
-    { "id": "page-system", "name": "Sistema" }
+    {
+      "id": "page-buy",
+      "name": "Compra y cuenta"
+    },
+    {
+      "id": "page-public",
+      "name": "Sitio público"
+    },
+    {
+      "id": "page-admin",
+      "name": "Admin"
+    },
+    {
+      "id": "page-system",
+      "name": "Sistema"
+    }
   ],
   "artboards": [
-    { "file": "Cart.dc.html", "title": "Carrito", "page": "page-buy", "x": 0, "y": 0, "w": 1280, "h": 820 },
-    { "file": "Checkout.dc.html", "title": "Pagar", "page": "page-buy", "x": 1360, "y": 0, "w": 1280, "h": 860 },
-    { "file": "Transfer.dc.html", "title": "Transferencia", "page": "page-buy", "x": 2720, "y": 0, "w": 1280, "h": 900 },
-    { "file": "Order.dc.html", "title": "Pedido", "page": "page-buy", "x": 4080, "y": 0, "w": 1280, "h": 860 },
-    { "file": "Account.dc.html", "title": "Mi cuenta", "page": "page-buy", "x": 5440, "y": 0, "w": 1280, "h": 820 },
-
-    { "file": "Main.dc.html", "title": "Inicio", "page": "page-public", "x": 0, "y": 0, "w": 1280, "h": 1180 },
-    { "file": "Gallery.dc.html", "title": "Galería", "page": "page-public", "x": 1360, "y": 0, "w": 1280, "h": 900 },
-    { "file": "Photo.dc.html", "title": "Fotografía", "page": "page-public", "x": 2720, "y": 0, "w": 1280, "h": 880 },
-
-    { "file": "Admin.dc.html", "title": "Revisión de transferencias", "page": "page-admin", "x": 0, "y": 0, "w": 1360, "h": 880 },
-
-    { "file": "System.dc.html", "title": "Sistema de diseño", "page": "page-system", "x": 0, "y": 0, "w": 1180, "h": 900 }
+    {
+      "file": "Cart.dc.html",
+      "title": "Carrito",
+      "page": "page-buy",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 820
+    },
+    {
+      "file": "HomeColumn.dc.html",
+      "title": "Inicio · columna",
+      "page": "page-public",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 1080
+    },
+    {
+      "file": "Checkout.dc.html",
+      "title": "Pagar",
+      "page": "page-buy",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 860
+    },
+    {
+      "file": "Transfer.dc.html",
+      "title": "Transferencia",
+      "page": "page-buy",
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 900
+    },
+    {
+      "file": "Order.dc.html",
+      "title": "Pedido",
+      "page": "page-buy",
+      "x": 4080,
+      "y": 0,
+      "w": 1280,
+      "h": 860
+    },
+    {
+      "file": "Account.dc.html",
+      "title": "Mi cuenta",
+      "page": "page-buy",
+      "x": 5440,
+      "y": 0,
+      "w": 1280,
+      "h": 820
+    },
+    {
+      "file": "Main.dc.html",
+      "title": "Inicio · cabecera",
+      "page": "page-public",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 1080
+    },
+    {
+      "file": "Gallery.dc.html",
+      "title": "Galería",
+      "page": "page-public",
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 900
+    },
+    {
+      "file": "Photo.dc.html",
+      "title": "Fotografía",
+      "page": "page-public",
+      "x": 4080,
+      "y": 0,
+      "w": 1280,
+      "h": 880
+    },
+    {
+      "file": "Admin.dc.html",
+      "title": "Revisión de transferencias",
+      "page": "page-admin",
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 880
+    },
+    {
+      "file": "System.dc.html",
+      "title": "Sistema de diseño",
+      "page": "page-system",
+      "x": 0,
+      "y": 0,
+      "w": 1180,
+      "h": 900
+    }
   ],
   "annotations": [
     {
@@ -68,7 +166,18 @@
       "y": -250,
       "w": 420,
       "text": "Sistema\n\nNada aquí es nuevo: son los tokens de src/styles/global.css puestos en una hoja. Cambia «accent» o «theme» en cualquier tablero y todas las pantallas responden igual que la tienda real."
+    },
+    {
+      "id": "note-home",
+      "page": "page-public",
+      "x": 0,
+      "y": -470,
+      "w": 520,
+      "text": "Inicio — dos opciones\n\nNinguna de las dos vende: las fotos son decorativas, sin precio, sin carrito, sin búsqueda ni filtros. Al pasar el cursor sólo aparece «Ver».\n\n· Cabecera — las competencias van en una fila arriba y después el mosaico se queda con todo el ancho. Recomendada para un escaparate: la foto manda.\n· Columna — la misma lista en un riel fijo de 250 px a la derecha, siempre visible mientras se baja. Cuesta 250 px de foto en cada pantalla.\n\nLas dos entran con la misma animación escalonada, y todo se apaga bajo prefers-reduced-motion."
     }
   ],
-  "launch": { "view": "canvas", "page": "page-buy" }
+  "launch": {
+    "view": "canvas",
+    "page": "page-public"
+  }
 }

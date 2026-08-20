@@ -1,0 +1,34 @@
+---
+/**
+ * The two logs read as one surface with two tabs, because they get read together: when a
+ * download looks wrong, the next question is who changed what, and the answer is on the
+ * other table. They stay separate ROUTES — each has its own filters, its own query and
+ * its own deep links — so this is navigation, not a merge.
+ */
+interface Props {
+  active: 'activity' | 'downloads';
+}
+
+const { active } = Astro.props;
+
+const tabs = [
+  { id: 'activity', href: '/admin/activity', label: 'Activity' },
+  { id: 'downloads', href: '/admin/downloads', label: 'Downloads' },
+] as const;
+---
+
+<div class="mt-4 flex gap-6 border-b border-border text-sm">
+  {
+    tabs.map((tab) => (
+      <a
+        href={tab.href}
+        aria-current={active === tab.id ? 'page' : undefined}
+        class={`-mb-px border-b-2 px-0.5 py-2.5 transition-colors ${
+          active === tab.id ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink'
+        }`}
+      >
+        {tab.label}
+      </a>
+    ))
+  }
+</div>

@@ -52,7 +52,11 @@ const draftCount = photos.filter((photo) => photo.status === 'draft').length;
 
   {
     photos.length > 0 && (
-      <div class="panel mt-6 flex flex-wrap items-center gap-x-4 gap-y-3 p-3" data-bulk-bar>
+      <div
+        class="panel mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 p-3 transition-colors data-[selecting=true]:border-accent/40 data-[selecting=true]:bg-accent-wash"
+        data-bulk-bar
+        data-selecting="false"
+      >
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" data-select-all class="h-4 w-4 accent-[var(--color-ink)]" />
           Select all
@@ -60,11 +64,11 @@ const draftCount = photos.filter((photo) => photo.status === 'draft').length;
         <span class="text-sm text-ink-muted" data-selection-count>None selected</span>
 
         <div class="ms-auto flex flex-wrap items-center gap-2">
-          <button type="button" data-bulk-publish class="btn btn-ghost py-1.5" disabled>
+          <button type="button" data-bulk-publish data-selection-only hidden class="btn btn-ghost py-1.5" disabled>
             <Icon name="eye" />
             Publish selected
           </button>
-          <button type="button" data-bulk-unpublish class="btn btn-ghost py-1.5" disabled>
+          <button type="button" data-bulk-unpublish data-selection-only hidden class="btn btn-ghost py-1.5" disabled>
             <Icon name="eye-off" />
             Unpublish selected
           </button>
@@ -180,6 +184,14 @@ const draftCount = photos.filter((photo) => photo.status === 'draft').length;
     if (selectionCount) selectionCount.textContent = count === 0 ? 'None selected' : `${count} selected`;
     if (bulkPublish) bulkPublish.disabled = count === 0;
     if (bulkUnpublish) bulkUnpublish.disabled = count === 0;
+    // The two selection actions only exist while there is a selection. Publishing a
+    // batch of drafts is what this page is for, so that pair rides with the selection
+    // instead of sitting greyed out most of the time.
+    const bar = document.querySelector<HTMLElement>('[data-bulk-bar]');
+    if (bar) {
+      bar.dataset.selecting = count > 0 ? 'true' : 'false';
+      for (const el of bar.querySelectorAll<HTMLElement>('[data-selection-only]')) el.hidden = count === 0;
+    }
     if (selectAll) {
       selectAll.checked = count > 0 && count === checkboxes.length;
       // Partial selection reads as a dash rather than as either extreme, so the header

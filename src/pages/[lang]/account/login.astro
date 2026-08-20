@@ -1,4 +1,5 @@
 ---
+import AuthLayout from '../../../components/AuthLayout.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getDictionary, type Locale } from '../../../lib/i18n';
 import { safeRedirectTarget } from '../../../lib/redirects';
@@ -19,45 +20,38 @@ if (sessionUser) {
 ---
 
 <BaseLayout title={`${t.account.signInTitle} — José Valdiviezo`} lang={lang}>
-  <div class="mx-auto max-w-sm px-6 py-16" data-auth-page data-next={next} data-errors={JSON.stringify(t.account.errors)}>
-    <h1 class="font-display text-2xl">{t.account.signInTitle}</h1>
+  {/* The data-* hooks stay on the wrapper the script queries — AuthLayout only supplies
+      the two-column shell around this form. */}
+  <div data-auth-page data-next={next} data-errors={JSON.stringify(t.account.errors)}>
+    <AuthLayout lang={lang} mode="signin" next={next}>
+      <h1 class="font-display text-2xl">{t.account.signInTitle}</h1>
 
-    <form data-login-form class="mt-8 space-y-4">
-      <label class="block text-sm">
-        {t.account.email}
-        <input
-          type="email"
-          name="email"
-          autocomplete="email"
-          required
-          class="field mt-1 block w-full px-3 py-2"
-        />
-      </label>
-      <label class="block text-sm">
-        {t.account.password}
-        <input
-          type="password"
-          name="password"
-          autocomplete="current-password"
-          required
-          class="field mt-1 block w-full px-3 py-2"
-        />
-      </label>
-      <p data-auth-error hidden class="text-sm text-accent"></p>
-      <button
-        type="submit"
-        class="btn btn-primary w-full py-3"
-      >
-        {t.account.signIn}
-      </button>
-    </form>
+      <form data-login-form class="mt-5 space-y-3.5">
+        <label class="block text-sm">
+          {t.account.email}
+          <input type="email" name="email" autocomplete="email" required class="field mt-1 block w-full px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          {t.account.password}
+          <input
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            class="field mt-1 block w-full px-3 py-2"
+          />
+        </label>
+        <p data-auth-error hidden class="text-sm text-accent"></p>
+        <button type="submit" class="btn btn-primary w-full py-3">{t.account.signIn}</button>
+      </form>
 
-    <p class="mt-6 text-sm text-ink-muted">
-      {t.account.noAccount}{' '}
-      <a href={`/${lang}/account/register?next=${encodeURIComponent(next)}`} class="underline hover:text-ink">
-        {t.account.createOne}
-      </a>
-    </p>
+      <p class="mt-4 text-sm text-ink-muted">
+        {t.account.noAccount}{' '}
+        <a href={`/${lang}/account/register?next=${encodeURIComponent(next)}`} class="underline hover:text-ink">
+          {t.account.createOne}
+        </a>
+      </p>
+    </AuthLayout>
   </div>
 </BaseLayout>
 

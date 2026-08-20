@@ -1,6 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { createStorage, getDbConfig } from '../lib/config';
+import { getDb } from '../lib/db';
 import { getDictionary, type Locale } from '../lib/i18n';
+import { getPhotoImageUrls, getPublishedPhotos } from '../lib/photos';
 
 Astro.response.status = 404;
 
@@ -15,14 +18,67 @@ const copy = {
   es: { title: 'Página no encontrada', body: 'Esta página no existe o fue movida.' },
   en: { title: 'Page not found', body: "This page doesn't exist or has moved." },
 }[lang];
+
+/**
+ * Four recent photographs under the apology.
+ *
+ * Wrapped in try/catch on purpose: this is the page that has to render when something
+ * else has already gone wrong, and a database blip must not turn a 404 into a 500 — the
+ * same reasoning as the nav's competition list in BaseLayout.
+ */
+let recent: { slug: string; title: string; webpUrl: string; jpegUrl: string }[] = [];
+try {
+  const db = await getDb(getDbConfig());
+  const storage = createStorage();
+  recent = (await getPublishedPhotos(db)).slice(0, 4).map((photo) => {
+    const urls = getPhotoImageUrls(photo, storage);
+    return { slug: photo.slug, title: photo.title[lang], webpUrl: urls.webp, jpegUrl: urls.jpeg };
+  });
+} catch {
+  recent = [];
+}
 ---
 
 <BaseLayout title={`${copy.title} — José Valdiviezo`} lang={lang}>
-  <div class="mx-auto max-w-lg px-6 py-24 text-center">
-    <h1 class="font-display text-3xl">{copy.title}</h1>
-    <p class="mt-4 text-ink-muted">{copy.body}</p>
-    <a href={`/${lang}/competitions`} class="mt-8 inline-block text-sm uppercase tracking-widest text-accent hover:underline">
-      {t.nav.competitions} &rarr;
-    </a>
+  <div class="mx-auto max-w-xl px-6 py-20 text-center">
+    <span class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-accent-wash text-accent">
+      <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3.5" y="5" width="17" height="14" rx="2" />
+        <circle cx="9" cy="10" r="1.6" />
+        <path d="M4 17l5-4 4 3 3-2 4 3" />
+      </svg>
+    </span>
+    <h1 class="mt-4 font-display text-3xl">{copy.title}</h1>
+    <p class="mt-2.5 text-ink-muted">{copy.body}</p>
+
+    <div class="mt-6 flex flex-wrap justify-center gap-2.5">
+      <a href={`/${lang}/competitions`} class="btn btn-primary px-6 py-3">
+        {t.nav.competitions}
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h13" />
+          <path d="M13 6l6 6-6 6" />
+        </svg>
+      </a>
+      <a href={`/${lang}/gallery`} class="btn btn-ghost px-6 py-3">{t.nav.allPhotographs}</a>
+    </div>
+
+    {/* A dead end is a good place to offer the thing they were probably looking for. */}
+    {
+      recent.length > 0 && (
+        <div class="mt-12">
+          <p class="text-[10px] uppercase tracking-[0.14em] text-ink-muted">{t.notFound.recentTitle}</p>
+          <div class="mt-3 grid grid-cols-4 gap-2">
+            {recent.map((photo) => (
+              <a href={`/${lang}/gallery/${photo.slug}`} class="frame block aspect-[4/3] bg-border transition-transform hover:-translate-y-0.5">
+                <picture>
+                  <source srcset={photo.webpUrl} type="image/webp" />
+                  <img src={photo.jpegUrl} alt={photo.title} loading="lazy" decoding="async" class="h-full w-full object-cover" />
+                </picture>
+              </a>
+            ))}
+          </div>
+        </div>
+      )
+    }
   </div>
 </BaseLayout>

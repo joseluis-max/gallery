@@ -40,6 +40,9 @@ export interface Dictionary {
     /** Contains a `{count}` placeholder. */
     photoCount: string;
     backToAll: string;
+    allYears: string;
+    /** Contains `{competitions}` and `{photos}` placeholders. */
+    summary: string;
   };
   portfolio: { title: string; intro: string; empty: string };
   detail: {
@@ -53,7 +56,16 @@ export interface Dictionary {
     alreadyYours: string;
     downloadAgain: string;
   };
-  about: { title: string; body: string };
+  about: {
+    title: string;
+    body: string;
+    eyebrow: string;
+    contactTitle: string;
+    contactLocation: string;
+    /** Why someone would write: this site's only inbound channel is event organisers. */
+    contactInvite: string;
+    portfolioNote: string;
+  };
   cart: {
     title: string;
     empty: string;
@@ -256,6 +268,12 @@ export interface Dictionary {
     total: string;
     viewOrder: string;
     passwordHint: string;
+    /** The half of the sign-in screen that carries a photograph rather than a form. */
+    heroTitle: string;
+    heroBody: string;
+    freeOffer: string;
+    freeOfferHint: string;
+    guestNote: string;
     errors: Record<
       | 'INVALID_CREDENTIALS'
       | 'TOO_MANY_ATTEMPTS'
@@ -269,7 +287,7 @@ export interface Dictionary {
     statuses: Record<'pending' | 'paid' | 'cancelled' | 'refunded', string>;
   };
   footer: { rights: string };
-  notFound: { photoTitle: string; photoBody: string };
+  notFound: { photoTitle: string; photoBody: string; recentTitle: string };
 }
 
 export const es: Dictionary = {
@@ -311,6 +329,8 @@ export const es: Dictionary = {
     empty: 'Todavía no hay competencias publicadas.',
     photoCount: '{count} fotografías',
     backToAll: 'Volver a competencias',
+    allYears: 'Todos los años',
+    summary: '{competitions} competencias · {photos} fotografías',
   },
   portfolio: {
     title: 'Portafolio',
@@ -336,6 +356,11 @@ export const es: Dictionary = {
   },
   about: {
     title: 'Acerca de José',
+    eyebrow: 'Acerca de',
+    contactTitle: 'Contacto',
+    contactLocation: 'Cuenca, Ecuador',
+    contactInvite: '¿Organizas una competencia? Escríbeme para cubrirla.',
+    portfolioNote: 'Del portafolio personal — paisaje y vida silvestre.',
     // BORRADOR — pendiente de revisión de José. Escrito a propósito sin premios, clientes
     // ni años de experiencia: nada aquí afirma algo que no se pueda verificar.
     body: 'José Valdiviezo es un fotógrafo radicado en Cuenca, Ecuador. Su trabajo se centra en la fotografía deportiva: el instante decidido, el gesto del esfuerzo y la tensión de la competencia. Cada competencia se publica como una galería propia, para que quienes participaron puedan encontrar sus fotografías. Junto a ese trabajo mantiene un portafolio de paisaje y vida silvestre, donde la misma atención a la luz natural se toma su tiempo.',
@@ -502,6 +527,11 @@ export const es: Dictionary = {
     total: 'Total',
     viewOrder: 'Ver',
     passwordHint: 'Mínimo 8 caracteres.',
+    heroTitle: 'Tus fotografías, cuando las necesites',
+    heroBody: 'Con una cuenta guardas tus pedidos y puedes volver a descargar lo que compraste, aunque venza el enlace del correo.',
+    freeOffer: 'Llévate 2 fotografías gratis',
+    freeOfferHint: 'Se aplican al crear la cuenta, en la fotografía que elijas.',
+    guestNote: 'Comprar no requiere cuenta — también puedes pagar como invitado.',
     errors: {
       INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.',
       TOO_MANY_ATTEMPTS: 'Demasiados intentos. Vuelve a intentarlo en unos minutos.',
@@ -524,5 +554,6 @@ export const es: Dictionary = {
   notFound: {
     photoTitle: 'Fotografía no encontrada',
     photoBody: 'Esta fotografía ya no está disponible o el enlace es incorrecto.',
+    recentTitle: 'Publicadas recientemente',
   },
 };

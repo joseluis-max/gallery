@@ -1,0 +1,102 @@
+---
+import { createStorage, getDbConfig } from '../lib/config';
+import { getDb } from '../lib/db';
+import { getDictionary, type Locale } from '../lib/i18n';
+import { getFeaturedPhotos, getPhotoImageUrls, getPublishedPhotos } from '../lib/photos';
+
+/**
+ * The frame both sign-in and register sit in: a photograph on one side, the form on the
+ * other. It exists as a component because the two pages were the same 40 lines of shell
+ * with a different form inside, and a split screen doubles that.
+ *
+ * The photograph is a real published one, picked by the store rather than shipped as an
+ * asset — this is a shop for photographs, and the sign-in screen was the one place that
+ * showed none.
+ */
+interface Props {
+  lang: Locale;
+  /** Which side of the pair is showing; it drives the tab state and the free-download
+   *  note, which belongs to registering and would be a lie above a sign-in form. */
+  mode: 'signin' | 'register';
+  next: string;
+}
+
+const { lang, mode, next } = Astro.props;
+const t = getDictionary(lang);
+
+const db = await getDb(getDbConfig());
+const storage = createStorage();
+// A featured photograph first, falling back to whatever is newest: an empty catalogue
+// drops the image column rather than rendering an empty half-screen.
+const [hero] = await getFeaturedPhotos(db, 1);
+const [fallback] = hero ? [] : await getPublishedPhotos(db);
+const cover = hero ?? fallback ?? null;
+const urls = cover ? getPhotoImageUrls(cover, storage) : null;
+
+const signInHref = `/${lang}/account/login?next=${encodeURIComponent(next)}`;
+const registerHref = `/${lang}/account/register?next=${encodeURIComponent(next)}`;
+---
+
+<div class="grid min-h-[calc(100vh-73px)] md:grid-cols-[1fr_minmax(0,520px)]">
+  {
+    urls && cover ? (
+      <aside class="relative hidden overflow-hidden md:block">
+        <img src={cover.lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-105 object-cover blur-md" />
+        <picture>
+          <source srcset={urls.webp} type="image/webp" />
+          <img src={urls.jpeg} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full object-cover" />
+        </picture>
+        <div class="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent"></div>
+        <div class="absolute inset-x-0 bottom-0 p-8">
+          <p class="font-display text-2xl text-surface">{t.account.heroTitle}</p>
+          <p class="mt-2 max-w-sm text-sm text-surface/80">{t.account.heroBody}</p>
+        </div>
+      </aside>
+    ) : (
+      <aside class="hidden md:block"></aside>
+    )
+  }
+
+  <main class="flex flex-col px-6 py-10 md:px-12">
+    <div class="my-auto w-full max-w-sm">
+      <div class="flex gap-6 border-b border-border text-sm">
+        <a
+          href={signInHref}
+          class={`-mb-px border-b-2 px-0.5 py-2.5 transition-colors ${
+            mode === 'signin' ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink'
+          }`}
+        >
+          {t.account.signInTitle}
+        </a>
+        <a
+          href={registerHref}
+          class={`-mb-px border-b-2 px-0.5 py-2.5 transition-colors ${
+            mode === 'register' ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink'
+          }`}
+        >
+          {t.account.registerTitle}
+        </a>
+      </div>
+
+      <div class="mt-6">
+        <slot />
+      </div>
+
+      {
+        mode === 'register' && (
+          <div class="mt-4 flex items-start gap-2.5 rounded-md bg-accent-wash p-3 text-sm">
+            <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l2.4 5.3 5.6.6-4.2 3.9 1.2 5.7L12 15.8 6.9 18.5l1.2-5.7L4 8.9l5.6-.6z" />
+            </svg>
+            <span>
+              <span class="block">{t.account.freeOffer}</span>
+              <span class="mt-0.5 block text-xs text-ink-muted">{t.account.freeOfferHint}</span>
+            </span>
+          </div>
+        )
+      }
+    </div>
+
+    <p class="text-xs text-ink-muted">{t.account.guestNote}</p>
+  </main>
+</div>

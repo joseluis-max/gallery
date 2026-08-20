@@ -1,0 +1,51 @@
+{
+  "pages": [
+    { "id": "page-escritorio", "name": "Escritorio" },
+    { "id": "page-movil", "name": "Móvil y estados" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Galería", "page": "page-escritorio", "x": 0, "y": 0, "w": 1280, "h": 980 },
+    { "file": "Photo.dc.html", "title": "Fotografía", "page": "page-escritorio", "x": 1360, "y": 0, "w": 1280, "h": 900 },
+    { "file": "Lightbox.dc.html", "title": "Vista ampliada", "page": "page-escritorio", "x": 2720, "y": 0, "w": 1280, "h": 860 },
+    { "file": "Portfolio.dc.html", "title": "Portafolio", "page": "page-escritorio", "x": 4080, "y": 0, "w": 1280, "h": 900 },
+
+    { "file": "MobileGallery.dc.html", "title": "Galería · móvil", "page": "page-movil", "x": 0, "y": 0, "w": 390, "h": 844 },
+    { "file": "MobilePhoto.dc.html", "title": "Fotografía · móvil", "page": "page-movil", "x": 470, "y": 0, "w": 390, "h": 844 },
+    { "file": "States.dc.html", "title": "Estados", "page": "page-movil", "x": 940, "y": 0, "w": 1180, "h": 800 }
+  ],
+  "annotations": [
+    {
+      "id": "note-galeria",
+      "page": "page-escritorio",
+      "x": 0,
+      "y": -260,
+      "w": 470,
+      "text": "Galería\n\n· Búsqueda y filtros conviven: los tags acotan el tema, la búsqueda encuentra un archivo concreto.\n· Densidad Grande/Compacta sobre el mismo mosaico — 300 fotos se revisan compactas, una se elige grande.\n· La retícula de marca de agua se ve en el tablero, como en la tienda.\n· Añadir al carrito desde el mosaico, sin abrir la fotografía."
+    },
+    {
+      "id": "note-ampliada",
+      "page": "page-escritorio",
+      "x": 2720,
+      "y": -260,
+      "w": 460,
+      "text": "Vista ampliada\n\nSiempre oscura: es una sala con la luz apagada, no una página con tema. Por eso este tablero no lleva el interruptor claro/oscuro.\n\nLo nuevo: flechas y tira de miniaturas para recorrer el set, y el precio con «añadir al carrito» dentro de la propia vista — hoy hay que cerrarla para volver al botón."
+    },
+    {
+      "id": "note-movil",
+      "page": "page-movil",
+      "x": 0,
+      "y": -280,
+      "w": 470,
+      "text": "Móvil\n\nAquí es donde miran los corredores. Todo lo que se toca mide 44 px o más, el botón de añadir es visible siempre (no hay hover en un teléfono) y los filtros van en un carrusel horizontal para no comerse la pantalla antes de la primera foto.\n\nLa barra de compra queda fija abajo, y la del carrito flota sobre el mosaico sólo cuando hay algo dentro."
+    },
+    {
+      "id": "note-estados",
+      "page": "page-movil",
+      "x": 940,
+      "y": -280,
+      "w": 460,
+      "text": "Estados\n\nTres de los cuatro existen hoy sin diseño: cargando, búsqueda vacía y una derivada que no carga.\n\nEl cuarto — «competencia sin publicar» con aviso por correo — propone algo que la tienda todavía no hace. Está marcado [POR DECIDIR]: dilo y lo construimos, o lo quito del lienzo."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-escritorio" }
+}

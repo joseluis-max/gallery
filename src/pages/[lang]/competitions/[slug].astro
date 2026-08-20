@@ -1,7 +1,7 @@
 ---
 import MosaicGrid, { type GridItem } from '../../../components/MosaicGrid.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { formatCompetitionDate, getCompetitionBySlug } from '../../../lib/competitions';
+import { formatCompetitionDate, getCompetitionBySlug, resolveCoverPhoto } from '../../../lib/competitions';
 import { createStorage, getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
 import { getDictionary, type Locale } from '../../../lib/i18n';
@@ -20,9 +20,18 @@ if (!competition) {
 }
 
 let items: GridItem[] = [];
+let cover: { webp: string; jpeg: string; lqip: string } | null = null;
 if (competition) {
   const storage = createStorage();
   const photos = await getPublishedPhotos(db, { competitionId: competition._id });
+
+  // The event's own photograph behind the title. Resolved through the same helper the
+  // index uses, so the card someone clicked and the page they land on show one image.
+  const coverPhoto = await resolveCoverPhoto(db, competition);
+  if (coverPhoto) {
+    const urls = getPhotoImageUrls(coverPhoto, storage);
+    cover = { webp: urls.webp, jpeg: urls.jpeg, lqip: coverPhoto.lqip };
+  }
   const cart = (await Astro.session?.get('cart')) ?? [];
   const cartLineByPhotoId = new Map(cart.map((item) => [item.photoId, item.lineId]));
 
@@ -65,21 +74,82 @@ if (competition) {
   {
     competition && (
       <>
-        <div class="mx-auto max-w-7xl px-6 pb-8 pt-12 md:px-12">
-          <a href={`/${lang}/competitions`} class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
-            &larr; {t.competitions.backToAll}
-          </a>
-          <h1 class="mt-6 font-display text-3xl">{competition.name[lang]}</h1>
-          <p class="mt-2 text-sm uppercase tracking-widest text-ink-muted">
-            {formatCompetitionDate(competition.date, lang)}
-            {competition.location && ` · ${competition.location}`}
-          </p>
-          {competition.description[lang] && (
-            <p class="mt-4 max-w-prose text-ink-muted leading-relaxed">{competition.description[lang]}</p>
-          )}
-        </div>
+        {/*
+          The event's own photograph carries the title. Without it this page opened with
+          three lines of type over an empty page, which is a strange way to introduce a
+          gallery of 200 photographs. The gradient is not decoration: it is what lets
+          white text survive a bright frame.
+        */}
+        {cover ? (
+          <section class="relative h-[280px] overflow-hidden md:h-[320px]">
+            <img src={cover.lqip} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-105 object-cover blur-md" />
+            <picture>
+              <source srcset={cover.webp} type="image/webp" />
+              <img src={cover.jpeg} alt="" aria-hidden="true" class="absolute inset-0 h-full w-full object-cover" />
+            </picture>
+            <div class="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/25 to-transparent"></div>
+            <div class="absolute inset-x-0 bottom-0 px-6 pb-6 md:px-12">
+              <a href={`/${lang}/competitions`} class="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-surface/80 transition-colors hover:text-surface">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M19 12H6" />
+                  <path d="M11 6l-6 6 6 6" />
+                </svg>
+                {t.competitions.backToAll}
+              </a>
+              <h1 class="mt-2 font-display text-3xl text-surface md:text-4xl">{competition.name[lang]}</h1>
+              <p class="mt-1 text-sm text-surface/85">
+                {formatCompetitionDate(competition.date, lang)}
+                {competition.location && ` · ${competition.location}`}
+                {items.length > 0 && ` · ${t.competitions.photoCount.replace('{count}', String(items.length))}`}
+              </p>
+            </div>
+          </section>
+        ) : (
+          <div class="mx-auto max-w-7xl px-6 pb-6 pt-10 md:px-12">
+            <a href={`/${lang}/competitions`} class="text-xs uppercase tracking-widest text-ink-muted hover:text-ink">
+              &larr; {t.competitions.backToAll}
+            </a>
+            <h1 class="mt-5 font-display text-3xl">{competition.name[lang]}</h1>
+            <p class="mt-1 text-sm text-ink-muted">
+              {formatCompetitionDate(competition.date, lang)}
+              {competition.location && ` · ${competition.location}`}
+            </p>
+          </div>
+        )}
 
-        <div class="px-2 pb-20 md:px-6">
+        {competition.description[lang] && (
+          <p class="mx-auto max-w-7xl px-6 pt-6 text-ink-muted leading-relaxed md:px-12">{competition.description[lang]}</p>
+        )}
+
+        {/*
+          Sticky search over the set. On a 200-frame race gallery, "find my number" is the
+          only question — and it needs answering at the bottom of the page as much as at
+          the top, which is what `sticky` buys.
+        */}
+        {items.length > 0 && (
+          <div
+            data-competition
+            data-no-results={t.gallery.searchNoResults}
+            class="sticky top-[57px] z-10 mt-6 flex flex-wrap items-center gap-3 border-y border-border bg-surface/90 px-6 py-2.5 backdrop-blur-md md:px-12"
+          >
+            <label class="inline-flex min-w-[15rem] items-center gap-2 rounded-full border border-border-strong bg-raised px-3.5 py-1.5 transition-colors focus-within:border-accent">
+              <svg class="h-4 w-4 shrink-0 text-ink-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="M16 16l4 4" />
+              </svg>
+              <input
+                data-competition-search
+                type="search"
+                placeholder={t.gallery.searchPlaceholder}
+                aria-label={t.gallery.searchPlaceholder}
+                class="w-full border-0 bg-transparent p-0 text-sm outline-none placeholder:text-ink-muted/70"
+              />
+            </label>
+            <span class="text-xs text-ink-muted">{t.competitions.photoCount.replace('{count}', String(items.length))}</span>
+          </div>
+        )}
+
+        <div class="px-2 pb-20 pt-3 md:px-6">
           {
             items.length > 0 ? (
               <MosaicGrid items={items} addToCartLabel={t.gallery.addToCart} removeFromCartLabel={t.gallery.removeFromCart} />
@@ -87,8 +157,38 @@ if (competition) {
               <p class="px-4 text-ink-muted">{t.gallery.empty}</p>
             )
           }
+          <p data-competition-empty hidden class="px-4 py-10 text-center text-sm text-ink-muted"></p>
         </div>
       </>
     )
   }
 </BaseLayout>
+
+<script>
+  // Same client-side filter as the gallery index, over the tiles this page already
+  // rendered: every published photograph of the competition is in the document, so
+  // narrowing needs no round trip and works the moment someone types.
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('[data-competition]');
+    const input = root?.querySelector<HTMLInputElement>('[data-competition-search]');
+    if (!root || !input || input.dataset.bound === 'true') return;
+    input.dataset.bound = 'true';
+
+    const emptyEl = document.querySelector<HTMLElement>('[data-competition-empty]')!;
+    const tiles = Array.from(document.querySelectorAll<HTMLElement>('[data-photo-title]'));
+
+    input.addEventListener('input', () => {
+      const needle = input.value.trim().toLowerCase();
+      let shown = 0;
+
+      for (const tile of tiles) {
+        const match = !needle || tile.dataset.photoTitle!.includes(needle);
+        tile.hidden = !match;
+        if (match) shown++;
+      }
+
+      emptyEl.textContent = root.dataset.noResults!;
+      emptyEl.hidden = shown > 0 || tiles.length === 0;
+    });
+  });
+</script>

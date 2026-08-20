@@ -44,13 +44,14 @@ const stats = await getCustomerStats(
 
   <table class="mt-6 w-full text-sm">
     <thead>
-      <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+      <tr class="border-b border-border-strong text-left text-[10px] uppercase tracking-[0.14em] text-ink-muted">
         <th class="py-2">Name</th>
         <th class="py-2">Email</th>
         <th class="py-2">Role</th>
         <th class="py-2">Joined</th>
         <th class="py-2 text-right">Orders</th>
         <th class="py-2 text-right">Spend</th>
+        <th class="py-2 text-right">Free</th>
       </tr>
     </thead>
     <tbody class="[font-variant-numeric:tabular-nums]">
@@ -58,18 +59,31 @@ const stats = await getCustomerStats(
         users.map((user) => {
           const stat = stats.get(user._id.toString());
           return (
-            <tr class="border-b border-border">
+            <tr class="border-b border-border transition-colors hover:bg-ink/[0.03]">
               <td class="py-2">
-                <a href={`/admin/customers/${user._id.toString()}`} class="hover:underline">
+                <a href={`/admin/customers/${user._id.toString()}`} class="flex items-center gap-2.5 hover:underline">
+                  {/* An initial, not an avatar image: there is no photograph of a customer
+                      anywhere in this system, and a generic silhouette on every row is
+                      noise. The letter at least distinguishes two rows at a glance. */}
+                  <span class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-wash text-xs text-accent">
+                    {(user.name || user.email).slice(0, 1).toUpperCase()}
+                  </span>
                   {user.name}
                 </a>
-                {user.disabled && <span class="ml-2 text-xs uppercase tracking-widest text-accent">disabled</span>}
+                {user.disabled && <span class="ml-2 status-pill">disabled</span>}
               </td>
-              <td class="py-2 text-ink-muted">{user.email}</td>
-              <td class="py-2 capitalize">{user.role}</td>
+              <td class="py-2 font-mono text-xs text-ink-muted">{user.email}</td>
+              <td class="py-2">
+                {user.role === 'admin' ? (
+                  <span class="status-pill status-pill-done">admin</span>
+                ) : (
+                  <span class="text-ink-muted">customer</span>
+                )}
+              </td>
               <td class="py-2 text-ink-muted">{new Date(user.createdAt).toLocaleDateString()}</td>
               <td class="py-2 text-right">{stat?.orders ?? 0}</td>
               <td class="py-2 text-right">{formatCents(stat?.revenueCents ?? 0)}</td>
+              <td class="py-2 text-right text-ink-muted">{user.freeDownloadsRemaining}</td>
             </tr>
           );
         })
@@ -77,7 +91,7 @@ const stats = await getCustomerStats(
       {
         users.length === 0 && (
           <tr>
-            <td colspan="6" class="py-4 text-ink-muted">
+            <td colspan="7" class="py-4 text-ink-muted">
               No accounts match this filter.
             </td>
           </tr>

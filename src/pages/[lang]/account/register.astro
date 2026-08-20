@@ -1,4 +1,5 @@
 ---
+import AuthLayout from '../../../components/AuthLayout.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getDictionary, type Locale } from '../../../lib/i18n';
 import { safeRedirectTarget } from '../../../lib/redirects';
@@ -16,45 +17,42 @@ if (sessionUser) {
 ---
 
 <BaseLayout title={`${t.account.registerTitle} — José Valdiviezo`} lang={lang}>
-  <div class="mx-auto max-w-sm px-6 py-16" data-auth-page data-next={next} data-errors={JSON.stringify(t.account.errors)}>
-    <h1 class="font-display text-2xl">{t.account.registerTitle}</h1>
+  <div data-auth-page data-next={next} data-errors={JSON.stringify(t.account.errors)}>
+    <AuthLayout lang={lang} mode="register" next={next}>
+      <h1 class="font-display text-2xl">{t.account.registerTitle}</h1>
 
-    <form data-register-form class="mt-8 space-y-4">
-      <label class="block text-sm">
-        {t.account.name}
-        <input type="text" name="name" autocomplete="name" required class="field mt-1 block w-full px-3 py-2" />
-      </label>
-      <label class="block text-sm">
-        {t.account.email}
-        <input type="email" name="email" autocomplete="email" required class="field mt-1 block w-full px-3 py-2" />
-      </label>
-      <label class="block text-sm">
-        {t.account.password}
-        <input
-          type="password"
-          name="password"
-          autocomplete="new-password"
-          required
-          minlength={MIN_PASSWORD_LENGTH}
-          class="field mt-1 block w-full px-3 py-2"
-        />
-        <span class="mt-1 block text-xs text-ink-muted">{t.account.passwordHint}</span>
-      </label>
-      <p data-auth-error hidden class="text-sm text-accent"></p>
-      <button
-        type="submit"
-        class="btn btn-primary w-full py-3"
-      >
-        {t.account.register}
-      </button>
-    </form>
+      <form data-register-form class="mt-5 space-y-3.5">
+        <label class="block text-sm">
+          {t.account.name}
+          <input type="text" name="name" autocomplete="name" required class="field mt-1 block w-full px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          {t.account.email}
+          <input type="email" name="email" autocomplete="email" required class="field mt-1 block w-full px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          {t.account.password}
+          <input
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            required
+            minlength={MIN_PASSWORD_LENGTH}
+            class="field mt-1 block w-full px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-ink-muted">{t.account.passwordHint}</span>
+        </label>
+        <p data-auth-error hidden class="text-sm text-accent"></p>
+        <button type="submit" class="btn btn-primary w-full py-3">{t.account.register}</button>
+      </form>
 
-    <p class="mt-6 text-sm text-ink-muted">
-      {t.account.haveAccount}{' '}
-      <a href={`/${lang}/account/login?next=${encodeURIComponent(next)}`} class="underline hover:text-ink">
-        {t.account.signIn}
-      </a>
-    </p>
+      <p class="mt-4 text-sm text-ink-muted">
+        {t.account.haveAccount}{' '}
+        <a href={`/${lang}/account/login?next=${encodeURIComponent(next)}`} class="underline hover:text-ink">
+          {t.account.signIn}
+        </a>
+      </p>
+    </AuthLayout>
   </div>
 </BaseLayout>
 

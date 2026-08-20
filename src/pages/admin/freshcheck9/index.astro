@@ -5,6 +5,7 @@ import ColumnChart from '../../../components/admin/ColumnChart.astro';
 import LineChart from '../../../components/admin/LineChart.astro';
 import StatTile from '../../../components/admin/StatTile.astro';
 import { getDailyRevenue, getDashboardKpis, getMonthlyRevenue, getStatusCounts, getTopPhotos } from '../../../lib/analytics';
+import { listTransfers } from '../../../lib/bankTransfer';
 import { formatCents, formatCount, percentChange, type ChartDatum } from '../../../lib/charts';
 import { getDbConfig } from '../../../lib/config';
 import { getDb } from '../../../lib/db';
@@ -36,16 +37,23 @@ let dashboard: {
   bestSellers: ChartDatum[];
   statusCounts: ChartDatum[];
   recentActivity: Record<string, unknown>[];
+  /** Transfers waiting on a human, and what they are worth. Counted here rather than on
+   *  /admin/orders alone because this is the screen the day starts on, and an unreviewed
+   *  receipt is a customer waiting — the only number on the page about someone else's
+   *  time rather than about money already taken. */
+  transfersInReview: number;
+  transfersAmountCents: number;
 } | null = null;
 
 if (authed) {
-  const [kpis, monthly, daily, topPhotos, statusCounts, recentActivity] = await Promise.all([
+  const [kpis, monthly, daily, topPhotos, statusCounts, recentActivity, waiting] = await Promise.all([
     getDashboardKpis(db),
     getMonthlyRevenue(db, 12),
     getDailyRevenue(db, 30),
     getTopPhotos(db, 5),
     getStatusCounts(db),
     db.collection('auditLog').find({}).sort({ at: -1 }).limit(10).toArray(),
+    listTransfers(db, 'in-review'),
   ]);
 
   dashboard = {
@@ -55,6 +63,8 @@ if (authed) {
     bestSellers: topPhotos.map((photo) => ({ key: photo.slug, label: photo.title, value: photo.units })),
     statusCounts: ORDER_STATUSES.map((status) => ({ key: status, label: status, value: statusCounts[status] ?? 0 })),
     recentActivity,
+    transfersInReview: waiting.length,
+    transfersAmountCents: waiting.reduce((total, transfer) => total + transfer.amountCents, 0),
   };
 }
 
@@ -78,48 +88,58 @@ const revenueDelta = dashboard ? percentChange(dashboard.kpis.revenueThisMonthCe
         </script>
       </head>
       <body class="flex min-h-screen items-center justify-center bg-surface text-ink font-body antialiased">
-        <form data-signin-form class="w-full max-w-xs space-y-4 px-6">
-          <h1 class="font-display text-xl">Admin</h1>
+        <form data-signin-form class="panel w-full max-w-sm space-y-3.5 p-7">
+          <div class="flex items-center gap-2.5">
+            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink text-surface">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4.5" y="10" width="15" height="10" rx="2" />
+                <path d="M8 10V7.5a4 4 0 0 1 8 0V10" />
+              </svg>
+            </span>
+            <span>
+              <span class="block font-display text-base leading-tight">José Valdiviezo</span>
+              <span class="block text-[10px] uppercase tracking-[0.14em] text-ink-muted">Admin panel</span>
+            </span>
+          </div>
 
           {sessionUser && (
-            <p class="text-sm text-ink-muted">
-              Signed in as {sessionUser.email}, which is not an admin account.
-              <button type="button" data-signout class="mt-1 block underline hover:text-accent">
-                Sign out
-              </button>
+            <p class="flex items-start gap-2 rounded-md bg-accent-wash p-3 text-xs">
+              <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5" />
+                <path d="M12 11v5.5" />
+                <path d="M12 7.8v.2" />
+              </svg>
+              <span>
+                Signed in as <span class="text-ink">{sessionUser.email}</span>, which is not an admin account.
+                <button type="button" data-signout class="mt-1 block underline hover:text-accent">
+                  Sign out
+                </button>
+              </span>
             </p>
           )}
 
           {adminAccountCount === 0 && (
-            <p class="border border-accent p-3 text-xs text-ink-muted">
+            <p class="rounded-md border border-accent p-3 text-xs text-ink-muted">
               No admin account exists yet. Create one with <code>pnpm create-admin &lt;email&gt; &lt;password&gt;</code>.
             </p>
           )}
 
           <label class="block text-sm">
             Email
-            <input
-              type="email"
-              name="email"
-              autocomplete="username"
-              required
-              class="mt-1 block w-full field"
-            />
+            <input type="email" name="email" autocomplete="username" required class="field mt-1 block w-full" />
           </label>
           <label class="block text-sm">
             Password
-            <input
-              type="password"
-              name="password"
-              autocomplete="current-password"
-              required
-              class="mt-1 block w-full field"
-            />
+            <input type="password" name="password" autocomplete="current-password" required class="field mt-1 block w-full" />
           </label>
-          <button type="submit" class="w-full btn btn-primary">
-            Continue
-          </button>
+          <button type="submit" class="btn btn-primary w-full py-3">Continue</button>
           <p data-signin-error hidden class="text-sm text-accent" />
+          <p class="flex items-start gap-2 text-[11px] text-ink-muted">
+            <svg class="mt-0.5 h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l7 3v6c0 4-3 7.2-7 9-4-1.8-7-5-7-9V6z" />
+            </svg>
+            Five failed attempts lock this account for a few minutes.
+          </p>
         </form>
 
         <script>
@@ -167,15 +187,63 @@ const revenueDelta = dashboard ? percentChange(dashboard.kpis.revenueThisMonthCe
     <AdminLayout title="Dashboard">
       <h1 class="font-display text-2xl">Dashboard</h1>
 
-      {dashboard.kpis.failedUploads > 0 && (
-        <div class="mt-6">
-          <a href="/admin/upload" class="panel block border-accent p-3 text-sm">
-            {dashboard.kpis.failedUploads} failed upload job(s) →
-          </a>
+      {/*
+        What is waiting on a person comes before what merely happened. The four tiles
+        below are the month in numbers; a receipt nobody has looked at is a customer who
+        has paid and received nothing, and it should never be the second thing you see.
+      */}
+      {(dashboard.transfersInReview > 0 || dashboard.kpis.failedUploads > 0) && (
+        <div class="mt-5 grid gap-3 md:grid-cols-2">
+          {dashboard.transfersInReview > 0 && (
+            <a
+              href="/admin/transfers"
+              class="panel flex items-center gap-3 border-accent/40 bg-accent-wash p-3.5 transition-transform hover:-translate-y-px"
+            >
+              <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3.5 9.5L12 4.5l8.5 5" />
+                  <path d="M5.5 9.5v8M18.5 9.5v8" />
+                  <path d="M3 19.5h18" />
+                </svg>
+              </span>
+              <span class="flex-1">
+                <span class="block text-sm">
+                  {dashboard.transfersInReview} bank transfer{dashboard.transfersInReview === 1 ? '' : 's'} waiting for review
+                </span>
+                <span class="block text-xs text-ink-muted">
+                  {formatCents(dashboard.transfersAmountCents)} uncredited — nothing is delivered until you approve
+                </span>
+              </span>
+              <svg class="h-4 w-4 shrink-0 text-ink-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h13" />
+                <path d="M13 6l6 6-6 6" />
+              </svg>
+            </a>
+          )}
+
+          {dashboard.kpis.failedUploads > 0 && (
+            <a href="/admin/upload" class="panel panel-interactive flex items-center gap-3 p-3.5">
+              <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink/[0.07] text-ink-muted">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 16V5" />
+                  <path d="M8 9l4-4 4 4" />
+                  <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </span>
+              <span class="flex-1">
+                <span class="block text-sm">{dashboard.kpis.failedUploads} failed upload job(s)</span>
+                <span class="block text-xs text-ink-muted">Retry them from the upload queue</span>
+              </span>
+              <svg class="h-4 w-4 shrink-0 text-ink-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h13" />
+                <path d="M13 6l6 6-6 6" />
+              </svg>
+            </a>
+          )}
         </div>
       )}
 
-      <div class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatTile
           label="Revenue this month"
           value={formatCents(dashboard.kpis.revenueThisMonthCents)}

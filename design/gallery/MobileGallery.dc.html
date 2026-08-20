@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .app {
+      --surface: #faf9f8; --raised: #ffffff; --ink: #0a0a0a; --muted: #6b6864;
+      --border: #ece9e6; --border-strong: #dcd8d4;
+      --accent-ink: #ffffff; --wash: color-mix(in oklab, var(--accent) 10%, transparent);
+      --r-md: 6px; --r-lg: 8px;
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      width: 390px; min-height: 844px;
+      background: var(--surface); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+      position: relative; overflow: hidden;
+    }
+    .app.dark {
+      --surface: #0a0a0a; --raised: #131211; --ink: #f5f5f4; --muted: #a3a09b;
+      --border: #1f1d1b; --border-strong: #302d2a; --accent-ink: #0a0a0a;
+    }
+    .display { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 400; }
+    a { color: inherit; text-decoration: none; }
+    .icon { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Every tap target on this screen is at least 44px. The desktop grid's 30px hover
+       button would be unhittable with a thumb, so the phone gets its own control. */
+    .tap { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+
+    .chip {
+      display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px;
+      padding: 9px 15px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--muted); background: var(--raised); font-family: inherit; white-space: nowrap;
+      cursor: pointer; transition: all .18s var(--ease);
+    }
+    .chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+
+    .tile { position: relative; overflow: hidden; border-radius: var(--r-md); background: var(--border); }
+    .tile .ph { width: 100%; height: 100%; }
+    .wm {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='110' height='110'><text x='55' y='57' font-family='Georgia,serif' font-size='10' fill='rgba(255,255,255,0.28)' text-anchor='middle' transform='rotate(-30 55 55)'>© José Valdiviezo</text></svg>");
+    }
+    /* Always visible on touch — there is no hover to reveal it with. */
+    .tile-add {
+      position: absolute; right: 5px; bottom: 5px; width: 38px; height: 38px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center; border: 0; cursor: pointer;
+      background: rgba(10,10,10,.55); color: #fff; backdrop-filter: blur(4px);
+      transition: background-color .18s var(--ease), transform .18s var(--ease);
+    }
+    .tile-add:active { transform: scale(.92); }
+    .tile-add.on { background: var(--accent); color: var(--accent-ink); }
+
+    .bar {
+      position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 30;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 11px 12px 11px 18px; border-radius: 999px;
+      background: var(--ink); color: var(--surface);
+      box-shadow: 0 14px 30px -12px rgba(0,0,0,.6);
+      animation: rise .28s var(--ease) both;
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .bar-cta { background: var(--surface); color: var(--ink); border-radius: 999px; padding: 10px 16px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; border: 0; font-family: inherit; cursor: pointer; }
+
+    .ph { background-position: center; background-size: cover; background-repeat: no-repeat; display: block; }
+    .ph-coast { background-image: url("coast.jpg"); }
+    .ph-tortoise { background-image: url("tortoise.jpg"); }
+    .ph-lava { background-image: url("lava.jpg"); }
+    .ph-pelican { background-image: url("pelican.jpg"); }
+    .ph-beach { background-image: url("beach.jpg"); }
+    .ph-lagoon { background-image: url("lagoon.jpg"); }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="--accent: {{accent}}">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 10px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: color-mix(in oklab, var(--surface) 92%, transparent); backdrop-filter: blur(8px); z-index: 20;">
+    <a href="#" class="display" style="font-size: 17px;">José Valdiviezo</a>
+    <div style="display: flex; align-items: center;">
+      <button class="tap" style="border: 0; background: transparent; color: var(--muted); cursor: pointer;" aria-label="Buscar">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+      </button>
+      <button class="tap" style="border: 0; background: transparent; color: var(--muted); cursor: pointer;" aria-label="Menú">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="padding: 14px 16px 10px;">
+    <h1 class="display" style="font-size: 24px; margin: 0;">Galería</h1>
+    <p style="margin: 3px 0 0; font-size: 13px; color: var(--muted);">279 fotografías · $2.00 cada una</p>
+
+    <label style="display: flex; align-items: center; gap: 9px; margin-top: 12px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 11px 15px; background: var(--raised);">
+      <svg class="icon" style="width: 18px; height: 18px; color: var(--muted);" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+      <input placeholder="Buscar por nombre de archivo" style="border: 0; background: transparent; color: inherit; font: inherit; font-size: 14px; outline: none; width: 100%;">
+    </label>
+  </div>
+
+  <!-- Horizontal scroller rather than a wrapping row: on 390px the tags would otherwise
+       eat four lines before a single photograph appears. -->
+  <div style="display: flex; gap: 7px; padding: 2px 16px 12px; overflow-x: auto;">
+    <sc-for list="{{tags}}" as="tag" hint-placeholder-count="5">
+      <button class="chip {{tag.onClass}}" onClick="{{tag.pick}}">{{tag.label}}</button>
+    </sc-for>
+  </div>
+
+  <section style="padding: 0 8px 96px;">
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 132px; gap: 4px;">
+      <sc-for list="{{tiles}}" as="tile" hint-placeholder-count="8">
+        <div class="tile" style="grid-column: span {{tile.cols}}; grid-row: span {{tile.rows}};">
+          <span class="ph {{tile.cls}}" role="img" aria-label="{{tile.title}}"></span>
+          <span class="wm"></span>
+          <button class="tile-add {{tile.onClass}}" onClick="{{tile.add}}" aria-label="Añadir al carrito">
+            <sc-if value="{{tile.inCart}}" hint-placeholder-val="{{false}}">
+              <svg class="icon" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+            </sc-if>
+            <sc-if value="{{tile.notInCart}}" hint-placeholder-val="{{true}}">
+              <svg class="icon" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+            </sc-if>
+          </button>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- The cart bar appears only once something is in it, and it floats above the grid so
+       scrolling never buries the way to checkout. -->
+  <sc-if value="{{hasCart}}" hint-placeholder-val="{{true}}">
+    <div class="bar">
+      <span style="display: flex; flex-direction: column;">
+        <span style="font-size: 14px;">{{cartCount}} en el carrito</span>
+        <span style="font-size: 12px; opacity: .7;">{{cartTotal}}</span>
+      </span>
+      <button class="bar-cta">Pagar</button>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","section":"Theme"},"accent":{"editor":"color","default":"#b5502e","options":["#b5502e","#2f6f5e","#3b5a8c","#7a4a86"],"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tag: 'todas', cart: ['coast', 'lava'] };
+  }
+
+  renderVals() {
+    const all = [
+      { id: 'coast', cls: 'ph-coast', title: 'dsc02172', cols: 2, rows: 2 },
+      { id: 'tortoise', cls: 'ph-tortoise', title: 'dsc02314', cols: 1, rows: 1 },
+      { id: 'lava', cls: 'ph-lava', title: 'dsc02319', cols: 1, rows: 1 },
+      { id: 'pelican', cls: 'ph-pelican', title: 'dsc02401', cols: 1, rows: 2 },
+      { id: 'beach', cls: 'ph-beach', title: 'dsc02455', cols: 1, rows: 1 },
+      { id: 'lagoon', cls: 'ph-lagoon', title: 'dsc02488', cols: 1, rows: 1 },
+      { id: 'coast2', cls: 'ph-coast', title: 'dsc02501', cols: 2, rows: 1 },
+    ];
+    const tags = ['todas', 'salida', 'meta', 'podio', 'paisaje'];
+    const unit = 200;
+    const count = this.state.cart.length;
+    const unitAfterTier = count >= 3 ? 175 : unit;
+
+    return {
+      themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '',
+      accent: this.props.accent ?? '#b5502e',
+      tags: tags.map((t) => ({
+        label: t,
+        onClass: this.state.tag === t ? 'on' : '',
+        pick: () => this.setState({ tag: t }),
+      })),
+      tiles: all.map((p) => ({
+        ...p,
+        inCart: this.state.cart.includes(p.id),
+        notInCart: !this.state.cart.includes(p.id),
+        onClass: this.state.cart.includes(p.id) ? 'on' : '',
+        add: () => this.setState({
+          cart: this.state.cart.includes(p.id)
+            ? this.state.cart.filter((x) => x !== p.id)
+            : this.state.cart.concat(p.id),
+        }),
+      })),
+      hasCart: count > 0,
+      cartCount: count,
+      cartTotal: '$' + ((unitAfterTier * count) / 100).toFixed(2),
+    };
+  }
+}
+</script>
+</body>
+</html>

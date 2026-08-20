@@ -52,15 +52,14 @@
     .chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 
     /* The mosaic keeps the shipped 1–2px gaps and the feature/wide/tall/small rhythm from
-       MosaicGrid.astro. What is new is the hover: veil, filename, price, and an add
-       control that is reachable without opening the photograph first. */
+       MosaicGrid.astro. Hovering does exactly two things: a veil for contrast, and the
+       add-to-cart control — no filename, no price. The photograph is the content, and a
+       label on top of it is something to read instead of looking. */
     .tile { position: relative; overflow: hidden; border-radius: var(--r-md); background: var(--border); cursor: pointer; }
     .tile .ph { width: 100%; height: 100%; transition: transform .55s var(--ease); }
     .tile:hover .ph { transform: scale(1.035); }
     .tile-veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,.6), rgba(10,10,10,0) 52%); opacity: 0; transition: opacity .25s var(--ease); }
     .tile:hover .tile-veil { opacity: 1; }
-    .tile-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; color: #fff; opacity: 0; transform: translateY(5px); transition: all .25s var(--ease); }
-    .tile:hover .tile-bar { opacity: 1; transform: none; }
     .tile-add {
       position: absolute; top: 9px; right: 9px; width: 32px; height: 32px; border-radius: 999px;
       display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
@@ -165,10 +164,6 @@
               <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
             </sc-if>
           </button>
-          <div class="tile-bar">
-            <span style="font-size: 12px;">{{tile.title}}</span>
-            <span style="font-size: 12px;">$2.00</span>
-          </div>
         </div>
       </sc-for>
     </div>

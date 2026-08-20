@@ -85,26 +85,30 @@ const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     </div>
   </form>
 
-  <section class="mt-12 max-w-2xl">
-    <h2 class="text-sm uppercase tracking-widest text-ink-muted">What customers pay</h2>
-    <p class="mt-1 text-xs text-ink-muted">Based on the saved settings above — save to refresh.</p>
-    <table class="mt-3 w-full text-sm">
+  <section class="panel mt-10 max-w-2xl p-4">
+    <div class="flex items-baseline justify-between gap-4">
+      <h2 class="text-[10px] uppercase tracking-[0.14em] text-ink-muted">What customers pay</h2>
+      {/* Live, not "save to refresh": the figure worth sanity-checking is the one you are
+          about to commit, not the one already committed. */}
+      <span class="text-[11px] text-accent">Updates as you type</span>
+    </div>
+    <table class="mt-2 w-full text-sm" data-preview-table>
       <thead>
-        <tr class="border-b border-border-strong text-left text-xs uppercase tracking-widest text-ink-muted">
+        <tr class="border-b border-border-strong text-left text-[10px] uppercase tracking-[0.14em] text-ink-muted">
           <th class="py-2">Photos</th>
           <th class="py-2">Each</th>
           <th class="py-2">Total</th>
           <th class="py-2">They save</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody data-preview-rows>
         {
           preview.map((row) => (
-            <tr class="border-b border-border">
+            <tr class="border-b border-border" data-preview-row data-qty={row.qty}>
               <td class="py-2">{row.qty}</td>
-              <td class="py-2">{fmt(row.unit)}</td>
-              <td class="py-2">{fmt(row.total)}</td>
-              <td class="py-2 text-ink-muted">{row.saved > 0 ? fmt(row.saved) : '—'}</td>
+              <td class="py-2" data-cell-unit>{fmt(row.unit)}</td>
+              <td class="py-2" data-cell-total>{fmt(row.total)}</td>
+              <td class="py-2 text-ink-muted" data-cell-saved>{row.saved > 0 ? fmt(row.saved) : '—'}</td>
             </tr>
           ))
         }
@@ -137,7 +141,42 @@ const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     syncEmptyNote();
   }
 
-  document.querySelector('[data-add-tier]')!.addEventListener('click', () => addRow());
+  /**
+   * Recomputes the "what customers pay" table from the *unsaved* form values.
+   *
+   * The rule is the one in lib/pricing.ts: a tier is retroactive across the whole cart,
+   * and the highest threshold the quantity clears wins. Duplicated here deliberately —
+   * this is a preview of an unsaved edit, so there is nothing on the server to ask, and
+   * a round trip per keystroke would be worse than four lines of arithmetic.
+   */
+  function refreshPreview() {
+    const base = Number((form.elements.namedItem('digitalPriceCents') as HTMLInputElement).value);
+    if (!Number.isFinite(base)) return;
+
+    const tiers = [...rows.querySelectorAll<HTMLElement>('[data-tier-row]')]
+      .map((row) => ({
+        minQty: Number(row.querySelector<HTMLInputElement>('[data-tier-min]')!.value),
+        unitPriceCents: Number(row.querySelector<HTMLInputElement>('[data-tier-price]')!.value),
+      }))
+      .filter((tier) => Number.isFinite(tier.minQty) && tier.minQty >= 2 && Number.isFinite(tier.unitPriceCents))
+      .sort((a, b) => b.minQty - a.minQty);
+
+    const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+    for (const row of document.querySelectorAll<HTMLElement>('[data-preview-row]')) {
+      const qty = Number(row.dataset.qty);
+      const unit = tiers.find((tier) => qty >= tier.minQty)?.unitPriceCents ?? base;
+      const saved = base * qty - unit * qty;
+      row.querySelector<HTMLElement>('[data-cell-unit]')!.textContent = money(unit);
+      row.querySelector<HTMLElement>('[data-cell-total]')!.textContent = money(unit * qty);
+      row.querySelector<HTMLElement>('[data-cell-saved]')!.textContent = saved > 0 ? money(saved) : '—';
+    }
+  }
+
+  document.querySelector('[data-add-tier]')!.addEventListener('click', () => {
+    addRow();
+    refreshPreview();
+  });
 
   // Delegated, so it covers rows added after page load too.
   rows.addEventListener('click', (event) => {
@@ -145,7 +184,11 @@ const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     if (!button) return;
     button.closest('[data-tier-row]')!.remove();
     syncEmptyNote();
+    refreshPreview();
   });
+
+  // Delegated for the same reason: tier rows come and go.
+  form.addEventListener('input', refreshPreview);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();

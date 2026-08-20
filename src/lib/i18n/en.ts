@@ -39,6 +39,8 @@ export const en: Dictionary = {
     empty: 'No competitions published yet.',
     photoCount: '{count} photographs',
     backToAll: 'Back to competitions',
+    allYears: 'All years',
+    summary: '{competitions} competitions · {photos} photographs',
   },
   portfolio: {
     title: 'Portfolio',
@@ -64,6 +66,11 @@ export const en: Dictionary = {
   },
   about: {
     title: 'About José',
+    eyebrow: 'About',
+    contactTitle: 'Contact',
+    contactLocation: 'Cuenca, Ecuador',
+    contactInvite: 'Organising a competition? Write to me about covering it.',
+    portfolioNote: 'From the personal portfolio — landscape and wildlife.',
     // DRAFT — pending José's review. Deliberately written without awards, clients or
     // years of experience: nothing here claims anything that can't be verified.
     body: "José Valdiviezo is a photographer based in Cuenca, Ecuador. His work centres on sports photography — the decisive moment, the shape of real effort, the tension of a close finish. Every competition is published as its own gallery, so the people who were there can find themselves in it. Alongside that he keeps a portfolio of landscape and wildlife work, where the same attention to natural light gets to take its time.",
@@ -230,6 +237,11 @@ export const en: Dictionary = {
     total: 'Total',
     viewOrder: 'View',
     passwordHint: 'At least 8 characters.',
+    heroTitle: 'Your photographs, whenever you need them',
+    heroBody: 'An account keeps your orders, so you can download what you bought again even after the emailed link expires.',
+    freeOffer: 'Take 2 photographs free',
+    freeOfferHint: 'Applied when you create the account, on whichever photograph you choose.',
+    guestNote: 'Buying needs no account — you can pay as a guest too.',
     errors: {
       INVALID_CREDENTIALS: 'Incorrect email or password.',
       TOO_MANY_ATTEMPTS: 'Too many attempts. Try again in a few minutes.',
@@ -252,5 +264,6 @@ export const en: Dictionary = {
   notFound: {
     photoTitle: 'Photograph not found',
     photoBody: 'This photograph is no longer available, or the link is incorrect.',
+    recentTitle: 'Recently published',
   },
 };
