@@ -365,17 +365,16 @@ Setup (already applied to `valdiviezo-gallery`):
      --role=roles/storage.objectAdmin
    gcloud storage hmac create valdiviezo-storage@<project>.iam.gserviceaccount.com
    ```
-3. **CORS**, so the browser's direct `PUT` is allowed. The rule currently lists both Cloud
-   Run URLs plus `localhost`/`127.0.0.1` on ports 4321–4323 (Astro walks up the ports when
+3. **CORS**, so the browser’s direct `PUT` is allowed. The live rule lives in
+   `scripts/gcs-cors.json`: the custom domain `https://josevaldiviezo.com`, both Cloud Run
+   URLs, and `localhost`/`127.0.0.1` on ports 4321–4323 (Astro walks up the ports when
    4321 is taken, and `localhost` and `127.0.0.1` are *different* origins to CORS, so both
-   spellings have to be there). Add a custom domain here when one is attached:
+   spellings have to be there). Keep that file as the source of truth and re-apply it
+   whenever an origin changes — an origin the browser actually uses but the rule omits
+   fails **every** upload at preflight, which is exactly how the custom domain broke
+   uploads once already:
    ```bash
-   cat > cors.json <<'JSON'
-   [{ "origin": ["http://localhost:4321", "https://your-domain.example"],
-      "method": ["PUT", "GET", "HEAD"],
-      "responseHeader": ["Content-Type", "Content-Length"], "maxAgeSeconds": 3600 }]
-   JSON
-   gcloud storage buckets update gs://valdiviezo-gallery --cors-file=cors.json
+   gcloud storage buckets update gs://valdiviezo-gallery --cors-file=scripts/gcs-cors.json
    ```
    Read the live rule with `gcloud storage buckets describe gs://valdiviezo-gallery
    --format="json(cors_config)"` before believing an upload error that blames CORS — the

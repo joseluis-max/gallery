@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "https://josevaldiviezo.com",
+      "https://valdiviezo-gallery-fvve3xyyxq-ue.a.run.app",
+      "https://valdiviezo-gallery-71520524755.us-east1.run.app",
+      "http://localhost:4321",
+      "http://localhost:4322",
+      "http://localhost:4323",
+      "http://127.0.0.1:4321",
+      "http://127.0.0.1:4322",
+      "http://127.0.0.1:4323"
+    ],
+    "method": ["PUT", "GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length"],
+    "maxAgeSeconds": 3600
+  }
+]

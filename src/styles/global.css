@@ -70,6 +70,20 @@
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/*
+ * The <select> arrow, as a token.
+ *
+ * `appearance: none` (see select.field) removes the native one — a different glyph,
+ * size and colour on every platform — and this draws the replacement. It has to be a
+ * background image, and a background image cannot read `currentColor`, so the ink-muted
+ * hue is spelled out here and again in the dark block below. That is the one duplication
+ * of a token value in this file: if --color-ink-muted is ever re-tuned, both stroke
+ * colours have to move with it.
+ */
+:root {
+  --field-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%236b6864' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+}
+
 [data-theme="dark"] {
   --color-surface: #0a0a0a;
   /* Not pure black-on-black: a panel has to separate from the page without a brighter
@@ -86,6 +100,10 @@
   --color-accent-wash: color-mix(in oklab, var(--color-accent) 18%, transparent);
   --color-data: #c96a42;
   --color-data-wash: #c96a4229;
+  --field-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23a3a09b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  /* The half of the UI this stylesheet cannot reach — see the `html` rule for why this
+     matters more than it looks. */
+  color-scheme: dark;
 }
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -164,6 +182,52 @@
     outline: none;
     border-color: var(--color-accent);
     box-shadow: 0 0 0 3px var(--color-accent-wash);
+  }
+
+  /*
+   * Selects, on top of `.field`. Everything here is a problem that only <select> has.
+   *
+   * 1. The dropdown list is painted by the browser, not from this stylesheet — no rule
+   *    here reaches inside it. That is how the dark theme came to open a *white* list of
+   *    near-white options: the one control on the page you could not read. The actual fix
+   *    is `color-scheme` on the root; the explicit `option` colours below are the backup
+   *    for engines that paint the list from the control's own colours instead.
+   * 2. The native arrow differs per platform, so no two machines saw the same control.
+   *    `appearance: none` drops it and --field-chevron draws one that follows the tokens.
+   * 3. `.field` is transparent, which is right for a text input — it is a hole you type
+   *    into. A select is a button that opens something, so it takes the raised surface,
+   *    the same step up a `.panel` gets from the page.
+   */
+  select.field {
+    appearance: none;
+    background-color: var(--color-raised);
+    background-image: var(--field-chevron);
+    background-repeat: no-repeat;
+    /* Anchored to the right edge, so the gap to the border stays the field's own 0.65rem
+       at any width. */
+    background-position: right 0.65rem center;
+    background-size: 1rem 1rem;
+    /* 0.65rem gutter + 1rem glyph + 0.6rem, so a long option label stops short of the
+       chevron instead of running under it. */
+    padding-right: 2.25rem;
+    cursor: pointer;
+  }
+  select.field option {
+    background-color: var(--color-raised);
+    color: var(--color-ink);
+  }
+  /*
+   * A select answers the pointer because it is a button; text inputs deliberately don't,
+   * since hovering something you can already see the caret target of says nothing new.
+   * Excluded while focused so this cannot outrank the accent focus ring above — it is the
+   * more specific selector, and a focused-and-hovered control must still read as focused.
+   */
+  select.field:hover:not(:disabled):not(:focus-visible) {
+    border-color: var(--color-ink-muted);
+  }
+  select.field:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 
   /*
@@ -347,6 +411,17 @@
  *    friends still break exactly where they always did.
  */
 html {
+  /*
+   * Names the palette for the parts of the UI no rule in this file can style: the
+   * <select> popup, scrollbars, spin buttons, date pickers, autofill. Without it the
+   * browser assumes light and paints all of them light even under the dark theme.
+   *
+   * It has to be declared on both themes rather than only on dark. The attribute is the
+   * only signal this stylesheet uses — there is no prefers-color-scheme rule — so on a
+   * machine set to dark at the OS level, a reader who has *chosen* the light theme would
+   * otherwise get light panels with dark native chrome hanging off them.
+   */
+  color-scheme: light;
   font-size: clamp(1rem, calc(1rem + (100vw - 1280px) * 0.00435), 1.25rem);
   background-color: var(--color-surface);
   color: var(--color-ink);
