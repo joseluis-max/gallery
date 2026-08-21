@@ -262,11 +262,20 @@ const previewable = (contentType: string) => contentType.startsWith('image/') &&
 <script>
   import { actions } from 'astro:actions';
 
-  document.addEventListener('astro:page-load', () => {
-    const root = document.querySelector<HTMLElement>('[data-transfer-review]');
-    if (!root || root.dataset.bound === 'true') return;
-    root.dataset.bound = 'true';
-
+  // Bound on load, directly — NOT from an `astro:page-load` listener.
+  //
+  // That event is dispatched by Astro's ClientRouter runtime, and AdminLayout deliberately
+  // ships none: the panel is plain multi-page navigation, so nothing on an admin page ever
+  // fires it. This block used to copy the public site's idiom (BaseLayout does have a
+  // ClientRouter, so over there it is correct), which meant the callback never ran, the
+  // listeners were never attached, and Approve was a button that did nothing at all when
+  // clicked — no request, no error, not a line in the console. Every other script in the
+  // panel, including AdminLayout's own logout button, queries the DOM directly like this;
+  // an Astro <script> is a module and therefore deferred, so the markup above is already
+  // parsed by the time it runs.
+  const root = document.querySelector<HTMLElement>('[data-transfer-review]');
+  // Absent on orders that were never paid by transfer — there is simply nothing to bind.
+  if (root) {
     for (const controls of root.querySelectorAll<HTMLElement>('[data-review-controls]')) {
       const transferId = controls.dataset.transferId!;
       const approve = controls.querySelector<HTMLButtonElement>('[data-approve]')!;
@@ -318,5 +327,5 @@ const previewable = (contentType: string) => contentType.startsWith('image/') &&
         window.location.reload();
       });
     }
-  });
+  }
 </script>
