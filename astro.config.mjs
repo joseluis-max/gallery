@@ -32,6 +32,16 @@ export default defineConfig({
     // behavior reproduced for the public site only.
     routing: 'manual',
   },
+  // NOT "CSRF protection off" — moved. Astro's built-in check compares the browser's
+  // `Origin` against the URL the server assembled for the request, and on the standalone
+  // Node adapter that URL's scheme comes from `req.socket.encrypted` with
+  // `x-forwarded-proto` never consulted. Cloud Run terminates TLS at its edge and speaks
+  // plain HTTP to the container, so the comparison was always `http://josevaldiviezo.com`
+  // against `https://josevaldiviezo.com` and every form-encoded POST 403'd in production —
+  // which meant precisely one thing, the bank-transfer comprobante upload, the app's only
+  // `accept: 'form'` action. src/middleware.ts runs the identical rules with a
+  // proxy-aware notion of "same origin"; see src/lib/csrf.ts.
+  security: { checkOrigin: false },
   // @astrojs/node would otherwise store sessions on the local filesystem, which breaks
   // the moment this runs on more than one instance (Cloud Run): a visitor would be
   // signed in or out depending on which container answered. Sessions live in Mongo

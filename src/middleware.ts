@@ -1,9 +1,26 @@
 import { defineMiddleware } from 'astro:middleware';
 import type { APIContext } from 'astro';
 import { middleware as createI18nMiddleware } from 'astro:i18n';
-import { getDbConfig } from './lib/config';
+import { getDbConfig, getPublicSiteUrl } from './lib/config';
+import { isForbiddenCrossOriginRequest } from './lib/csrf';
 import { getDb } from './lib/db';
 import { findActiveUserById, isAdmin } from './lib/users';
+
+/** PUBLIC_SITE_URL is inlined at build time and cannot move while the process is alive, so
+ *  it is parsed once. Lazily, and tolerantly: a malformed value must not take the whole app
+ *  down at import time — it degrades to "no canonical origin", which leaves the
+ *  forwarded-scheme rule in lib/csrf.ts doing the work on its own. */
+let cachedSiteOrigin: string | undefined;
+function siteOrigin(): string {
+  if (cachedSiteOrigin === undefined) {
+    try {
+      cachedSiteOrigin = new URL(getPublicSiteUrl()).origin;
+    } catch {
+      cachedSiteOrigin = '';
+    }
+  }
+  return cachedSiteOrigin;
+}
 
 /** Drops the stale session on the way out, so a revoked admin isn't left holding a
  *  cookie that keeps claiming otherwise. */
@@ -38,6 +55,26 @@ const i18nMiddleware = createI18nMiddleware({
 });
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // CSRF, first and for every path — including /admin below, so the panel is covered by the
+  // same rule as the public site. This lives here rather than in Astro's own
+  // `security.checkOrigin` (switched off in astro.config.mjs) because that one compares
+  // against a scheme this server cannot know behind Cloud Run's TLS termination, and so
+  // rejected the one form-encoded endpoint the app has. See lib/csrf.ts for the full story.
+  const { request } = context;
+  if (
+    isForbiddenCrossOriginRequest({
+      method: request.method,
+      origin: request.headers.get('origin'),
+      contentType: request.headers.get('content-type'),
+      forwardedProto: request.headers.get('x-forwarded-proto'),
+      requestOrigin: context.url.origin,
+      siteOrigin: siteOrigin(),
+    })
+  ) {
+    // The same wording Astro used, so anything that was matching on it still does.
+    return new Response(`Cross-site ${request.method} form submissions are forbidden`, { status: 403 });
+  }
+
   const pathname = context.url.pathname;
 
   // The admin panel deliberately has no locale prefix — it's a single internal tool,
